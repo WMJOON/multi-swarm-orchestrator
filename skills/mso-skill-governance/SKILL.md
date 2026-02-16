@@ -9,7 +9,7 @@ disable-model-invocation: true
 # mso-skill-governance
 
 > 이 스킬은 pack 전체의 정합성 게이트키퍼이다.
-> CC-01~CC-05 계약 검증, 구조 검사, AAOS 잔존 참조 탐지를 수행한다.
+> CC-01~CC-05 계약 검증, 구조 검사, 레거시 참조 탐지를 수행한다.
 
 ---
 
@@ -36,18 +36,18 @@ disable-model-invocation: true
 
 ### Phase 2: CC 계약 검증
 
-1. `config.yaml`의 `cc_contracts` 로딩
+1. CC 계약 정의 로딩
 2. CC-01~CC-05 각각에 대해:
    - producer/consumer 스킬 명 일치 확인
    - required_output_keys / required_input_keys 존재 확인
    - expected_artifact 경로에 실제 파일 존재 확인 (runtime wiring)
 3. 불일치 → `finding: fail` + evidence 기록
 
-### Phase 3: AAOS 잔존 참조 탐지
+### Phase 3: 레거시 참조 탐지
 
-1. `01.product/` 및 `02.test/` 전체에서 탐색:
+1. 전체 소스에서 레거시 패턴 탐색:
    - `04_Agentic_AI_OS`, `@ref(`, `context_id`, `SKILL.meta.yaml`, `scope: swarm`
-2. 발견 시 → `finding: warn` (AAOS 의존성 미제거)
+2. 발견 시 → `finding: warn` (레거시 의존성 잔존)
 
 ### Phase 4: 리포트 생성
 

@@ -40,7 +40,7 @@
 - 출력 스키마 위반: 즉시 실패.
 
 ## Security / Constraints
-- 외부 `AAOS`, `cof-glob-indexing`, `agora` 경로를 임포트하지 않는다.
+- 외부 경로를 임포트하지 않는다. pack 내부 상대경로만 사용한다.
 - `goal` 원문은 `run_id` 생성에만 사용하고 로그에 과도한 민감정보를 남기지 않는다.
 
 ## when_unsure

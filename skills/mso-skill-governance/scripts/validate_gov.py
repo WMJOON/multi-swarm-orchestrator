@@ -134,7 +134,7 @@ def validate_skill_structure(skills: Dict[str, Path], skills_root: Path) -> tupl
                 errors.append({
                     "id": sid,
                     "severity": "warn",
-                    "finding": "AAOS reference detected",
+                    "finding": "legacy reference detected",
                     "evidence": str(file),
                 })
 

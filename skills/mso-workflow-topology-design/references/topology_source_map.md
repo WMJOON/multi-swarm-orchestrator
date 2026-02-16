@@ -1,5 +1,5 @@
 # references
 
-- Source intent: AWT `workflow-topology-design` design reference
-- Scope is decoupled from AAOS; only local pack-relative paths are retained.
+- Source intent: `workflow-topology-design` design reference
+- Only local pack-relative paths are used.
 - Output contract reference: `schemas/workflow_topology_spec.schema.json`

@@ -12,11 +12,11 @@ layer: operational
 ## 검사 범위
 - 필수 파일 존재 (`core.md`, `modules/modules_index.md`, `references/source_map.md`, `scripts/...`)
 - 스킬 간 CC 계약 정의(`schemas/cc_contracts.schema.json`) 정합
-- AAOS 특화 고정 경로 사용 여부
+- 레거시 고정 경로 사용 여부
 - profile 기반 스킬 집합 과부하 경고
 
 ## 입력/출력
-- 입력: 스킬 폴더, `v0.0.1/config.yaml`, 계약 스키마
+- 입력: 스킬 폴더, 계약 스키마
 - 출력: `references/governance_report.md`, JSON summary(`--json`)
 
 ## 상태 모델
@@ -25,5 +25,5 @@ layer: operational
 
 ## 실패 규칙
 - 고정 required 파일 누락이나 CC 필수 키 누락은 `fail`.
-- AAOS 고정 문자열 사용, duplicate skill_ids는 `warn`.
+- 레거시 고정 문자열 사용, duplicate skill_ids는 `warn`.
 - 스키마/계약 미스매치가 누적되면 fail-fast.
