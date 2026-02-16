@@ -219,9 +219,9 @@ def main() -> int:
 
     cfg = load_config(Path(args.config).expanduser().resolve())
 
-    task_dir = resolve_path(cfg, str(ROOT / "../../02.test/v0.0.1/task-context"), "pipeline", "default_task_dir")
-    db_path = resolve_path(cfg, str(ROOT / "../../02.test/v0.0.1/agent_log.db"), "pipeline", "default_db_path")
-    output_dir = resolve_path(cfg, str(ROOT / "../../02.test/v0.0.1/outputs"), "pipeline", "default_workflow_output_dir")
+    task_dir = resolve_path(cfg, str(ROOT / "../02.test/v0.0.1/task-context"), "pipeline", "default_task_dir")
+    db_path = resolve_path(cfg, str(ROOT / "../02.test/v0.0.1/agent_log.db"), "pipeline", "default_db_path")
+    output_dir = resolve_path(cfg, str(ROOT / "../02.test/v0.0.1/outputs"), "pipeline", "default_workflow_output_dir")
     topo_path = output_dir / "workflow_topology_spec.json"
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -242,7 +242,7 @@ def main() -> int:
     if args.output:
         out = Path(args.output).expanduser().resolve()
     else:
-        obs_dir = resolve_path(cfg, str(ROOT / "../../02.test/v0.0.1/observations"), "pipeline", "default_observation_dir")
+        obs_dir = resolve_path(cfg, str(ROOT / "../02.test/v0.0.1/observations"), "pipeline", "default_observation_dir")
         obs_dir.mkdir(parents=True, exist_ok=True)
         out = obs_dir / "portfolio_status.md"
 

@@ -99,10 +99,10 @@ def main() -> int:
 
     cfg = load_config(Path(args.config).expanduser().resolve())
 
-    default_outputs = str(ROOT / "../../02.test/v0.0.1/outputs")
-    default_task_root = str(ROOT / "../../02.test/v0.0.1/task-context")
-    default_observations = str(ROOT / "../../02.test/v0.0.1/observations")
-    default_db = str(ROOT / "../../02.test/v0.0.1/agent_log.db")
+    default_outputs = str(ROOT / "../02.test/v0.0.1/outputs")
+    default_task_root = str(ROOT / "../02.test/v0.0.1/task-context")
+    default_observations = str(ROOT / "../02.test/v0.0.1/observations")
+    default_db = str(ROOT / "../02.test/v0.0.1/agent_log.db")
 
     outputs_root = Path(args.workflow_output_dir).resolve() if args.workflow_output_dir else resolve_path(
         cfg,

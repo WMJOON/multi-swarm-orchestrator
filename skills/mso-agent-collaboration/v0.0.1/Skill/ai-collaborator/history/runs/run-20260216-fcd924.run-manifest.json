@@ -1,0 +1,25 @@
+{
+  "run_id": "run-20260216-fcd924",
+  "created_at": "2026-02-16T13:33:43.982072+00:00",
+  "completed_at": "2026-02-16T13:34:13.995553+00:00",
+  "status": "failed",
+  "tasks": [
+    {
+      "task_id": "TKT-0004",
+      "owner_agent": "codex",
+      "status": "timeout",
+      "exit_code": "X-001"
+    }
+  ],
+  "config_hash": "sha256:4470ad15d7c43f143bb8d572f3cf27517a70af8039d70ac8182f1c38359ed80e",
+  "system_rules_hash": "sha256:f6658ee60538655574d54eea0bdeceae5c450c08b0c890e74f7f9d91b41fb6cc",
+  "aggregate_metrics": {
+    "total_tasks": 1,
+    "succeeded": 0,
+    "failed": 1,
+    "total_duration_seconds": 30.013481,
+    "total_tokens": 0,
+    "retry_total": 0,
+    "conflict_count": 0
+  }
+}

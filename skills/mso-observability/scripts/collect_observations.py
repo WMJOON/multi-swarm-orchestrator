@@ -222,7 +222,7 @@ def main() -> int:
     cfg = load_config(Path(args.config).expanduser().resolve())
     db_path = resolve_user_path(args.db) if args.db else resolve_path(
         cfg,
-        str(ROOT / "../../02.test/v0.0.1/agent_log.db"),
+        str(ROOT / "../02.test/v0.0.1/agent_log.db"),
         "pipeline",
         "default_db_path",
     )
@@ -231,14 +231,14 @@ def main() -> int:
     else:
         workflow_output_dir = resolve_path(
             cfg,
-            str(ROOT / "../../02.test/v0.0.1/outputs"),
+            str(ROOT / "../02.test/v0.0.1/outputs"),
             "pipeline",
             "default_workflow_output_dir",
         )
         artifact = workflow_output_dir / "execution_plan.json"
     out_dir = resolve_user_path(args.out) if args.out else resolve_path(
         cfg,
-        str(ROOT / "../../02.test/v0.0.1/observations"),
+        str(ROOT / "../02.test/v0.0.1/observations"),
         "pipeline",
         "default_observation_dir",
     )

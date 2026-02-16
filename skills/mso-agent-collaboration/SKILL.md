@@ -19,8 +19,9 @@ disable-model-invocation: true
 - `handoff_payload`를 생성한다.
 
 ### Phase 3) 실행
-- ai-collaborator 존재 시 호출 (`run`/`batch`)
-- 미존재 시 `fallback` 결과를 생성하고 `requires_manual_confirmation=true` 반환
+- 기본적으로 내장된 `v0.0.1/Skill/ai-collaborator`를 호출 (`run`/`batch`/`swarm`).
+- 외부 런타임 탐색은 비활성화되어 있으며, 내장 번들만 사용합니다.
+- 내장본/외부 모두 실패 시 `fallback` 결과를 생성하고 `requires_manual_confirmation=true` 반환
 
 ### Phase 4) 결과 반영
 - `output-report`의 `status`를 ticket 상태로 반영

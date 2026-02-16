@@ -118,17 +118,17 @@ rules/
 # 목표(Goal)를 입력하면 노드 구조(Topology)가 생성됩니다
 python3 skills/mso-workflow-topology-design/scripts/generate_topology.py \
   --goal "사용자 온보딩 프로세스 설계" \
-  --output outputs/workflow_topology_spec.json
+  --output ../02.test/v0.0.1/outputs/workflow_topology_spec.json
 
 # 각 노드에 적절한 사고 모델(Mental Model)을 매핑합니다
 python3 skills/mso-mental-model-design/scripts/build_bundle.py \
-  --topology outputs/workflow_topology_spec.json \
-  --output outputs/mental_model_bundle.json
+  --topology ../02.test/v0.0.1/outputs/workflow_topology_spec.json \
+  --output ../02.test/v0.0.1/outputs/mental_model_bundle.json
 
 # 위 두 결과를 통합하여 최종 실행 계획을 생성합니다
 python3 skills/mso-execution-design/scripts/build_plan.py \
-  --topology outputs/workflow_topology_spec.json \
-  --bundle outputs/mental_model_bundle.json
+  --topology ../02.test/v0.0.1/outputs/workflow_topology_spec.json \
+  --bundle ../02.test/v0.0.1/outputs/mental_model_bundle.json
 ```
 
 ### 2. 티켓 운영 (Ops)
@@ -136,11 +136,11 @@ python3 skills/mso-execution-design/scripts/build_plan.py \
 ```bash
 # 티켓 발행
 python3 skills/mso-task-context-management/scripts/create_ticket.py \
-  --path task-context --title "온보딩 플로우 구현"
+  --path ../02.test/v0.0.1/task-context --title "온보딩 플로우 구현"
 
 # 완료된 티켓 정리 — 로그에 기록 후 삭제(Archive) 처리합니다
 python3 skills/mso-task-context-management/scripts/archive_tasks.py \
-  --path task-context
+  --path ../02.test/v0.0.1/task-context
 ```
 
 ### 3. 검증 (Validation)
@@ -182,7 +182,8 @@ stateDiagram-v2
 ## 의존성
 
 - `Python 3.10+`
-- `ai-collaborator` (선택) — Agent Collaboration 스킬에서 멀티에이전트 디스패치 작업을 수행할 때 사용됩니다. 이를 설치하지 않아도 나머지 7개 스킬은 독립적으로 정상 동작합니다.
+- `ai-collaborator` — `mso-agent-collaboration` 내부에 기본 포함(`skills/mso-agent-collaboration/v0.0.1/Skill/ai-collaborator`)되며,
+  이 저장소 내 번들만 사용하고 외부 전역 경로/환경변수는 탐색하지 않습니다.
 
 ---
 

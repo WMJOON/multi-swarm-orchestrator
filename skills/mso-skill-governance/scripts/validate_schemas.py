@@ -12,8 +12,8 @@ from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config.yaml"
-DEFAULT_WORKFLOW_OUTPUT_DIR = (ROOT / "../../02.test/v0.0.1/outputs").resolve()
-DEFAULT_TASK_DIR = (ROOT / "../../02.test/v0.0.1/task-context").resolve()
+DEFAULT_WORKFLOW_OUTPUT_DIR = (ROOT / "../02.test/v0.0.1/outputs").resolve()
+DEFAULT_TASK_DIR = (ROOT / "../02.test/v0.0.1/task-context").resolve()
 
 SCHEMA_TARGETS = (
     {

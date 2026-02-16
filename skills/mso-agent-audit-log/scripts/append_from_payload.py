@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB = (ROOT / "../../02.test/v0.0.1/agent_log.db").resolve()
+DEFAULT_DB = (ROOT / "../02.test/v0.0.1/agent_log.db").resolve()
 SCHEMA_VERSION = "1.3.0"
 
 CONFIG_PATH = ROOT / "config.yaml"
