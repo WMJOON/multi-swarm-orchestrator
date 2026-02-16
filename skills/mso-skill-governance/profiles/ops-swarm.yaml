@@ -1,0 +1,12 @@
+name: ops-swarm
+version: 0.0.1
+required_skill_ids:
+  - "mso-task-context-management"
+  - "mso-agent-collaboration"
+  - "mso-agent-audit-log"
+  - "mso-observability"
+required_skill_count: 4
+missing_dependency_action:
+  critical: fail
+  warning: warn
+  optional: warn

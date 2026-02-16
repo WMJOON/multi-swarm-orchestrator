@@ -1,0 +1,84 @@
+{
+  "version": "0.0.1",
+  "audit_log": {
+    "db_path": "../02.test/v0.0.1/agent_log.db",
+    "schema_version": "1.3.0"
+  },
+  "external_dependencies": {
+    "ai-collaborator": {
+      "description": "Multi-provider collaboration CLI dependency",
+      "resolve_order": [
+        { "env": "AI_COLLABORATOR_ROOT" },
+        { "relative": "../../02_ai-collaborator" }
+      ],
+      "min_version": "0.3.0",
+      "healthcheck": "python3 {root}/scripts/collaborate.py status --format json",
+      "fallback": "ai-collaborator를 찾을 수 없습니다.\n- 환경변수 AI_COLLABORATOR_ROOT 설정\n- 또는 03_AgentsTools/02_ai-collaborator 경로 확인"
+    }
+  },
+  "pipeline": {
+    "default_workflow_output_dir": "../02.test/v0.0.1/outputs",
+    "default_task_dir": "../02.test/v0.0.1/task-context",
+    "default_observation_dir": "../02.test/v0.0.1/observations",
+    "default_db_path": "../02.test/v0.0.1/agent_log.db"
+  },
+  "cc_contracts": {
+    "contracts": [
+      {
+        "id": "CC-01",
+        "producer": "mso-workflow-topology-design",
+        "consumer": "mso-execution-design",
+        "required_output_keys": ["run_id", "nodes", "edges", "topology_type", "rsv_total"],
+        "required_input_keys": ["run_id", "nodes", "topology_type"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "notes": "exec의 node_chart_map key가 topology node id에 존재해야 함",
+        "expected_artifact": "../02.test/v0.0.1/outputs/workflow_topology_spec.json"
+      },
+      {
+        "id": "CC-02",
+        "producer": "mso-mental-model-design",
+        "consumer": "mso-execution-design",
+        "required_output_keys": ["node_chart_map", "local_charts", "output_contract", "bundle_ref", "run_id"],
+        "required_input_keys": ["nodes", "assigned_dqs", "theta_gt_band"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "notes": "Mental model bundle must retain chart coverage and topology provenance",
+        "expected_artifact": "../02.test/v0.0.1/outputs/mental_model_bundle.json"
+      },
+      {
+        "id": "CC-03",
+        "producer": "mso-task-context-management",
+        "consumer": "mso-agent-collaboration",
+        "required_output_keys": ["id", "status", "task_context_id", "owner", "due_by", "dependencies", "tags"],
+        "required_input_keys": ["id", "task_context_id", "status", "owner"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "notes": "Ticket frontmatter becomes dispatch input",
+        "expected_artifact": "../02.test/v0.0.1/task-context/tickets/*.md"
+      },
+      {
+        "id": "CC-04",
+        "producer": "mso-agent-collaboration",
+        "consumer": "mso-agent-audit-log",
+        "required_output_keys": ["dispatch_mode", "handoff_payload", "requires_manual_confirmation", "fallback_reason", "run_id", "artifact_uri", "status"],
+        "required_input_keys": ["id", "task_context_id", "state", "owner", "due_by", "dependencies", "tags"],
+        "compatibility_policy": "loose",
+        "status": "ok",
+        "notes": "Collaboration bridge output is audit-ready payload",
+        "expected_artifact": "../02.test/v0.0.1/task-context/tickets/*.agent-collaboration.json"
+      },
+      {
+        "id": "CC-05",
+        "producer": "mso-agent-audit-log",
+        "consumer": "mso-observability",
+        "required_output_keys": ["run_id", "artifact_uri", "status", "errors", "warnings", "next_actions", "metadata"],
+        "required_input_keys": ["run_id", "artifact_uri", "status", "event_type", "correlation"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "notes": "Audit output must expose compact observability schema",
+        "expected_artifact": "../02.test/v0.0.1/agent_log.db"
+      }
+    ]
+  }
+}
