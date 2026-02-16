@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config.yaml"
-DEFAULT_TASK_DIR = (ROOT / "../../02.test/v0.0.1/task-context").resolve()
+DEFAULT_TASK_DIR = (ROOT / "../02.test/v0.0.1/task-context").resolve()
 
 try:
     import yaml
@@ -54,12 +54,10 @@ def resolve_path(cfg: Dict[str, Any], fallback: str, *keys: str) -> Path:
     return p
 
 
-def resolve_ai_root(cfg: Dict[str, Any], ticket_path: Path) -> Path | None:
-    env_root = os.environ.get("AI_COLLABORATOR_ROOT", "").strip()
-    if env_root:
-        p = Path(env_root).expanduser()
-        if (p / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py").exists():
-            return p
+def resolve_ai_root(cfg: Dict[str, Any]) -> Path | None:
+    bundled = (ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator").resolve()
+    if (bundled / "scripts" / "collaborate.py").exists():
+        return (ROOT / "skills" / "mso-agent-collaboration").resolve()
 
     rel = (
         cfg
@@ -72,14 +70,6 @@ def resolve_ai_root(cfg: Dict[str, Any], ticket_path: Path) -> Path | None:
             p = (ROOT / str(item["relative"]).strip()).resolve()
             if (p / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py").exists():
                 return p
-
-    candidate = (ROOT / "../../02_ai-collaborator").resolve()
-    if (candidate / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py").exists():
-        return candidate
-
-    legacy = (ticket_path.parents[1] / "03_AgentsTools" / "02_ai-collaborator").resolve()
-    if (legacy / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py").exists():
-        return legacy
 
     return None
 
@@ -154,7 +144,9 @@ def build_payload(fm: Dict[str, str], mode: str, artifact_uri: str) -> tuple[str
     owner = fm.get("owner", "agent")
     run_id = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
-    task_spec = f"collab:{title}:{task_id}"
+    # ai-collaborator task spec format: provider:prompt[:id]
+    safe_title = title.replace(":", " - ").replace("\n", " ").strip() or "ticket"
+    task_spec = f"codex:{safe_title}:{task_id}"
     handoff_payload: Dict[str, Any] = {
         "run_id": run_id,
         "task_id": task_id,
@@ -185,6 +177,9 @@ def run_cli(ai_root: Path, mode: str, task_spec: str) -> Dict[str, Any]:
     if not script.exists():
         raise FileNotFoundError(f"collaborator script missing: {script}")
 
+    task_timeout_s = int(os.environ.get("MSO_COLLAB_TASK_TIMEOUT", "30"))
+    proc_timeout_s = int(os.environ.get("MSO_COLLAB_PROC_TIMEOUT", str(max(60, task_timeout_s + 20))))
+
     base_cmd = [
         "python3",
         str(script),
@@ -193,6 +188,8 @@ def run_cli(ai_root: Path, mode: str, task_spec: str) -> Dict[str, Any]:
         "codex",
         "--tasks",
         task_spec,
+        "--timeout",
+        str(task_timeout_s),
         "--format",
         "json",
         "--no-fail",
@@ -200,7 +197,7 @@ def run_cli(ai_root: Path, mode: str, task_spec: str) -> Dict[str, Any]:
     if mode == "batch":
         base_cmd.extend(["--parallel", "3"])
 
-    proc = subprocess.run(base_cmd, capture_output=True, text=True, timeout=90)
+    proc = subprocess.run(base_cmd, capture_output=True, text=True, timeout=proc_timeout_s)
     if proc.returncode != 0:
         return {
             "status": "failure",
@@ -263,7 +260,7 @@ def dispatch_one(ticket: Path, requested_mode: str | None, cfg: Dict[str, Any]) 
     handoff_payload["dispatch_mode"] = mode
     handoff_payload["requires_manual_confirmation"] = False
 
-    ai_root = resolve_ai_root(cfg, ticket)
+    ai_root = resolve_ai_root(cfg)
     out_json_path = ticket.with_suffix(".agent-collaboration.json")
 
     if not ai_root:

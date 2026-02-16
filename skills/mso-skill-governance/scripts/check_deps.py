@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -75,6 +74,11 @@ def parse_config(path: Path) -> Dict[str, Any]:
 
 
 def detect_path_for_ai(root: Path, dep_cfg: Dict[str, Any]) -> str | None:
+    embedded = root / "skills" / "mso-agent-collaboration"
+    embedded_marker = embedded / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
+    if embedded_marker.exists():
+        return str((root / "skills" / "mso-agent-collaboration").resolve())
+
     resolve_order = dep_cfg.get("resolve_order") or []
     if not isinstance(resolve_order, list):
         return None
@@ -82,13 +86,6 @@ def detect_path_for_ai(root: Path, dep_cfg: Dict[str, Any]) -> str | None:
     for item in resolve_order:
         if not isinstance(item, dict):
             continue
-        if "env" in item:
-            raw = os.environ.get(str(item["env"]).strip())
-            if raw:
-                candidate = Path(raw).expanduser()
-                if candidate.exists():
-                    return str(candidate)
-
         if "relative" in item:
             candidate = (root / str(item["relative"]).strip()).resolve()
             if candidate.exists():
@@ -104,7 +101,7 @@ def check_ai_collaborator(dep_cfg: Dict[str, Any]) -> DependencyResult:
             name="ai-collaborator",
             configured=False,
             resolved_path=None,
-            reason="not found via env/relative resolve",
+            reason="not found via embedded collaboration skill",
             status="warning",
         )
 

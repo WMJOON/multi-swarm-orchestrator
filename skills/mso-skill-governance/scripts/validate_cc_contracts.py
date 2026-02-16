@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.yaml"
 CC_SCHEMA_PATH = SCRIPT_DIR.parent / "schemas" / "cc_contracts.schema.json"
-DEFAULT_OUTPUT_DIR = (ROOT / "../../02.test/v0.0.1/outputs").resolve()
-DEFAULT_TASK_DIR = (ROOT / "../../02.test/v0.0.1/task-context").resolve()
-DEFAULT_DB = (ROOT / "../../02.test/v0.0.1/agent_log.db").resolve()
+DEFAULT_OUTPUT_DIR = (ROOT / "../02.test/v0.0.1/outputs").resolve()
+DEFAULT_TASK_DIR = (ROOT / "../02.test/v0.0.1/task-context").resolve()
+DEFAULT_DB = (ROOT / "../02.test/v0.0.1/agent_log.db").resolve()
 
 REQUIRED_CONTRACTS = {
     "CC-01": {

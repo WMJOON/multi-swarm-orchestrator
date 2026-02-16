@@ -15,7 +15,7 @@ except Exception:  # pragma: no cover
     yaml = None
 
 ROOT = Path(__file__).resolve().parents[3]
-TEST_ARTIFACTS = (ROOT / "../../02.test/v0.0.1").resolve()
+TEST_ARTIFACTS = (ROOT / "../02.test/v0.0.1").resolve()
 
 DEFAULT_MAX_SKILLS = 8
 REQUIRED_SKILLS = [

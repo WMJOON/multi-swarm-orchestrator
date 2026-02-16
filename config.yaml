@@ -1,0 +1,142 @@
+{
+  "version": "0.0.1",
+  "pipeline": {
+    "default_workflow_output_dir": "../02.test/v0.0.1/outputs",
+    "default_task_dir": "../02.test/v0.0.1/task-context",
+    "default_observation_dir": "../02.test/v0.0.1/observations",
+    "default_db_path": "../02.test/v0.0.1/agent_log.db"
+  },
+  "external_dependencies": {
+    "ai-collaborator": {
+      "description": "Multi-provider agent collaboration CLI",
+      "resolve_order": [
+        {
+          "relative": "skills/mso-agent-collaboration/v0.0.1/Skill/ai-collaborator"
+        }
+      ],
+      "min_version": "0.3.0",
+    "healthcheck": "python3 {root}/scripts/collaborate.py status",
+    "fallback": "내장 ai-collaborator 경로를 확인하세요. (기본: skills/mso-agent-collaboration/v0.0.1/Skill/ai-collaborator)"
+    }
+  },
+  "audit_log": {
+    "db_path": "../02.test/v0.0.1/agent_log.db",
+    "schema_version": "1.3.0"
+  },
+  "cc_contracts": {
+    "version": "0.0.1",
+    "contracts": [
+      {
+        "id": "CC-01",
+        "producer": "mso-workflow-topology-design",
+        "consumer": "mso-execution-design",
+        "required_output_keys": [
+          "run_id",
+          "nodes",
+          "edges",
+          "topology_type",
+          "rsv_total"
+        ],
+        "required_input_keys": [
+          "run_id",
+          "nodes",
+          "topology_type"
+        ],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "exec의 node_chart_map key가 topology node id에 존재해야 함",
+        "producer_output_path": "../02.test/v0.0.1/outputs/workflow_topology_spec.json"
+      },
+      {
+        "id": "CC-02",
+        "producer": "mso-mental-model-design",
+        "consumer": "mso-execution-design",
+        "required_output_keys": [
+          "run_id",
+          "node_chart_map",
+          "local_charts",
+          "output_contract",
+          "bundle_ref"
+        ],
+        "required_input_keys": [
+          "run_id",
+          "nodes",
+          "assigned_dqs",
+          "theta_gt_band"
+        ],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "exec의 node_chart_map.chart_ids가 bundle chart id에 존재해야 함",
+        "producer_output_path": "../02.test/v0.0.1/outputs/mental_model_bundle.json"
+      },
+      {
+        "id": "CC-03",
+        "producer": "mso-task-context-management",
+        "consumer": "mso-agent-collaboration",
+        "required_output_keys": [
+          "id",
+          "status",
+          "task_context_id",
+          "owner",
+          "due_by",
+          "dependencies",
+          "tags"
+        ],
+        "required_input_keys": [
+          "id",
+          "task_context_id",
+          "status",
+          "owner"
+        ],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "collab는 ticket frontmatter 키를 요구사항대로 수신해야 함",
+        "producer_output_path": "../02.test/v0.0.1/task-context/tickets"
+      },
+      {
+        "id": "CC-04",
+        "producer": "mso-agent-collaboration",
+        "consumer": "mso-agent-audit-log",
+        "required_output_keys": [
+          "dispatch_mode",
+          "handoff_payload",
+          "requires_manual_confirmation",
+          "fallback_reason"
+        ],
+        "required_input_keys": [
+          "run_id",
+          "dispatch_mode",
+          "status"
+        ],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "협업 결과는 audit-ready 페이로드로 직렬화 가능해야 함",
+        "producer_output_path": "../02.test/v0.0.1/task-context/tickets"
+      },
+      {
+        "id": "CC-05",
+        "producer": "mso-agent-audit-log",
+        "consumer": "mso-observability",
+        "required_output_keys": [
+          "run_id",
+          "artifact_uri",
+          "status",
+          "errors",
+          "warnings",
+          "next_actions",
+          "metadata"
+        ],
+        "required_input_keys": [
+          "run_id",
+          "artifact_uri",
+          "event_type",
+          "correlation"
+        ],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "observability는 audit 스키마를 입력으로 읽고 이벤트를 재생성 가능해야 함",
+        "producer_output_path": "../02.test/v0.0.1/agent_log.db"
+      }
+    ]
+  }
+}

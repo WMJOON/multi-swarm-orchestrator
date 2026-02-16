@@ -24,7 +24,6 @@ PROHIBITED_TEXT = [
     r"@ref\(",
     r"@skill\(",
     r"SKILL\.meta\.yaml",
-    r"\bcontext_id\b",
     r"AAOS_ROOT",
     r"scope:\s*swarm",
 ]

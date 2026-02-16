@@ -11,7 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config.yaml"
-DEFAULT_DB = (ROOT / "../../02.test/v0.0.1/agent_log.db").resolve()
+DEFAULT_DB = (ROOT / "../02.test/v0.0.1/agent_log.db").resolve()
 INIT_SQL = Path(__file__).resolve().parent.parent / "schema" / "init.sql"
 MIGRATE_SQL = Path(__file__).resolve().parent.parent / "schema" / "migrate_v1_to_v1_1.sql"
 

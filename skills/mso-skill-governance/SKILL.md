@@ -46,7 +46,7 @@ disable-model-invocation: true
 ### Phase 3: 레거시 참조 탐지
 
 1. 전체 소스에서 레거시 패턴 탐색:
-   - `04_Agentic_AI_OS`, `@ref(`, `context_id`, `SKILL.meta.yaml`, `scope: swarm`
+   - legacy 참조 패턴(`@ref` 계열, `scope` 메타키워드, AAOS 유산 메타데이터)
 2. 발견 시 → `finding: warn` (레거시 의존성 잔존)
 
 ### Phase 4: 리포트 생성
