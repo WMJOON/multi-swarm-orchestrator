@@ -7,74 +7,22 @@ import argparse
 import hashlib
 import json
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB = (ROOT / "../02.test/v0.0.1/agent_log.db").resolve()
 SCHEMA_VERSION = "1.3.0"
 
-CONFIG_PATH = ROOT / "config.yaml"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
-    yaml = None
-
-
-def parse_config(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-    loaded = yaml.safe_load(raw)
-    return loaded if isinstance(loaded, dict) else {}
-
-
-def resolve_path(cfg: dict[str, Any], fallback: str, *keys: str) -> Path:
-    base = cfg
-    for key in keys:
-        if not isinstance(base, dict):
-            base = {}
-        base = base.get(key)
-
-    raw = str(base) if base is not None else fallback
-    p = Path(raw)
-    if not p.is_absolute():
-        p = (ROOT / p).resolve()
-    return p
-
-
-def resolve_db_path(cfg: dict[str, Any], cli_path: str | None) -> Path:
-    if cli_path:
-        return Path(cli_path).expanduser().resolve()
-
-    audit = cfg.get("audit_log")
-    if isinstance(audit, dict):
-        path = audit.get("db_path")
-        if isinstance(path, str) and path:
-            return resolve_path(cfg, str(DEFAULT_DB), "audit_log", "db_path")
-
-    pipeline = cfg.get("pipeline")
-    if isinstance(pipeline, dict):
-        path = pipeline.get("default_db_path")
-        if isinstance(path, str) and path:
-            return resolve_path(cfg, str(DEFAULT_DB), "pipeline", "default_db_path")
-
-    return resolve_path(cfg, str(DEFAULT_DB), "pipeline", "default_db_path")
+from skills._shared.runtime_workspace import (  # noqa: E402
+    resolve_runtime_paths,
+    sanitize_case_slug,
+    update_manifest_phase,
+)
 
 
 def gen_task_id(run_id: str, prefix: str = "TASK") -> str:
@@ -112,26 +60,29 @@ def to_bool_int(value: Any) -> int:
     return 1 if bool(value) else 0
 
 
-def build_common(payload: Dict[str, Any]) -> Dict[str, Any]:
+def build_common(payload: Dict[str, Any], run_id: str, default_artifact: str) -> Dict[str, Any]:
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
     metadata.setdefault("schema_version", payload.get("schema_version", SCHEMA_VERSION))
     if "cc_coupling_id" not in metadata:
         metadata["cc_coupling_id"] = payload.get("cc_coupling_id", "CC-SET")
     if "required_skill_ids" not in metadata:
-        metadata["required_skill_ids"] = payload.get("required_skill_ids", [
-            "mso-workflow-topology-design",
-            "mso-mental-model-design",
-            "mso-execution-design",
-            "mso-task-context-management",
-            "mso-agent-collaboration",
-            "mso-agent-audit-log",
-            "mso-observability",
-            "mso-skill-governance",
-        ])
+        metadata["required_skill_ids"] = payload.get(
+            "required_skill_ids",
+            [
+                "mso-workflow-topology-design",
+                "mso-mental-model-design",
+                "mso-execution-design",
+                "mso-task-context-management",
+                "mso-agent-collaboration",
+                "mso-agent-audit-log",
+                "mso-observability",
+                "mso-skill-governance",
+            ],
+        )
 
     return {
-        "run_id": safe_text(payload.get("run_id"), f"run-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"),
-        "artifact_uri": safe_text(payload.get("artifact_uri") or payload.get("artifact"), "outputs/unknown.json"),
+        "run_id": safe_text(payload.get("run_id"), run_id),
+        "artifact_uri": safe_text(payload.get("artifact_uri") or payload.get("artifact"), default_artifact),
         "status": safe_text(payload.get("status"), "in_progress"),
         "errors": as_list(payload.get("errors")),
         "warnings": as_list(payload.get("warnings")),
@@ -168,9 +119,7 @@ def insert_decision_rows(cur: sqlite3.Cursor, task_id: str, decisions: List[Dict
 
 def insert_audit_row(cur: sqlite3.Cursor, common: Dict[str, Any], task_id: str) -> None:
     metadata = common.get("metadata", {}) if isinstance(common.get("metadata"), dict) else {}
-    notes = safe_text(
-        common.get("notes")
-    )
+    notes = safe_text(common.get("notes"))
     if not notes:
         parts = []
         if common["errors"]:
@@ -213,35 +162,59 @@ def insert_audit_row(cur: sqlite3.Cursor, common: Dict[str, Any], task_id: str) 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Append a payload into audit DB")
     parser.add_argument("payload")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
-    parser.add_argument("--db", default=None, help="SQLite DB path")
+    parser.add_argument("--db", default=None, help="SQLite DB path override")
     parser.add_argument("--schema-version", default=SCHEMA_VERSION, help="Expected schema version")
+    parser.add_argument("--run-id", default="", help="Run ID override")
+    parser.add_argument("--skill-key", default="msoal", help="Skill key for run-id generation")
+    parser.add_argument("--case-slug", default="", help="Case slug for run-id generation")
+    parser.add_argument("--observer-id", default="", help="Observer ID override")
     args = parser.parse_args()
 
     payload = load_payload(Path(args.payload).expanduser().resolve())
-    common = build_common(payload)
+    run_id = args.run_id.strip() or safe_text(payload.get("run_id"), "")
+    case_slug = sanitize_case_slug(args.case_slug or run_id or "audit-append")
 
+    paths = resolve_runtime_paths(
+        run_id=run_id or None,
+        skill_key=args.skill_key,
+        case_slug=case_slug,
+        observer_id=args.observer_id.strip() or None,
+        create=True,
+    )
+    effective_run_id = run_id or paths["run_id"]
+
+    common = build_common(payload, effective_run_id, str(paths["execution_plan_path"]))
     task_id = safe_text(payload.get("task_id"), gen_task_id(common["run_id"]))
+    db = Path(args.db).expanduser().resolve() if args.db else Path(paths["audit_db_path"])
 
-    cfg = parse_config(Path(args.config).expanduser().resolve())
-    db = resolve_db_path(cfg, args.db)
     if not db.exists():
         raise SystemExit(f"DB not found: {db}")
 
-    with sqlite3.connect(str(db)) as conn:
-        conn.execute("PRAGMA foreign_keys = ON")
-        cur = conn.cursor()
-        insert_audit_row(cur, common, task_id)
-        insert_decision_rows(cur, task_id, payload.get("decisions", []))
-        conn.commit()
+    try:
+        update_manifest_phase(paths, "50", "active")
+        with sqlite3.connect(str(db)) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            cur = conn.cursor()
+            insert_audit_row(cur, common, task_id)
+            insert_decision_rows(cur, task_id, payload.get("decisions", []))
+            conn.commit()
+        update_manifest_phase(paths, "50", "completed")
+    except Exception:
+        update_manifest_phase(paths, "50", "failed")
+        raise
 
-    print(json.dumps({
-        "task_id": task_id,
-        "run_id": common["run_id"],
-        "artifact_uri": common["artifact_uri"],
-        "status": common["status"],
-        "db": str(db),
-    }, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "task_id": task_id,
+                "run_id": common["run_id"],
+                "artifact_uri": common["artifact_uri"],
+                "status": common["status"],
+                "db": str(db),
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 
