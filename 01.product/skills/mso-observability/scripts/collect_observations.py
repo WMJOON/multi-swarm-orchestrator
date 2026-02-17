@@ -14,12 +14,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
@@ -179,7 +178,6 @@ def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: s
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Collect observations and write callback events")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
     p.add_argument("--db", default="", help="SQLite DB path override")
     p.add_argument("--run-id", default="")
     p.add_argument("--artifact", default="")
@@ -193,7 +191,6 @@ def main() -> int:
     args = p.parse_args()
 
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=sanitize_case_slug(args.case_slug or "observability"),

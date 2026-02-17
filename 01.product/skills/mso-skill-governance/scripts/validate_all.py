@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import List
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 EXPECTED_SKILLS = [
     "mso-workflow-topology-design",
     "mso-mental-model-design",
@@ -79,12 +78,10 @@ def check_prohibited_text() -> List[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run complete governance checks")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
     parser.add_argument("--run-id", default="", help="Run ID override for runtime validators")
     parser.add_argument("--case-slug", default="validate-all", help="Case slug for runtime validators")
     parser.add_argument("--observer-id", default="", help="Observer ID override")
     args = parser.parse_args()
-    config_abs = str(Path(args.config).expanduser().resolve())
 
     failures: List[str] = []
 
@@ -92,15 +89,13 @@ def main() -> int:
     failures.extend(check_structure())
 
     print("[validate_all] dependency check")
-    if run(["python3", "skills/mso-skill-governance/scripts/check_deps.py", "--config", config_abs]):
+    if run(["python3", "skills/mso-skill-governance/scripts/check_deps.py"]):
         failures.append("dependency-check-failed")
 
     print("[validate_all] schema/runtime validation")
     schema_cmd = [
         "python3",
         "skills/mso-skill-governance/scripts/validate_schemas.py",
-        "--config",
-        config_abs,
         "--run-id",
         args.run_id,
         "--skill-key",
@@ -117,8 +112,6 @@ def main() -> int:
     cc_cmd = [
         "python3",
         "skills/mso-skill-governance/scripts/validate_cc_contracts.py",
-        "--config",
-        config_abs,
         "--run-id",
         args.run_id,
         "--skill-key",
@@ -135,8 +128,6 @@ def main() -> int:
     gov_cmd = [
         "python3",
         "skills/mso-skill-governance/scripts/validate_gov.py",
-        "--config",
-        config_abs,
         "--run-id",
         args.run_id,
         "--skill-key",

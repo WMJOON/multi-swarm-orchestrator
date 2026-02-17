@@ -12,12 +12,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
@@ -329,7 +328,6 @@ def validate_target(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate generated artifacts against schemas")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
     parser.add_argument("--ticket", default=None, help="Specific ticket id or filename without extension")
     parser.add_argument("--strict", action="store_true", help="Require jsonschema module")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
@@ -344,7 +342,6 @@ def main() -> int:
     args = _build_parser().parse_args()
 
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=sanitize_case_slug(args.case_slug or "validate-schemas"),
