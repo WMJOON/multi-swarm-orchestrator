@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution_plan.schema.json",
+  "title": "Execution Plan",
+  "type": "object",
+  "required": ["run_id", "bundle_ref", "node_chart_map", "task_to_chart_map", "node_mode_policy", "model_selection_policy", "handoff_contract", "fallback_rules"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 4},
+    "bundle_ref": {"type": "string", "minLength": 1},
+    "node_chart_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "chart_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "checkpoint_id": {"type": "string", "enum": ["preflight", "pre_h1", "pre_h2"]
+          }
+        },
+        "required": ["chart_ids"]
+      }
+    },
+    "task_to_chart_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+      }
+    },
+    "node_mode_policy": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["plan", "default", "dontAsk", "bypassPermissions"]
+      }
+    },
+    "model_selection_policy": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "handoff_contract": {
+      "type": "object",
+      "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "required_keys": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      },
+      "additionalProperties": true
+    },
+    "fallback_rules": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {"type": "string", "format": "date-time"},
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
