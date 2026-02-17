@@ -16,8 +16,8 @@ disable-model-invocation: true
 
 | 개념 | 정의 |
 |------|------|
-| **SoT consumer** | `agent_log.db`를 읽기만 함. 쓰기는 `mso-agent-audit-log` 전용 |
-| **callback event** | `observations/` 디렉토리에 기록되는 JSON 이벤트 파일 |
+| **SoT consumer** | `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`를 읽기만 함. 쓰기는 `mso-agent-audit-log` 전용 |
+| **callback event** | `workspace/.mso-context/active/<Run ID>/60_observability/` 디렉토리에 기록되는 JSON 이벤트 파일 |
 | **event_type** | `improvement_proposal`, `anomaly_detected`, `periodic_report`, `hitl_request` |
 | **HITL checkpoint** | 사용자 개입이 필요한 시점. event로 기록되며 승인 전까지 파이프라인 대기 |
 
@@ -27,11 +27,11 @@ disable-model-invocation: true
 
 ### Phase 1: SoT 로딩
 
-1. `agent_log.db` 경로를 config.yaml에서 resolve
+1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` 경로를 runtime 규칙으로 resolve
 2. DB 미존재 → `event_type: periodic_report` + `severity: warning` 이벤트 기록 후 종료
 3. `audit_logs` 테이블에서 최근 N건(기본 100) 조회
 
-**when_unsure**: DB 경로 불명 → config.yaml의 `audit_log.db_path` 또는 `pipeline.default_db_path` 순서로 resolve.
+**when_unsure**: DB 경로 불명 → runtime 기본 경로(`workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`)를 우선 사용.
 
 ### Phase 2: 패턴 분석
 
@@ -46,7 +46,7 @@ disable-model-invocation: true
 2. 각 이벤트에 필수 키 채움:
    - `event_type`, `checkpoint_id`, `payload` (target_skills, severity, message)
    - `retry_policy`, `correlation` (run_id, artifact_uri), `timestamp`
-3. `observations/callback-<timestamp>-<seq>.json`에 기록
+3. `workspace/.mso-context/active/<Run ID>/60_observability/callback-<timestamp>-<seq>.json`에 기록
 4. Critical 이벤트 → `hitl_request`로 상향
 
 ### Phase 4: 개선 제안 (선택적)
@@ -57,7 +57,7 @@ disable-model-invocation: true
 
 **when_unsure**: 신호가 불명확하면 `periodic_report`로 빈 요약을 남기고, "수동 점검 권장" 기록.
 
-**산출물**: `observations/callback-*.json`, `observations/callbacks-*.json` (집계)
+**산출물**: `workspace/.mso-context/active/<Run ID>/60_observability/callback-*.json`, `workspace/.mso-context/active/<Run ID>/60_observability/callbacks-*.json` (집계)
 
 ---
 
@@ -89,6 +89,6 @@ disable-model-invocation: true
 |------|------------|
 | Summary | tickets/*.md frontmatter 상태 집계 |
 | Ticket Status | 티켓별 status/priority/owner/due_by |
-| Audit Logs | agent_log.db 성공/실패/진행 중 카운트 |
+| Audit Logs | `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` 성공/실패/진행 중 카운트 |
 | Assignments | *.agent-collaboration.json dispatch 결과 |
 | Workflow Map | workflow_topology_spec.json → Mermaid 자동 렌더링 |

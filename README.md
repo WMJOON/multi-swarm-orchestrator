@@ -9,10 +9,35 @@
 `MSO(Multi-Swarm Orchestrator)`는 이러한 문제를 해결하기 위해 설계된 오케스트레이션 시스템입니다.
 워크플로우 구조를 JSON 스키마로 명확히 정의하고, 모든 에이전트 실행 과정을 티켓과 감사 로그(Audit Log)로 추적합니다. 또한 스킬 간 데이터 흐름을 엄격한 계약(Contract)으로 검증하며, 실행 결과는 분석 과정을 거쳐 다시 설계 개선 제안으로 환류(Feedback)됩니다.
 
-이 시스템은 다수의 사람과 다수의 에이전트가 동시에 협업하는 환경을 전제로 설계했습니다.
-그래서 운영 데이터(실행 산출물, 상태, DB)는 `workspace/`에서 관리하고,
-관찰자(리더/감사자/분석자)가 읽는 근거 자료와 정리본은 `mso-observation-workspace/`에서 분리해 저장합니다.
-이 분리는 권한 경계와 책임 분리를 강화해, 한 팀의 관측 작업이 다른 팀의 실행을 오염시키지 않도록 합니다.
+---
+
+## 업무 공간과 관제 공간
+
+MSO는 _`다수의 사람`과 `다수의 에이전트`가 동시에 협업하는 환경_ 을 전제로 설계되었습니다. 이를 위해 _`일하는 곳`과 `보는 곳`을 명시적으로 분리_ 합니다.
+
+```
+workspace/                              ← 업무 공간: 에이전트가 실행하고 기록하는 곳
+├── .mso-context/
+│   ├── active/<Run ID>/                ← Run 단위 실행 산출물
+│   ├── archive/                        ← 완료된 Run 보관
+│   ├── registry/manifest-index.jsonl   ← 전체 Run 인덱스
+│	└── config/policy.yaml              ← 운영 정책
+
+mso-observation-workspace/              ← 관제 공간: 사람이 현황을 확인하는 곳
+├── <observer-id>/
+│   ├── <Run ID>/
+│   ├── readme.md                       ← 상태, 진행률, 다음 액션
+│   ├── 01_summary/ ~ 05_delivery/      ← 의사결정·산출물·리뷰
+```
+
+|           | 업무 공간 (`workspace`)            | 관제 공간 (`observation-workspace`) |
+| --------- | ------------------------------ | ------------------------------- |
+| **주 사용자** | 에이전트, 스크립트                     | 사람, 팀                           |
+| **권한**    | 읽기 + 쓰기                        | 읽기 전용                           |
+| **단위**    | Run (phase별 산출물)               | Run (요약·의사결정·전달물)               |
+| **식별**    | `.anchor.json`의 `workspace_id` | `.anchor.json`의 `workspace_id`  |
+
+에이전트가 `.mso-context/`에 결과를 기록하면, 관제 공간으로 자동 동기화됩니다. 각 관찰자(observer)는 자신의 `observer-id` 아래에서 관심 있는 Run만 모아볼 수 있습니다. 두 공간은 독립된 디렉토리이므로 어느 쪽이 이동되어도 `.anchor.json` 기반 탐지 프로토콜이 자동으로 상대를 재발견합니다.
 
 ---
 
@@ -117,49 +142,72 @@ rules/
 
 각 스킬 디렉토리에는 `SKILL.md` 파일이 포함되어 있습니다. 이 문서만 확인하면 해당 스킬의 목적, 입출력, 실행 절차를 모두 파악할 수 있으며, `modules/`나 `schemas/`는 상세 구현을 확인할 때만 참조하면 됩니다.
 
+`v0.0.2`부터는 별도 `config.yaml` 없이 동작합니다. 실행 기본값은 코드 내장값을 사용하며, 환경별 오버라이드는 `MSO_WORKSPACE_ROOT`, `MSO_OBSERVATION_ROOT`, `MSO_OBSERVER_ID`로만 처리합니다.
+
 ### 1. 워크플로우 설계 (Design)
 
 ```bash
-# 목표(Goal)를 입력하면 노드 구조(Topology)가 생성됩니다
+# v0.0.2는 Run 단위 Runtime Workspace(`workspace/.mso-context`)에 산출물을 기록합니다.
+# 여러 스텝을 같은 Run으로 묶으려면 --run-id를 명시하세요.
+RUN_ID="YYYYMMDD-msowd-onboarding"
+
+# 목표(Goal)를 입력하면 노드 구조(Topology)가 생성됩니다.
 python3 skills/mso-workflow-topology-design/scripts/generate_topology.py \
-  --goal "사용자 온보딩 프로세스 설계" \
-  --output ../02.test/v0.0.1/outputs/workflow_topology_spec.json
+  --run-id "$RUN_ID" \
+  --skill-key msowd \
+  --case-slug onboarding \
+  --goal "사용자 온보딩 프로세스 설계"
 
-# 각 노드에 적절한 사고 모델(Mental Model)을 매핑합니다
+# 각 노드에 적절한 사고 모델(Mental Model)을 매핑합니다.
 python3 skills/mso-mental-model-design/scripts/build_bundle.py \
-  --topology ../02.test/v0.0.1/outputs/workflow_topology_spec.json \
-  --output ../02.test/v0.0.1/outputs/mental_model_bundle.json
+  --run-id "$RUN_ID" \
+  --skill-key msowd \
+  --case-slug onboarding
 
-# 위 두 결과를 통합하여 최종 실행 계획을 생성합니다
+# 위 두 결과를 통합하여 최종 실행 계획을 생성합니다.
 python3 skills/mso-execution-design/scripts/build_plan.py \
-  --topology ../02.test/v0.0.1/outputs/workflow_topology_spec.json \
-  --bundle ../02.test/v0.0.1/outputs/mental_model_bundle.json
+  --run-id "$RUN_ID" \
+  --skill-key msowd \
+  --case-slug onboarding
 ```
 
 ### 2. 티켓 운영 (Ops)
 
 ```bash
-# 티켓 발행
+# 티켓 발행 (task-context는 collaboration phase 내부에 위치합니다)
+TASK_ROOT="workspace/.mso-context/active/$RUN_ID/40_collaboration/task-context"
+
 python3 skills/mso-task-context-management/scripts/create_ticket.py \
-  --path ../02.test/v0.0.1/task-context --title "온보딩 플로우 구현"
+  "온보딩 플로우 구현" \
+  --path "$TASK_ROOT"
 
 # 완료된 티켓 정리 — 로그에 기록 후 삭제(Archive) 처리합니다
 python3 skills/mso-task-context-management/scripts/archive_tasks.py \
-  --path ../02.test/v0.0.1/task-context
+  --path "$TASK_ROOT"
 ```
 
 ### 3. 검증 (Validation)
 
 ```bash
 # 스키마 정합성 확인
-python3 skills/mso-skill-governance/scripts/validate_schemas.py --json
+python3 skills/mso-skill-governance/scripts/validate_schemas.py \
+  --run-id "$RUN_ID" \
+  --skill-key msogov \
+  --case-slug onboarding \
+  --json
 
 # 전체 거버넌스 점검
-python3 skills/mso-skill-governance/scripts/validate_all.py
+python3 skills/mso-skill-governance/scripts/validate_all.py \
+  --run-id "$RUN_ID" \
+  --skill-key msogov \
+  --case-slug onboarding
 
 # 설계 → 운영 → 인프라 통합 테스트
 python3 skills/mso-skill-governance/scripts/run_sample_pipeline.py \
-  --goal "테스트 파이프라인" --task-title "샘플 티켓"
+  --goal "테스트 파이프라인" \
+  --task-title "샘플 티켓" \
+  --skill-key msowd \
+  --case-slug onboarding
 ```
 
 ---

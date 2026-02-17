@@ -7,38 +7,22 @@ import argparse
 import json
 import math
 import sqlite3
-from collections import Counter, defaultdict
+import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
-DEFAULT_SCHEMA = Path(__file__).resolve().parents[1] / "schemas" / "observability_callback.schema.json"
 
-try:
-    import yaml
-except Exception:  # pragma: no cover
-    yaml = None
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-
-def load_config(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-    cfg = yaml.safe_load(raw) or {}
-    return cfg if isinstance(cfg, dict) else {}
+from skills._shared.runtime_workspace import (  # noqa: E402
+    resolve_runtime_paths,
+    sanitize_case_slug,
+    update_manifest_phase,
+)
 
 
 def resolve_user_path(raw: str) -> Path:
@@ -47,20 +31,6 @@ def resolve_user_path(raw: str) -> Path:
         p = (ROOT / p).resolve()
     else:
         p = p.resolve()
-    return p
-
-
-def resolve_path(cfg: Dict[str, Any], fallback: str, *keys: str) -> Path:
-    base: Any = cfg
-    for key in keys:
-        if not isinstance(base, dict):
-            base = {}
-        base = base.get(key)
-
-    raw = str(base) if base is not None else fallback
-    p = Path(raw)
-    if not p.is_absolute():
-        p = (ROOT / p).resolve()
     return p
 
 
@@ -113,7 +83,6 @@ def emit_event(
 def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: str) -> List[Dict[str, Any]]:
     events: List[Dict[str, Any]] = []
     now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    now_compact = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
     if not rows:
         events.append(
@@ -162,7 +131,7 @@ def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: s
 
     if mode in {"scheduled", "on_demand", "event"}:
         tasks = Counter(r["task_name"] for r in rows if r.get("task_name"))
-        if rows:
+        if rows and tasks:
             top_task, top_count = tasks.most_common(1)[0]
             if top_count >= max(2, int(len(rows) * 0.6)):
                 events.append(
@@ -209,59 +178,55 @@ def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: s
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Collect observations and write callback events")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
-    p.add_argument("--db", default="", help="SQLite DB path (fallback to config)")
-    p.add_argument("--run-id", default=f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    p.add_argument("--db", default="", help="SQLite DB path override")
+    p.add_argument("--run-id", default="")
     p.add_argument("--artifact", default="")
-    p.add_argument("--out", default="", help="Output directory (fallback to config)")
+    p.add_argument("--out", default="", help="Output directory override")
     p.add_argument("--mode", default="scheduled", choices=["scheduled", "event", "on_demand", "batch"])
     p.add_argument("--limit", type=int, default=500)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--skill-key", default="msoobs", help="Skill key for run-id generation")
+    p.add_argument("--case-slug", default="", help="Case slug for run-id generation")
+    p.add_argument("--observer-id", default="", help="Observer ID override")
     args = p.parse_args()
 
-    cfg = load_config(Path(args.config).expanduser().resolve())
-    db_path = resolve_user_path(args.db) if args.db else resolve_path(
-        cfg,
-        str(ROOT / "../02.test/v0.0.1/agent_log.db"),
-        "pipeline",
-        "default_db_path",
-    )
-    if args.artifact:
-        artifact = resolve_user_path(args.artifact)
-    else:
-        workflow_output_dir = resolve_path(
-            cfg,
-            str(ROOT / "../02.test/v0.0.1/outputs"),
-            "pipeline",
-            "default_workflow_output_dir",
-        )
-        artifact = workflow_output_dir / "execution_plan.json"
-    out_dir = resolve_user_path(args.out) if args.out else resolve_path(
-        cfg,
-        str(ROOT / "../02.test/v0.0.1/observations"),
-        "pipeline",
-        "default_observation_dir",
+    paths = resolve_runtime_paths(
+        run_id=args.run_id.strip() or None,
+        skill_key=args.skill_key,
+        case_slug=sanitize_case_slug(args.case_slug or "observability"),
+        observer_id=args.observer_id.strip() or None,
+        create=True,
     )
 
-    rows = read_db_rows(db_path, args.limit)
-    events = build_events(rows, args.run_id, str(artifact), args.mode)
+    db_path = resolve_user_path(args.db) if args.db else Path(paths["audit_db_path"])
+    artifact = resolve_user_path(args.artifact) if args.artifact else Path(paths["execution_plan_path"])
+    out_dir = resolve_user_path(args.out) if args.out else Path(paths["observability_dir"])
 
-    if args.dry_run:
-        print(json.dumps({"run_id": args.run_id, "count": len(events)}, ensure_ascii=False, indent=2))
-        return 0
+    try:
+        update_manifest_phase(paths, "60", "active")
+        rows = read_db_rows(db_path, args.limit)
+        events = build_events(rows, paths["run_id"], str(artifact), args.mode)
 
-    if not out_dir.exists():
+        if args.dry_run:
+            print(json.dumps({"run_id": paths["run_id"], "count": len(events)}, ensure_ascii=False, indent=2))
+            update_manifest_phase(paths, "60", "completed")
+            return 0
+
         out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    payload_path = out_dir / f"callbacks-{ts}.json"
-    payload_path.write_text(json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        payload_path = out_dir / f"callbacks-{ts}.json"
+        payload_path.write_text(json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    for idx, event in enumerate(events, start=1):
-        event_path = out_dir / f"callback-{ts}-{idx:02d}.json"
-        event_path.write_text(json.dumps(event, ensure_ascii=False, indent=2), encoding="utf-8")
+        for idx, event in enumerate(events, start=1):
+            event_path = out_dir / f"callback-{ts}-{idx:02d}.json"
+            event_path.write_text(json.dumps(event, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"WROTE {payload_path}")
-    return 0
+        update_manifest_phase(paths, "60", "completed")
+        print(f"WROTE {payload_path}")
+        return 0
+    except Exception:
+        update_manifest_phase(paths, "60", "failed")
+        raise
 
 
 if __name__ == "__main__":
