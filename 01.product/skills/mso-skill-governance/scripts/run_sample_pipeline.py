@@ -11,12 +11,11 @@ from pathlib import Path
 from typing import Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     finalize_manifest,
     resolve_runtime_paths,
     sanitize_case_slug,
@@ -47,7 +46,6 @@ def main() -> int:
     p.add_argument("--task-title", required=True)
     p.add_argument("--risk", default="medium", choices=["low", "medium", "high"])
     p.add_argument("--skip-cc", action="store_true")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config file")
     p.add_argument("--schema-version", default="1.3.0")
     p.add_argument("--run-id", default="", help="Run ID override")
     p.add_argument("--skill-key", default="msowd", help="Skill key for run-id generation")
@@ -55,10 +53,8 @@ def main() -> int:
     p.add_argument("--observer-id", default="", help="Observer ID override")
     args = p.parse_args()
 
-    config_abs = str(Path(args.config).expanduser().resolve())
     case_slug = args.case_slug.strip() or _ticket_title_slug(args.task_title) or "sample-run"
     paths = resolve_runtime_paths(
-        config_path=config_abs,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=case_slug,
@@ -97,8 +93,6 @@ def main() -> int:
                 args.risk,
                 "--output",
                 str(topology_output),
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -120,8 +114,6 @@ def main() -> int:
                 str(topology_output),
                 "--output",
                 str(bundle_output),
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -145,8 +137,6 @@ def main() -> int:
                 str(bundle_output),
                 "--output",
                 str(plan_output),
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -195,8 +185,6 @@ def main() -> int:
                 str(ticket),
                 "--mode",
                 "run",
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -223,8 +211,6 @@ def main() -> int:
                 "--migrate",
                 "--schema-version",
                 args.schema_version,
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -255,8 +241,6 @@ def main() -> int:
                 str(db_path),
                 "--schema-version",
                 args.schema_version,
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -284,8 +268,6 @@ def main() -> int:
                 str(obs_root),
                 "--mode",
                 "scheduled",
-                "--config",
-                config_abs,
                 "--skill-key",
                 "msoobs",
                 "--case-slug",
@@ -301,8 +283,6 @@ def main() -> int:
             [
                 "python3",
                 _script("skills/mso-observability/scripts/generate_portfolio_status.py"),
-                "--config",
-                config_abs,
                 "--run-id",
                 run_id,
                 "--skill-key",
@@ -323,8 +303,6 @@ def main() -> int:
                 [
                     "python3",
                     _script("skills/mso-skill-governance/scripts/validate_cc_contracts.py"),
-                    "--config",
-                    config_abs,
                     "--run-id",
                     run_id,
                     "--skill-key",

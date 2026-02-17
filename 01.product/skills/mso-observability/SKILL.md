@@ -27,11 +27,11 @@ disable-model-invocation: true
 
 ### Phase 1: SoT 로딩
 
-1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` 경로를 config.yaml에서 resolve
+1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` 경로를 runtime 규칙으로 resolve
 2. DB 미존재 → `event_type: periodic_report` + `severity: warning` 이벤트 기록 후 종료
 3. `audit_logs` 테이블에서 최근 N건(기본 100) 조회
 
-**when_unsure**: DB 경로 불명 → config.yaml의 `audit_log.db_path` 또는 `pipeline.default_db_path` 순서로 resolve.
+**when_unsure**: DB 경로 불명 → runtime 기본 경로(`workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`)를 우선 사용.
 
 ### Phase 2: 패턴 분석
 

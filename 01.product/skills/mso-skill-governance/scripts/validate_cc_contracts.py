@@ -12,82 +12,20 @@ from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = ROOT / "config.yaml"
 CC_SCHEMA_PATH = SCRIPT_DIR.parent / "schemas" / "cc_contracts.schema.json"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
 )
 
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
-    yaml = None
+from _cc_defaults import CC_VERSION, get_contract_index, get_default_contracts, get_required_skill_ids
 
-REQUIRED_CONTRACTS = {
-    "CC-01": {
-        "producer": "mso-workflow-topology-design",
-        "consumer": "mso-execution-design",
-        "required_output_keys": ["run_id", "nodes", "edges", "topology_type", "rsv_total"],
-        "required_input_keys": ["run_id", "nodes", "topology_type"],
-    },
-    "CC-02": {
-        "producer": "mso-mental-model-design",
-        "consumer": "mso-execution-design",
-        "required_output_keys": ["node_chart_map", "local_charts", "output_contract", "bundle_ref", "run_id"],
-        "required_input_keys": ["nodes", "assigned_dqs"],
-    },
-    "CC-03": {
-        "producer": "mso-task-context-management",
-        "consumer": "mso-agent-collaboration",
-        "required_output_keys": ["task_context_id", "id", "status", "owner", "due_by", "dependencies"],
-        "required_input_keys": ["id", "status", "owner"],
-    },
-    "CC-04": {
-        "producer": "mso-agent-collaboration",
-        "consumer": "mso-agent-audit-log",
-        "required_output_keys": ["dispatch_mode", "handoff_payload", "run_id", "status", "requires_manual_confirmation", "fallback_reason"],
-        "required_input_keys": ["id", "status", "owner", "due_by", "dependencies", "tags"],
-    },
-    "CC-05": {
-        "producer": "mso-agent-audit-log",
-        "consumer": "mso-observability",
-        "required_output_keys": ["run_id", "artifact_uri", "status", "errors", "warnings", "next_actions", "metadata"],
-        "required_input_keys": ["run_id", "artifact_uri", "event_type", "correlation"],
-    },
-}
-
-
-def parse_config(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        cfg = json.loads(raw)
-        if isinstance(cfg, dict):
-            return cfg
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-
-    try:
-        loaded = yaml.safe_load(raw)
-        if isinstance(loaded, dict):
-            return loaded
-    except Exception:
-        return {}
-    return {}
+REQUIRED_CONTRACTS = get_contract_index()
 
 
 def resolve_contract_output(paths: Dict[str, Any], contract_id: str) -> Path:
@@ -146,15 +84,6 @@ def load_json(path: Path) -> Dict[str, Any]:
     return json.loads(raw) if raw else {}
 
 
-def parse_contracts(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    cc = cfg.get("cc_contracts")
-    if isinstance(cc, dict) and isinstance(cc.get("contracts"), list):
-        return [c for c in cc.get("contracts") if isinstance(c, dict)]
-    if isinstance(cc, list):
-        return [c for c in cc if isinstance(c, dict)]
-    return []
-
-
 def check_file_json_fields(path: Path, required_fields: List[str]) -> tuple[bool, List[str]]:
     if not path.exists():
         return False, [f"missing file: {path}"]
@@ -188,7 +117,7 @@ def check_contract_definitions(contracts: List[Dict[str, Any]]) -> tuple[List[Di
     ]
 
     for cid in sorted(REQUIRED_CONTRACTS.keys()):
-        row = REQUIRED_CONTRACTS[cid]
+        expected = REQUIRED_CONTRACTS[cid]
         item = index.get(cid)
         if not item:
             fails.append(
@@ -196,9 +125,9 @@ def check_contract_definitions(contracts: List[Dict[str, Any]]) -> tuple[List[Di
                     "contract": cid,
                     "level": "fail",
                     "finding": "missing required contract ID",
-                    "producer": row["producer"],
-                    "consumer": row["consumer"],
-                    "evidence": "config.yaml cc_contracts",
+                    "producer": expected["producer"],
+                    "consumer": expected["consumer"],
+                    "evidence": "embedded defaults: scripts/_cc_defaults.py",
                 }
             )
             continue
@@ -226,13 +155,16 @@ def check_contract_definitions(contracts: List[Dict[str, Any]]) -> tuple[List[Di
                     }
                 )
 
-        if item.get("producer") != row["producer"] or item.get("consumer") != row["consumer"]:
+        if item.get("producer") != expected["producer"] or item.get("consumer") != expected["consumer"]:
             warnings.append(
                 {
                     "contract": cid,
                     "level": "warn",
                     "finding": "producer/consumer pair differs from expected",
-                    "evidence": f"expected {row['producer']}->{row['consumer']}, configured {item.get('producer')}->{item.get('consumer')}",
+                    "evidence": (
+                        f"expected {expected['producer']}->{expected['consumer']}, "
+                        f"configured {item.get('producer')}->{item.get('consumer')}"
+                    ),
                 }
             )
 
@@ -240,7 +172,8 @@ def check_contract_definitions(contracts: List[Dict[str, Any]]) -> tuple[List[Di
 
 
 def check_runtime_wiring(
-    contracts: List[Dict[str, Any]], cfg: Dict[str, Any], paths: Dict[str, Any]
+    contracts: List[Dict[str, Any]],
+    paths: Dict[str, Any],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     warnings: List[Dict[str, Any]] = []
     fails: List[Dict[str, Any]] = []
@@ -346,7 +279,6 @@ def check_runtime_wiring(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate CC contract definitions")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config file")
     parser.add_argument("--output", default=None, help="CC validation output path")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--run-id", default="", help="Run ID override")
@@ -360,7 +292,6 @@ def main() -> int:
         return 1
 
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=sanitize_case_slug(args.case_slug or "validate-cc"),
@@ -368,28 +299,28 @@ def main() -> int:
         create=True,
     )
 
-    cfg = parse_config(Path(args.config).expanduser().resolve())
-
     try:
         update_manifest_phase(paths, "70", "active")
 
-        contracts = parse_contracts(cfg)
+        contracts = get_default_contracts()
         w1, f1 = check_contract_definitions(contracts)
-        w2, f2 = check_runtime_wiring(contracts, cfg, paths)
+        w2, f2 = check_runtime_wiring(contracts, paths)
         warnings = w1 + w2
         fails = f1 + f2
 
-        output_path = Path(args.output).expanduser().resolve() if args.output else (Path(paths["governance_dir"]) / "cc_contract_validation.json")
+        output_path = (
+            Path(args.output).expanduser().resolve()
+            if args.output
+            else (Path(paths["governance_dir"]) / "cc_contract_validation.json")
+        )
 
         status = "fail" if fails else ("warn" if warnings else "ok")
         payload = {
             "status": status,
-            "version": "0.0.2",
+            "version": CC_VERSION,
             "run_id": paths["run_id"],
             "cc_coupling_id": "CC-SET",
-            "required_skill_ids": sorted(
-                {v["producer"] for v in REQUIRED_CONTRACTS.values()} | {v["consumer"] for v in REQUIRED_CONTRACTS.values()}
-            ),
+            "required_skill_ids": get_required_skill_ids(),
             "schema_version": "1.0.0",
             "findings": warnings + fails,
             "generated_at": datetime.utcnow().isoformat() + "Z",

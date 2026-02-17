@@ -2,7 +2,7 @@
 
 Canonical path (resolved at runtime):
 - embedded baseline: `01.product/skills/mso-agent-collaboration/v0.0.1/Skill/ai-collaborator`
-- 경로 override는 `01.product/config.yaml`의 `resolve_order` relative 항목을 통해서만 허용됩니다.
+- embedded-first 정책: 런타임은 내장 경로만 사용하며 외부 override를 탐색하지 않습니다.
 
 Used schemas:
 - `task-handoff.schema.json`
