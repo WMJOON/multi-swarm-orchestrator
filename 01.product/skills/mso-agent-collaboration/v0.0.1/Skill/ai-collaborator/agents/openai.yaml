@@ -1,0 +1,36 @@
+name: ai-collaborator
+display_name: AI Collaborator
+description: Unified collaborate-first multi-provider skill with optional tmux swarm mode.
+entrypoint: scripts/collaborate.py
+providers:
+  - codex
+  - claude
+  - gemini
+  - antigravity
+trigger_policy:
+  default_mode: collaborate
+  swarm_explicit_keywords:
+    - swarm
+    - tmux
+    - queue
+    - handoff bus
+  ambiguous_choice_question: "일회성 병렬 실행(run/batch) vs 지속 스웜(swarm) 중 무엇으로 진행할까요?"
+commands:
+  collaborate:
+    - run
+    - batch
+    - status
+    - tokens
+  swarm:
+    - init
+    - start
+    - send
+    - inspect
+    - stop
+env:
+  required_for_antigravity:
+    - ANTIGRAVITY_CMD_TEMPLATE
+  optional_overrides:
+    - CODEX_CMD_TEMPLATE
+    - CLAUDE_CMD_TEMPLATE
+    - GEMINI_CMD_TEMPLATE

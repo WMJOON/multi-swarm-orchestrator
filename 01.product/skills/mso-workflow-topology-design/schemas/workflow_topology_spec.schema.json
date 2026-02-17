@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workflow_topology_spec.schema.json",
+  "title": "Workflow Topology Spec",
+  "type": "object",
+  "required": ["run_id", "nodes", "edges", "topology_type"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 4},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "theta_gt_band"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "description": {"type": "string"},
+          "theta_gt_band": {"type": "string", "enum": ["narrow", "moderate", "wide"]},
+          "rsv_target": {"type": "number", "minimum": 0},
+          "assigned_dqs": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "stop_condition": {"type": "string"},
+          "explicit_output": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["memo", "decision", "table", "list", "report", "diagram", "checklist", "constraint_set", "recommendation"]
+              },
+              "required_sections": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "acceptance_criteria": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            }
+          },
+          "theta_gt_range": {
+            "type": "object",
+            "properties": {
+              "min": {"type": "number", "minimum": 0, "maximum": 1},
+              "max": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "semantic_entropy_expected": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": true
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "enum": ["data", "control", "hitl"], "default": "data"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "topology_type": {"type": "string", "enum": ["linear", "fan_out", "fan_in", "dag", "loop"]},
+    "rsv_total": {"type": "number", "minimum": 0},
+    "strategy_gate": {"type": "boolean", "default": false},
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": true
+    },
+    "decision_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "question": {"type": "string", "minLength": 1},
+          "weight": {"type": "number", "minimum": 0, "default": 1.0}
+        },
+        "additionalProperties": true
+      }
+    },
+    "loop_risk_assessment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["loop_type", "where", "risk"],
+        "properties": {
+          "loop_type": {
+            "type": "string",
+            "enum": [
+              "redundancy_accumulation",
+              "semantic_dependency_cycle",
+              "rsv_inflation",
+              "human_deferral_loop",
+              "exploration_spiral",
+              "infinite_loop"
+            ]
+          },
+          "where": {"type": "string"},
+          "risk": {"type": "string", "enum": ["low", "med", "high"]},
+          "mitigation": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "handoff_strategy": {
+      "type": "object",
+      "properties": {
+        "handoff_points": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "minimize_context_loss_rules": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "execution_policy": {
+      "type": "object",
+      "properties": {
+        "continue_reframe_stop_rules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "estimator_integration": {
+          "type": "object",
+          "properties": {
+            "script": {"type": "string"},
+            "invoke_per": {"type": "string"},
+            "normalized_output_schema": {"type": "string"}
+          }
+        },
+        "human_gate_nodes": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
