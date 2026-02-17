@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Runtime workspaces (generated at runtime; do not commit)
+workspace/
+mso-observation-workspace/
+
+# ai-collaborator run history (generated)
+skills/mso-agent-collaboration/v0.0.1/Skill/ai-collaborator/history/runs/
