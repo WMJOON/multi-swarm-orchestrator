@@ -123,12 +123,26 @@ Phase 1~4를 통합하여 `workspace/.mso-context/active/<Run ID>/10_topology/wo
 ```json
 {
   "run_id": "string",
-  "nodes": [{"id": "", "label": "", "theta_gt_band": "narrow|moderate|wide", "rsv_target": 0, "assigned_dqs": []}],
+  "nodes": [{
+    "id": "", "label": "", "theta_gt_band": "narrow|moderate|wide",
+    "rsv_target": 0, "assigned_dqs": [],
+    "stop_condition": "DQ1 closed OR redundancy detected",
+    "explicit_output": {"type": "memo|decision|table|...", "required_sections": [], "acceptance_criteria": []},
+    "theta_gt_range": {"min": 0.0, "max": 0.2},
+    "semantic_entropy_expected": 0.1
+  }],
   "edges": [{"from": "", "to": "", "type": "data|control|hitl"}],
   "topology_type": "linear|fan_out|fan_in|dag|loop",
   "rsv_total": 0,
   "strategy_gate": false,
-  "metadata": {"created_at": "", "goal_preview": ""}
+  "metadata": {"created_at": "", "goal_preview": ""},
+  "decision_questions": [{"id": "DQ1", "question": "...", "weight": 1.0}],
+  "loop_risk_assessment": [{"loop_type": "redundancy_accumulation|...", "where": "T1", "risk": "low|med|high", "mitigation": []}],
+  "execution_policy": {
+    "continue_reframe_stop_rules": ["CONTINUE: ...", "REFRAME: ...", "STOP: ..."],
+    "estimator_integration": {"script": "scripts/estimator.py", "invoke_per": "node_iteration"},
+    "human_gate_nodes": []
+  }
 }
 ```
 
@@ -159,6 +173,7 @@ Phase 1~4를 통합하여 `workspace/.mso-context/active/<Run ID>/10_topology/wo
 | Hand-off 포맷/패턴 | [modules/module.handoff.md](modules/module.handoff.md) |
 | 출력 스키마 검증 | [schemas/workflow_topology_spec.schema.json](schemas/workflow_topology_spec.schema.json) |
 | Topology 자동 생성 | `python3 scripts/generate_topology.py --goal "..." --output workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json` |
+| 런타임 수렴 측정 | `python3 scripts/estimator.py --prev prev.json --curr curr.json` → `theta_gt_actual`, `delta_entropy`, `delta_rsv`, `redundancy` |
 
 ---
 

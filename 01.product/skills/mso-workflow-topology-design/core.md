@@ -27,6 +27,12 @@
 
 기타 키: `strategy_gate`, `metadata`.
 
+Optional 키 (스키마에서 허용, 생성 시 권장):
+- `decision_questions[]` — DQ별 id, question, weight
+- `loop_risk_assessment[]` — 병리적 루프 위험 평가 (loop_type, where, risk, mitigation)
+- `handoff_strategy` — hand-off 지점 및 컨텍스트 손실 최소화 규칙 (fan_out/fan_in/dag 전용)
+- `execution_policy` — continue/reframe/stop 규칙, estimator 연동, human gate 노드
+
 ## Processing Rules
 1. 입력을 정제한 뒤 DQ를 생성하고 `rsv_total` 산출.
 2. 목표 성격에 따라 topology 유형 선택( `linear` / `fan_out` / `fan_in` / `dag` / `loop`).
