@@ -113,30 +113,26 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
-def parse_config(config_path: Path | str) -> Dict[str, Any]:
-    path = Path(config_path).expanduser().resolve()
-    if not path.exists():
-        return {}
+PACK_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = PACK_ROOT.parent
+DEFAULT_WORKSPACE_ROOT = "workspace"
+DEFAULT_OBSERVATION_ROOT = "mso-observation-workspace"
+DEFAULT_POLICY_PATH = "workspace/.mso-context/config/policy.yaml"
 
-    raw = _read_text(path).strip()
-    if not raw:
-        return {}
 
-    try:
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
+def _resolve_pack_root(base_hint: Path | str | None = None) -> Path:
+    if base_hint is None:
+        return PACK_ROOT
 
-    if yaml is None:
-        return {}
+    candidate = Path(base_hint).expanduser().resolve()
+    if candidate.is_file():
+        candidate = candidate.parent
 
-    try:
-        data = yaml.safe_load(raw)
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
+    if candidate.name == "skills":
+        return candidate.parent
+    if candidate.name == "_shared" and candidate.parent.name == "skills":
+        return candidate.parent.parent
+    return candidate
 
 
 def _safe_dump_yaml(data: Dict[str, Any]) -> str:
@@ -400,46 +396,26 @@ def _append_peer_missing_event(
     return {"events": events, "blocked": mode == "block"}
 
 
-def resolve_runtime_settings(config_path: Path | str) -> Dict[str, Any]:
-    cfg_path = Path(config_path).expanduser().resolve()
-    cfg = parse_config(cfg_path)
-    pack_root = cfg_path.parent.resolve()
+def resolve_runtime_settings(base_hint: Path | str | None = None) -> Dict[str, Any]:
+    pack_root = _resolve_pack_root(base_hint).resolve()
     project_root = pack_root.parent.resolve()
 
-    runtime_cfg = cfg.get("runtime_workspace") if isinstance(cfg.get("runtime_workspace"), dict) else {}
-
-    workspace_root = os.environ.get("MSO_WORKSPACE_ROOT") or runtime_cfg.get("workspace_root") or "workspace"
-    observation_root = os.environ.get("MSO_OBSERVATION_ROOT") or runtime_cfg.get("observation_root") or "mso-observation-workspace"
-    configured_observer = ""
-    if "observer_id" in runtime_cfg and runtime_cfg.get("observer_id") is not None:
-        configured_observer = str(runtime_cfg.get("observer_id")).strip()
-        if configured_observer.lower() == "unknown":
-            configured_observer = ""
-
-    observer_id = os.environ.get("MSO_OBSERVER_ID") or configured_observer or os.environ.get("USER") or "unknown"
+    workspace_root = os.environ.get("MSO_WORKSPACE_ROOT") or DEFAULT_WORKSPACE_ROOT
+    observation_root = os.environ.get("MSO_OBSERVATION_ROOT") or DEFAULT_OBSERVATION_ROOT
+    observer_id = os.environ.get("MSO_OBSERVER_ID") or os.environ.get("USER") or "unknown"
 
     workspace_root_path = _to_abs(workspace_root, project_root)
     observation_root_path = _to_abs(observation_root, project_root)
-
-    strict_runtime_only = bool(runtime_cfg.get("strict_runtime_only", True))
-    policy_path_raw = runtime_cfg.get("policy_path") or "workspace/.mso-context/config/policy.yaml"
-    policy_path = _to_abs(policy_path_raw, project_root)
-
-    skill_key_map = dict(DEFAULT_SKILL_KEY_MAP)
-    cfg_map = runtime_cfg.get("skill_key_map") if isinstance(runtime_cfg.get("skill_key_map"), dict) else {}
-    for k, v in cfg_map.items():
-        skill_key_map[str(k)] = str(v)
+    policy_path = _to_abs(DEFAULT_POLICY_PATH, project_root)
 
     return {
-        "config_path": cfg_path,
-        "config": cfg,
         "pack_root": pack_root,
         "project_root": project_root,
         "workspace_root": workspace_root_path,
         "observation_root": observation_root_path,
         "observer_id": str(observer_id),
-        "strict_runtime_only": strict_runtime_only,
-        "skill_key_map": skill_key_map,
+        "strict_runtime_only": True,
+        "skill_key_map": dict(DEFAULT_SKILL_KEY_MAP),
         "policy_path": policy_path,
     }
 
@@ -557,11 +533,11 @@ def _archive_due_runs(settings: Dict[str, Any]) -> List[str]:
     return moved
 
 
-def ensure_workspace_scaffold(config_path_or_settings: Path | str | Dict[str, Any]) -> Dict[str, Any]:
+def ensure_workspace_scaffold(base_hint_or_settings: Path | str | Dict[str, Any] | None = None) -> Dict[str, Any]:
     settings = (
-        resolve_runtime_settings(config_path_or_settings)
-        if not isinstance(config_path_or_settings, dict)
-        else dict(config_path_or_settings)
+        resolve_runtime_settings(base_hint_or_settings)
+        if not isinstance(base_hint_or_settings, dict)
+        else dict(base_hint_or_settings)
     )
 
     workspace_root = Path(settings["workspace_root"]).resolve()
@@ -608,35 +584,29 @@ def _phase_status_template() -> Dict[str, Dict[str, str]]:
     return {phase_dir: {"status": "pending"} for phase_dir in PHASE_DIRS}
 
 
-def _resolve_pipeline_templates(cfg: Dict[str, Any], run_id: str, default_paths: Dict[str, Path]) -> Dict[str, Path]:
-    pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else {}
-
-    def _render(raw: Any, fallback: Path) -> Path:
-        if not isinstance(raw, str) or not raw.strip():
-            return fallback
-        text = raw.replace("{run_id}", run_id)
-        p = Path(text).expanduser()
-        if not p.is_absolute():
-            p = (default_paths["project_root"] / p).resolve()
-        return p
-
+def _resolve_pipeline_templates(run_id: str, default_paths: Dict[str, Path]) -> Dict[str, Path]:
+    _ = run_id
     return {
-        "workflow_output_dir": _render(pipeline.get("default_workflow_output_dir"), default_paths["workflow_output_dir"]),
-        "task_dir": _render(pipeline.get("default_task_dir"), default_paths["task_dir"]),
-        "observation_dir": _render(pipeline.get("default_observation_dir"), default_paths["observation_dir"]),
-        "db_path": _render(pipeline.get("default_db_path"), default_paths["db_path"]),
+        "workflow_output_dir": default_paths["workflow_output_dir"],
+        "task_dir": default_paths["task_dir"],
+        "observation_dir": default_paths["observation_dir"],
+        "db_path": default_paths["db_path"],
     }
 
 
 def resolve_runtime_paths(
-    config_path: Path | str,
     run_id: str | None,
     skill_key: str,
     case_slug: str,
     observer_id: str | None,
     create: bool = False,
+    base_hint: Path | str | Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    settings = resolve_runtime_settings(config_path)
+    settings = (
+        resolve_runtime_settings(base_hint)
+        if not isinstance(base_hint, dict)
+        else dict(base_hint)
+    )
     strict = settings["strict_runtime_only"]
     normalized_skill_key = normalize_skill_key(skill_key, settings["skill_key_map"], strict=True)
     resolved_run_id = validate_run_id(run_id or generate_run_id(normalized_skill_key, case_slug))
@@ -658,7 +628,7 @@ def resolve_runtime_paths(
         "observation_dir": phases["60_observability"],
         "db_path": phases["50_audit"] / "agent_log.db",
     }
-    rendered = _resolve_pipeline_templates(settings["config"], resolved_run_id, default_paths)
+    rendered = _resolve_pipeline_templates(resolved_run_id, default_paths)
 
     paths: Dict[str, Any] = {
         "settings": settings,
@@ -1289,15 +1259,15 @@ def ensure_anchors_and_detect_relocation(paths_or_settings: Dict[str, Any]) -> D
 
 
 def repair_peer_and_patch_observer_links(
-    config_path_or_settings: Path | str | Dict[str, Any],
+    base_hint_or_settings: Path | str | Dict[str, Any] | None = None,
     workspace_root: Path | str | None = None,
     observation_root: Path | str | None = None,
     observer_id: str | None = None,
 ) -> Dict[str, Any]:
     settings = (
-        resolve_runtime_settings(config_path_or_settings)
-        if not isinstance(config_path_or_settings, dict)
-        else dict(config_path_or_settings)
+        resolve_runtime_settings(base_hint_or_settings)
+        if not isinstance(base_hint_or_settings, dict)
+        else dict(base_hint_or_settings)
     )
 
     ws_root = _to_abs(workspace_root, settings["project_root"]) if workspace_root else Path(settings["workspace_root"]).resolve()
@@ -1364,7 +1334,6 @@ __all__ = [
     "generate_run_id",
     "load_manifest",
     "normalize_skill_key",
-    "parse_config",
     "repair_peer_and_patch_observer_links",
     "resolve_runtime_paths",
     "resolve_runtime_settings",
