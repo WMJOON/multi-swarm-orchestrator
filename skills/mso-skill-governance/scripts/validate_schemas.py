@@ -1,48 +1,63 @@
 #!/usr/bin/env python3
-"""Validate v0.0.1 pipeline artifacts against schema definitions."""
+"""Validate runtime pipeline artifacts against schema definitions."""
 
 from __future__ import annotations
 
 import argparse
 import ast
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
-DEFAULT_WORKFLOW_OUTPUT_DIR = (ROOT / "../02.test/v0.0.1/outputs").resolve()
-DEFAULT_TASK_DIR = (ROOT / "../02.test/v0.0.1/task-context").resolve()
 
-SCHEMA_TARGETS = (
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from skills._shared.runtime_workspace import (  # noqa: E402
+    resolve_runtime_paths,
+    sanitize_case_slug,
+    update_manifest_phase,
+)
+
+SCHEMA_TARGETS: Tuple[Dict[str, Any], ...] = (
     {
         "skill": "mso-workflow-topology-design",
         "name": "workflow_topology_spec",
-        "artifact": Path("workflow_topology_spec.json"),
         "schema": Path("skills/mso-workflow-topology-design/schemas/workflow_topology_spec.schema.json"),
         "kind": "json",
     },
     {
         "skill": "mso-mental-model-design",
         "name": "mental_model_bundle",
-        "artifact": Path("mental_model_bundle.json"),
         "schema": Path("skills/mso-mental-model-design/schemas/mental_model_bundle.schema.json"),
         "kind": "json",
     },
     {
         "skill": "mso-execution-design",
         "name": "execution_plan",
-        "artifact": Path("execution_plan.json"),
         "schema": Path("skills/mso-execution-design/schemas/execution_plan.schema.json"),
         "kind": "json",
     },
     {
         "skill": "mso-task-context-management",
         "name": "ticket_frontmatter",
-        "artifact": Path("tickets"),
         "schema": Path("skills/mso-task-context-management/schemas/ticket.schema.json"),
         "kind": "ticket",
+    },
+    {
+        "skill": "mso-runtime",
+        "name": "run_manifest",
+        "schema": Path("skills/mso-skill-governance/schemas/run_manifest.schema.json"),
+        "kind": "json",
+    },
+    {
+        "skill": "mso-runtime",
+        "name": "manifest_index_record",
+        "schema": Path("skills/mso-skill-governance/schemas/manifest_index_record.schema.json"),
+        "kind": "jsonl_record",
     },
 )
 
@@ -55,63 +70,6 @@ JSONSCHEMA_TYPES = {
     "array": list,
     "null": type(None),
 }
-
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
-    yaml = None
-
-
-def load_config(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-
-    try:
-        parsed = yaml.safe_load(raw)
-    except Exception:
-        return {}
-
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def resolve_path(cfg: Dict[str, Any], fallback: str, *keys: str) -> Path:
-    base: Any = cfg
-    for key in keys:
-        if not isinstance(base, dict):
-            base = {}
-        base = base.get(key)
-
-    raw = str(base) if base is not None else fallback
-    path = Path(raw)
-    if not path.is_absolute():
-        path = (ROOT / path).resolve()
-    return path
-
-
-def resolve_output_dir(cfg: Dict[str, Any], cli: str | None = None) -> Path:
-    if cli:
-        return Path(cli).expanduser().resolve()
-    return resolve_path(cfg, str(DEFAULT_WORKFLOW_OUTPUT_DIR), "pipeline", "default_workflow_output_dir")
-
-
-def resolve_task_dir(cfg: Dict[str, Any], cli: str | None = None) -> Path:
-    if cli:
-        return Path(cli).expanduser().resolve()
-    return resolve_path(cfg, str(DEFAULT_TASK_DIR), "pipeline", "default_task_dir")
 
 
 def resolve_schema_path(raw_path: Path) -> Path:
@@ -134,10 +92,7 @@ def ticket_frontmatter(path: Path) -> Dict[str, Any]:
         if ":" not in line:
             continue
         k, v = line.split(":", 1)
-        key = k.strip()
-        value = v.strip()
-        parsed = _parse_frontmatter_scalar(value)
-        payload[key] = parsed
+        payload[k.strip()] = _parse_frontmatter_scalar(v.strip())
     return payload
 
 
@@ -160,56 +115,100 @@ def _parse_frontmatter_scalar(raw: str) -> Any:
     return value
 
 
-def load_artifact(path: Path, kind: str, ticket_id: str | None = None) -> tuple[str, Any]:
-    if kind == "ticket":
-        if ticket_id:
-            exact = path / ticket_id if ticket_id.endswith(".md") else path / f"{ticket_id}.md"
-            if exact.exists():
-                payload = ticket_frontmatter(exact)
-                if not payload:
-                    return "invalid", {"error": f"frontmatter parse error: {exact}"}
+def _latest_ticket_payload(tickets_dir: Path, ticket_id: str | None) -> Tuple[str, Any]:
+    if ticket_id:
+        exact = tickets_dir / ticket_id if ticket_id.endswith(".md") else tickets_dir / f"{ticket_id}.md"
+        if exact.exists():
+            payload = ticket_frontmatter(exact)
+            if payload:
                 return "ok", payload
+            return "invalid", {"error": f"frontmatter parse error: {exact}"}
 
-        tickets = sorted(path.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not tickets:
-            return "missing", {"error": f"no tickets found under {path}"}
-        payload = ticket_frontmatter(tickets[0])
-        if not payload:
-            return "invalid", {"error": f"frontmatter parse error: {tickets[0]}"}
-        return "ok", payload
+    tickets = sorted(tickets_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not tickets:
+        return "missing", {"error": f"no tickets found under {tickets_dir}"}
 
-    if kind != "json":
-        return "invalid", {"error": f"unknown kind: {kind}"}
+    payload = ticket_frontmatter(tickets[0])
+    if not payload:
+        return "invalid", {"error": f"frontmatter parse error: {tickets[0]}"}
+    return "ok", payload
 
-    if not path.exists():
-        return "missing", {"error": f"artifact missing: {path}"}
+
+def _latest_index_record(index_path: Path) -> Tuple[str, Any]:
+    if not index_path.exists():
+        return "missing", {"error": f"index missing: {index_path}"}
+
+    lines = [line.strip() for line in index_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not lines:
+        return "missing", {"error": f"index empty: {index_path}"}
 
     try:
-        return "ok", json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(lines[-1])
     except Exception as exc:
-        return "invalid", {"error": f"artifact parse error: {exc}"}
+        return "invalid", {"error": f"index parse error: {exc}"}
+
+    if not isinstance(payload, dict):
+        return "invalid", {"error": "index record is not an object"}
+    return "ok", payload
 
 
-def normalize_schema_type(value: Any) -> str | None:
-    if isinstance(value, list):
-        for item in value:
-            if item != "null":
-                return normalize_schema_type(item)
-        return "null"
+def load_artifact(paths: Dict[str, Any], target_name: str, kind: str, ticket_id: str | None = None) -> Tuple[str, Any, Path]:
+    if target_name == "workflow_topology_spec":
+        artifact_path = Path(paths["topology_path"])
+    elif target_name == "mental_model_bundle":
+        artifact_path = Path(paths["bundle_path"])
+    elif target_name == "execution_plan":
+        artifact_path = Path(paths["execution_plan_path"])
+    elif target_name == "ticket_frontmatter":
+        tickets_dir = Path(paths["task_context_dir"]) / "tickets"
+        state, payload = _latest_ticket_payload(tickets_dir, ticket_id)
+        return state, payload, tickets_dir
+    elif target_name == "run_manifest":
+        artifact_path = Path(paths["manifest_path"])
+    elif target_name == "manifest_index_record":
+        index_path = Path(paths["manifest_index_path"])
+        state, payload = _latest_index_record(index_path)
+        return state, payload, index_path
+    else:
+        return "invalid", {"error": f"unknown target: {target_name}"}, Path(".")
+
+    if kind != "json":
+        return "invalid", {"error": f"unknown kind: {kind}"}, artifact_path
+
+    if not artifact_path.exists():
+        return "missing", {"error": f"artifact missing: {artifact_path}"}, artifact_path
+
+    try:
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return "invalid", {"error": f"artifact parse error: {exc}"}, artifact_path
+
+    return "ok", payload, artifact_path
+
+
+def normalize_schema_types(value: Any) -> List[str]:
     if isinstance(value, str):
-        return value
-    return None
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
 
 
-def fallback_type_check(value: Any, expected_type: str | None) -> bool:
-    if not expected_type or expected_type == "null":
+def fallback_type_check(value: Any, expected_types: List[str]) -> bool:
+    if not expected_types:
         return True
 
-    if expected_type == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-
-    expected = JSONSCHEMA_TYPES.get(expected_type)
-    return isinstance(value, expected) if expected is not None else True
+    for expected_type in expected_types:
+        if expected_type == "null" and value is None:
+            return True
+        if expected_type == "integer":
+            if isinstance(value, int) and not isinstance(value, bool):
+                return True
+            continue
+        expected = JSONSCHEMA_TYPES.get(expected_type)
+        if expected is not None and isinstance(value, expected):
+            return True
+    return False
 
 
 def fallback_checks(payload: Any, schema: Dict[str, Any]) -> List[str]:
@@ -234,9 +233,10 @@ def fallback_checks(payload: Any, schema: Dict[str, Any]) -> List[str]:
         info = properties.get(name)
         if not isinstance(info, dict):
             continue
-        expected_type = normalize_schema_type(info.get("type"))
-        if expected_type and not fallback_type_check(value, expected_type):
-            findings.append(f"{name}: expected {expected_type}")
+        expected_types = normalize_schema_types(info.get("type"))
+        if expected_types and not fallback_type_check(value, expected_types):
+            findings.append(f"{name}: expected {'|'.join(expected_types)}")
+
         enum_values = info.get("enum")
         if isinstance(enum_values, list) and value not in enum_values:
             findings.append(f"{name}: value not in enum set")
@@ -259,23 +259,17 @@ def validate_with_jsonschema(payload: Any, schema: Dict[str, Any]) -> List[str]:
 
 def validate_target(
     target: Dict[str, Any],
-    cfg: Dict[str, Any],
-    workflow_output_dir: str | None,
-    task_dir: str | None,
+    paths: Dict[str, Any],
     ticket_id: str | None,
     strict: bool,
     use_fallback: bool,
 ) -> Dict[str, Any]:
     kind = target["kind"]
-    output_root = resolve_output_dir(cfg, workflow_output_dir)
-    task_root = resolve_task_dir(cfg, task_dir)
-
-    artifact_path = output_root / target["artifact"] if kind == "json" else task_root / target["artifact"]
     schema_path = resolve_schema_path(target["schema"])
 
     status_record: Dict[str, Any] = {
         "skill": target["skill"],
-        "artifact": str(artifact_path),
+        "artifact": "",
         "schema": str(schema_path),
         "status": "pass",
         "errors": [],
@@ -293,7 +287,9 @@ def validate_target(
         status_record["errors"].append(f"schema parse failed: {exc}")
         return status_record
 
-    state, payload = load_artifact(artifact_path, kind, ticket_id)
+    state, payload, artifact_path = load_artifact(paths, target["name"], kind, ticket_id)
+    status_record["artifact"] = str(artifact_path)
+
     if state == "missing":
         status_record["status"] = "fail"
         status_record["errors"].append(payload.get("error", "missing artifact"))
@@ -332,77 +328,96 @@ def validate_target(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate generated artifacts against schemas")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
-    parser.add_argument("--workflow-output-dir", default=None, help="Override workflow output directory")
-    parser.add_argument("--task-dir", default=None, help="Override task-context root directory")
     parser.add_argument("--ticket", default=None, help="Specific ticket id or filename without extension")
     parser.add_argument("--strict", action="store_true", help="Require jsonschema module")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    parser.add_argument("--run-id", default="", help="Run ID override")
+    parser.add_argument("--skill-key", default="msogov", help="Skill key for run-id generation")
+    parser.add_argument("--case-slug", default="", help="Case slug for run-id generation")
+    parser.add_argument("--observer-id", default="", help="Observer ID override")
     return parser
 
 
 def main() -> int:
     args = _build_parser().parse_args()
 
-    cfg = load_config(Path(args.config).expanduser().resolve())
+    paths = resolve_runtime_paths(
+        run_id=args.run_id.strip() or None,
+        skill_key=args.skill_key,
+        case_slug=sanitize_case_slug(args.case_slug or "validate-schemas"),
+        observer_id=args.observer_id.strip() or None,
+        create=True,
+    )
+
     try:
-        import jsonschema  # type: ignore
+        update_manifest_phase(paths, "70", "active")
+        try:
+            import jsonschema  # type: ignore  # noqa: F401
 
-        has_jsonschema = True
-    except Exception:
-        has_jsonschema = False
+            has_jsonschema = True
+        except Exception:
+            has_jsonschema = False
 
-    results: List[Dict[str, Any]] = []
-    warnings: List[str] = []
-    failures: List[str] = []
+        results: List[Dict[str, Any]] = []
+        warnings: List[str] = []
+        failures: List[str] = []
 
-    workflow_output = args.workflow_output_dir
-    task_root = args.task_dir
-    ticket_id = args.ticket.strip() if args.ticket else None
+        ticket_id = args.ticket.strip() if args.ticket else None
 
-    for target in SCHEMA_TARGETS:
-        result = validate_target(
-            target=target,
-            cfg=cfg,
-            workflow_output_dir=workflow_output,
-            task_dir=task_root,
-            ticket_id=ticket_id,
-            strict=args.strict,
-            use_fallback=True,
-        )
-        results.append(result)
-        if result["status"] == "fail":
-            failures.extend(result["errors"])
-        if result["status"] == "warn":
-            warnings.extend(result["errors"])
+        for target in SCHEMA_TARGETS:
+            result = validate_target(
+                target=target,
+                paths=paths,
+                ticket_id=ticket_id,
+                strict=args.strict,
+                use_fallback=True,
+            )
+            results.append(result)
+            if result["status"] == "fail":
+                failures.extend(result["errors"])
+            if result["status"] == "warn":
+                warnings.extend(result["errors"])
 
-    payload = {
-        "status": "ok" if not failures else "fail",
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-        "version": "0.0.1",
-        "jsonschema_available": has_jsonschema,
-        "strict_mode": bool(args.strict),
-        "results": results,
-    }
-
-    if warnings:
-        payload["warnings"] = warnings
-
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-    else:
-        print(f"jsonschema_available={has_jsonschema}")
-        print(f"validation_status={payload['status']}")
-        if failures:
-            print("failures:")
-            for item in failures:
-                print(f"- {item}")
+        payload = {
+            "status": "ok" if not failures else "fail",
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "version": "0.0.2",
+            "run_id": paths["run_id"],
+            "jsonschema_available": has_jsonschema,
+            "strict_mode": bool(args.strict),
+            "results": results,
+        }
         if warnings:
-            print("warnings:")
-            for item in warnings:
-                print(f"- {item}")
+            payload["warnings"] = warnings
 
-    return 0 if payload["status"] == "ok" else 1
+        out_path = Path(paths["governance_dir"]) / "schema_validation.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"jsonschema_available={has_jsonschema}")
+            print(f"validation_status={payload['status']}")
+            print(f"output={out_path}")
+            if failures:
+                print("failures:")
+                for item in failures:
+                    print(f"- {item}")
+            if warnings:
+                print("warnings:")
+                for item in warnings:
+                    print(f"- {item}")
+
+        if payload["status"] == "ok":
+            update_manifest_phase(paths, "70", "completed")
+            return 0
+
+        update_manifest_phase(paths, "70", "failed")
+        return 1
+    except Exception:
+        update_manifest_phase(paths, "70", "failed")
+        raise
 
 
 if __name__ == "__main__":

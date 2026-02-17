@@ -7,13 +7,21 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
-DEFAULT_TASK_DIR = (ROOT / "../02.test/v0.0.1/task-context").resolve()
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from skills._shared.runtime_workspace import (  # noqa: E402
+    resolve_runtime_paths,
+    sanitize_case_slug,
+    update_manifest_phase,
+)
 
 try:
     import yaml
@@ -21,57 +29,17 @@ except Exception:  # pragma: no cover
     yaml = None
 
 
-def parse_config(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-    cfg = yaml.safe_load(raw) or {}
-    return cfg if isinstance(cfg, dict) else {}
-
-
-def resolve_path(cfg: Dict[str, Any], fallback: str, *keys: str) -> Path:
-    base: Any = cfg
-    for key in keys:
-        if not isinstance(base, dict):
-            base = {}
-        base = base.get(key)
-
-    raw = str(base) if base is not None else fallback
-    p = Path(raw)
-    if not p.is_absolute():
-        p = (ROOT / p).resolve()
-    return p
-
-
-def resolve_ai_root(cfg: Dict[str, Any]) -> Path | None:
+def resolve_ai_root() -> Path | None:
     bundled = (ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator").resolve()
     if (bundled / "scripts" / "collaborate.py").exists():
         return (ROOT / "skills" / "mso-agent-collaboration").resolve()
 
-    rel = (
-        cfg
-        .get("external_dependencies", {})
-        .get("ai-collaborator", {})
-        .get("resolve_order", [])
-    )
-    for item in rel if isinstance(rel, list) else []:
-        if isinstance(item, dict) and "relative" in item:
-            p = (ROOT / str(item["relative"]).strip()).resolve()
-            if (p / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py").exists():
-                return p
-
     return None
+
+
+def expected_ai_root_hint() -> str:
+    expected = ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
+    return str(expected.resolve())
 
 
 def parse_frontmatter(path: Path) -> Dict[str, str]:
@@ -98,7 +66,7 @@ def parse_frontmatter(path: Path) -> Dict[str, str]:
         if ":" not in line:
             continue
         k, v = line.split(":", 1)
-        data[k.strip()] = v.strip().strip('"\'' )
+        data[k.strip()] = v.strip().strip('"\'')
     return data
 
 
@@ -113,7 +81,7 @@ def _parse_list(raw: Any) -> List[str]:
             return []
         if raw.startswith("[") and raw.endswith("]"):
             body = raw[1:-1].strip()
-            return [x.strip().strip('"\'' ) for x in body.split(",") if x.strip()]
+            return [x.strip().strip('"\'') for x in body.split(",") if x.strip()]
         return [raw]
     return [str(raw)]
 
@@ -138,13 +106,11 @@ def artifact_reference(fm: Dict[str, str], ticket: Path) -> str:
     return str(ticket)
 
 
-def build_payload(fm: Dict[str, str], mode: str, artifact_uri: str) -> tuple[str, Dict[str, Any]]:
+def build_payload(fm: Dict[str, str], mode: str, artifact_uri: str, run_id: str) -> tuple[str, Dict[str, Any]]:
     task_id = fm.get("id") or fm.get("task_context_id") or "TASK-UNKNOWN"
     title = fm.get("title") or fm.get("task", "ticket")
     owner = fm.get("owner", "agent")
-    run_id = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
-    # ai-collaborator task spec format: provider:prompt[:id]
     safe_title = title.replace(":", " - ").replace("\n", " ").strip() or "ticket"
     task_spec = f"codex:{safe_title}:{task_id}"
     handoff_payload: Dict[str, Any] = {
@@ -215,26 +181,27 @@ def run_cli(ai_root: Path, mode: str, task_spec: str) -> Dict[str, Any]:
         return {"status": "success", "raw_stdout": proc.stdout.strip(), "raw_stderr": proc.stderr.strip()}
 
 
-def build_fallback(task_id: str, reason: str, artifact_uri: str) -> Dict[str, Any]:
+def build_fallback(task_id: str, reason: str, artifact_uri: str, run_id: str, mode: str) -> Dict[str, Any]:
     return {
-        "dispatch_mode": "run",
+        "dispatch_mode": mode,
         "handoff_payload": {
             "task_id": task_id,
-            "mode": "run",
+            "mode": mode,
             "artifact_uri": artifact_uri,
             "requires_manual_confirmation": True,
             "fallback_reason": reason,
+            "run_id": run_id,
         },
         "requires_manual_confirmation": True,
         "fallback_reason": reason,
         "status": "in_progress",
         "next_actions": ["manual_dispatch", "validate_manual_route"],
         "artifact_uri": artifact_uri,
-        "run_id": f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        "run_id": run_id,
         "errors": [reason],
         "warnings": ["ai-collaborator runtime missing or unavailable"],
         "metadata": {
-            "schema_version": "0.0.1",
+            "schema_version": "0.0.2",
             "cc_coupling_id": "CC-04",
             "required_skill_ids": [
                 "mso-agent-collaboration",
@@ -246,36 +213,42 @@ def build_fallback(task_id: str, reason: str, artifact_uri: str) -> Dict[str, An
     }
 
 
-def dispatch_one(ticket: Path, requested_mode: str | None, cfg: Dict[str, Any]) -> int:
+def dispatch_one(ticket: Path, requested_mode: str | None, run_id: str) -> Tuple[int, bool]:
     fm = parse_frontmatter(ticket)
     status = (fm.get("status") or "todo").strip()
     if status not in ("todo", "in_progress", "queued"):
         print(f"SKIP: status={status}")
-        return 0
+        return 0, False
 
     mode = infer_mode(fm, requested_mode)
     task_id = fm.get("id") or "TKT-UNKNOWN"
     artifact_uri = artifact_reference(fm, ticket)
-    task_spec, handoff_payload = build_payload(fm, mode, artifact_uri)
+    task_spec, handoff_payload = build_payload(fm, mode, artifact_uri, run_id)
     handoff_payload["dispatch_mode"] = mode
     handoff_payload["requires_manual_confirmation"] = False
 
-    ai_root = resolve_ai_root(cfg)
+    ai_root = resolve_ai_root()
     out_json_path = ticket.with_suffix(".agent-collaboration.json")
 
     if not ai_root:
-        result = build_fallback(task_id, "ai-collaborator runtime not found", artifact_uri)
+        result = build_fallback(
+            task_id,
+            f"embedded ai-collaborator runtime missing: {expected_ai_root_hint()}",
+            artifact_uri,
+            run_id,
+            mode,
+        )
         out_json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"FALLBACK: {ticket}")
-        return 0
+        return 0, False
 
     try:
         cli_result = run_cli(ai_root, mode, task_spec)
     except Exception as exc:
-        result = build_fallback(task_id, f"collaborator execution failed: {exc}", artifact_uri)
+        result = build_fallback(task_id, f"collaborator execution failed: {exc}", artifact_uri, run_id, mode)
         out_json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"FALLBACK: {ticket}")
-        return 0
+        return 0, False
 
     requires_manual = False
     fallback_reason = None
@@ -289,13 +262,13 @@ def dispatch_one(ticket: Path, requested_mode: str | None, cfg: Dict[str, Any]) 
         "requires_manual_confirmation": requires_manual,
         "fallback_reason": fallback_reason,
         "status": "success" if not requires_manual else "in_progress",
-        "run_id": handoff_payload["run_id"],
+        "run_id": run_id,
         "artifact_uri": artifact_uri,
         "errors": cli_result.get("errors", []) if isinstance(cli_result, dict) else [],
-        "warnings": cli_result.get("warnings", []),
+        "warnings": cli_result.get("warnings", []) if isinstance(cli_result, dict) else [],
         "next_actions": ["monitor"],
         "metadata": {
-            "schema_version": "0.0.1",
+            "schema_version": "0.0.2",
             "cc_coupling_id": "CC-04",
             "required_skill_ids": [
                 "mso-agent-collaboration",
@@ -308,29 +281,66 @@ def dispatch_one(ticket: Path, requested_mode: str | None, cfg: Dict[str, Any]) 
 
     out_json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"DISPATCHED: {ticket} ({mode})")
-    return 0
+    return 0, False
+
+
+def _resolve_ticket_path(ticket_raw: str, task_root: Path) -> Path:
+    raw_path = Path(ticket_raw).expanduser()
+    if raw_path.is_absolute() and raw_path.exists():
+        return raw_path.resolve()
+
+    candidate = (Path.cwd() / raw_path).resolve()
+    if candidate.exists():
+        return candidate
+
+    tickets_dir = task_root / "tickets"
+    if tickets_dir.exists():
+        by_name = tickets_dir / raw_path.name
+        if by_name.exists():
+            return by_name.resolve()
+
+    return candidate
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Dispatch one ticket")
     p.add_argument("--ticket", required=True, help="Path to ticket markdown")
     p.add_argument("--mode", default=None, choices=["run", "batch", "swarm"], help="Dispatch mode override")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config file")
-    p.add_argument("--task-dir", default=None, help="Optional task-context root path")
+    p.add_argument("--task-dir", default=None, help="Optional task-context root path override")
+    p.add_argument("--run-id", default="", help="Run ID override")
+    p.add_argument("--skill-key", default="msoac", help="Skill key for run-id generation")
+    p.add_argument("--case-slug", default="", help="Case slug for run-id generation")
+    p.add_argument("--observer-id", default="", help="Observer ID override")
     args = p.parse_args()
 
-    cfg = parse_config(Path(args.config).expanduser().resolve()) if args.config else {}
-    task_root = Path(args.task_dir).resolve() if args.task_dir else resolve_path(
-        cfg,
-        str(DEFAULT_TASK_DIR),
-        "pipeline",
-        "default_task_dir",
+    case_slug = args.case_slug.strip() or sanitize_case_slug(Path(args.ticket).stem)
+    paths = resolve_runtime_paths(
+        run_id=args.run_id.strip() or None,
+        skill_key=args.skill_key,
+        case_slug=case_slug,
+        observer_id=args.observer_id.strip() or None,
+        create=True,
     )
-    ticket = Path(args.ticket).resolve()
-    if not ticket.is_relative_to(task_root):
-        task_root = ticket.parent
 
-    return dispatch_one(ticket, args.mode, cfg)
+    task_root = Path(args.task_dir).expanduser().resolve() if args.task_dir else Path(paths["task_context_dir"])
+    ticket = _resolve_ticket_path(args.ticket, task_root)
+
+    if not ticket.exists():
+        print(f"ERR: ticket not found: {ticket}")
+        update_manifest_phase(paths, "40", "failed")
+        return 1
+
+    try:
+        update_manifest_phase(paths, "40", "active")
+        code, failed = dispatch_one(ticket, args.mode, paths["run_id"])
+        if code == 0 and not failed:
+            update_manifest_phase(paths, "40", "completed")
+        else:
+            update_manifest_phase(paths, "40", "failed")
+        return code
+    except Exception:
+        update_manifest_phase(paths, "40", "failed")
+        raise
 
 
 if __name__ == "__main__":
