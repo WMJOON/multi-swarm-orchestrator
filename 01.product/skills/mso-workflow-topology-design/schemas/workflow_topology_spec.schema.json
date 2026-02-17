@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workflow_topology_spec.schema.json",
+  "title": "Workflow Topology Spec",
+  "type": "object",
+  "required": ["run_id", "nodes", "edges", "topology_type"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 4},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "theta_gt_band"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "description": {"type": "string"},
+          "theta_gt_band": {"type": "string", "enum": ["narrow", "moderate", "wide"]},
+          "rsv_target": {"type": "number", "minimum": 0},
+          "assigned_dqs": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "enum": ["data", "control", "hitl"], "default": "data"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "topology_type": {"type": "string", "enum": ["linear", "fan_out", "fan_in", "dag", "loop"]},
+    "rsv_total": {"type": "number", "minimum": 0},
+    "strategy_gate": {"type": "boolean", "default": false},
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

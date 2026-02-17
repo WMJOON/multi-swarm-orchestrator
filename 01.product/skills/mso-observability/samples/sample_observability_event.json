@@ -1,0 +1,19 @@
+{
+  "event_type": "periodic_report",
+  "checkpoint_id": "HC-2026-02-16-001",
+  "payload": {
+    "target_skills": ["mso-workflow-topology-design"],
+    "severity": "info",
+    "message": "샘플 보고"
+  },
+  "retry_policy": {
+    "max_retries": 2,
+    "backoff_seconds": 10,
+    "on_retry": "queue"
+  },
+  "correlation": {
+    "run_id": "run-sample-0001",
+    "artifact_uri": "outputs/execution_plan.json"
+  },
+  "timestamp": "2026-02-16T00:00:00Z"
+}

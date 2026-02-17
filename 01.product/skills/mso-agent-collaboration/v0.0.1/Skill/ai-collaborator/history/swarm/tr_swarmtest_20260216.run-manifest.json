@@ -1,0 +1,25 @@
+{
+  "run_id": "run-20260216-b8905f",
+  "created_at": "2026-02-16T04:48:35.711000+00:00",
+  "completed_at": "2026-02-16T04:48:35.929000+00:00",
+  "status": "failed",
+  "tasks": [
+    {
+      "task_id": "task-001",
+      "owner_agent": "worker1",
+      "status": "failure",
+      "exit_code": "S-001"
+    }
+  ],
+  "config_hash": "sha256:d449c51bf89351bcdec94342238bbce93395f0b9de5a29bd2037f99a2a0888b7",
+  "system_rules_hash": "sha256:7d1f623a302191ba44620428572b42af5a721f473c8345542e75d4260a0787a7",
+  "aggregate_metrics": {
+    "total_tasks": 1,
+    "succeeded": 0,
+    "failed": 1,
+    "total_duration_seconds": 0.218,
+    "total_tokens": 0,
+    "retry_total": 1,
+    "conflict_count": 0
+  }
+}
