@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "observability_callback.schema.json",
+  "title": "Observability Callback Event",
+  "type": "object",
+  "required": ["event_type", "checkpoint_id", "payload", "retry_policy", "correlation", "timestamp"],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": ["improvement_proposal", "anomaly_detected", "periodic_report", "hitl_request"]
+    },
+    "checkpoint_id": {"type": "string", "minLength": 1},
+    "payload": {
+      "type": "object",
+      "properties": {
+        "target_skills": {"type": "array", "items": {"type": "string"}},
+        "severity": {"type": "string", "enum": ["info", "warning", "critical"]},
+        "message": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "retry_policy": {
+      "type": "object",
+      "properties": {
+        "max_retries": {"type": "integer", "minimum": 0},
+        "backoff_seconds": {"type": "integer", "minimum": 0},
+        "on_retry": {"type": "string", "enum": ["drop", "queue", "error"]}
+      },
+      "additionalProperties": true
+    },
+    "correlation": {
+      "type": "object",
+      "properties": {
+        "run_id": {"type": "string"},
+        "artifact_uri": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "timestamp": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

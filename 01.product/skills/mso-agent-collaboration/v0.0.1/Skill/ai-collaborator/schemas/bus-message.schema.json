@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bus-message.schema.json",
+  "title": "Bus Message Envelope",
+  "description": "Swarm bus message envelope for queue/lease/retry lifecycle.",
+  "type": "object",
+  "required": [
+    "id",
+    "trace_id",
+    "thread_id",
+    "from_agent",
+    "to_agent",
+    "type",
+    "payload",
+    "status",
+    "attempt",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "from_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "to_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "TASK_REQUEST",
+        "TASK_ACCEPT",
+        "TASK_UPDATE",
+        "TASK_RESULT",
+        "TASK_ERROR",
+        "PING",
+        "PONG"
+      ]
+    },
+    "payload": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "leased", "done", "retry", "dead"]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "leased_by": {
+      "type": ["string", "null"]
+    },
+    "lease_until": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "error_text": {
+      "type": ["string", "null"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}
