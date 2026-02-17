@@ -13,12 +13,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
@@ -30,43 +29,17 @@ except Exception:  # pragma: no cover
     yaml = None
 
 
-def parse_config(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-    cfg = yaml.safe_load(raw) or {}
-    return cfg if isinstance(cfg, dict) else {}
-
-
-def resolve_ai_root(cfg: Dict[str, Any]) -> Path | None:
+def resolve_ai_root() -> Path | None:
     bundled = (ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator").resolve()
     if (bundled / "scripts" / "collaborate.py").exists():
         return (ROOT / "skills" / "mso-agent-collaboration").resolve()
 
-    rel = (
-        cfg
-        .get("external_dependencies", {})
-        .get("ai-collaborator", {})
-        .get("resolve_order", [])
-    )
-    for item in rel if isinstance(rel, list) else []:
-        if isinstance(item, dict) and "relative" in item:
-            p = (ROOT / str(item["relative"]).strip()).resolve()
-            if (p / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py").exists():
-                return p
-
     return None
+
+
+def expected_ai_root_hint() -> str:
+    expected = ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
+    return str(expected.resolve())
 
 
 def parse_frontmatter(path: Path) -> Dict[str, str]:
@@ -240,7 +213,7 @@ def build_fallback(task_id: str, reason: str, artifact_uri: str, run_id: str, mo
     }
 
 
-def dispatch_one(ticket: Path, requested_mode: str | None, cfg: Dict[str, Any], run_id: str) -> Tuple[int, bool]:
+def dispatch_one(ticket: Path, requested_mode: str | None, run_id: str) -> Tuple[int, bool]:
     fm = parse_frontmatter(ticket)
     status = (fm.get("status") or "todo").strip()
     if status not in ("todo", "in_progress", "queued"):
@@ -254,11 +227,17 @@ def dispatch_one(ticket: Path, requested_mode: str | None, cfg: Dict[str, Any], 
     handoff_payload["dispatch_mode"] = mode
     handoff_payload["requires_manual_confirmation"] = False
 
-    ai_root = resolve_ai_root(cfg)
+    ai_root = resolve_ai_root()
     out_json_path = ticket.with_suffix(".agent-collaboration.json")
 
     if not ai_root:
-        result = build_fallback(task_id, "ai-collaborator runtime not found", artifact_uri, run_id, mode)
+        result = build_fallback(
+            task_id,
+            f"embedded ai-collaborator runtime missing: {expected_ai_root_hint()}",
+            artifact_uri,
+            run_id,
+            mode,
+        )
         out_json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"FALLBACK: {ticket}")
         return 0, False
@@ -327,7 +306,6 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Dispatch one ticket")
     p.add_argument("--ticket", required=True, help="Path to ticket markdown")
     p.add_argument("--mode", default=None, choices=["run", "batch", "swarm"], help="Dispatch mode override")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config file")
     p.add_argument("--task-dir", default=None, help="Optional task-context root path override")
     p.add_argument("--run-id", default="", help="Run ID override")
     p.add_argument("--skill-key", default="msoac", help="Skill key for run-id generation")
@@ -337,7 +315,6 @@ def main() -> int:
 
     case_slug = args.case_slug.strip() or sanitize_case_slug(Path(args.ticket).stem)
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=case_slug,
@@ -345,7 +322,6 @@ def main() -> int:
         create=True,
     )
 
-    cfg = parse_config(Path(args.config).expanduser().resolve()) if args.config else {}
     task_root = Path(args.task_dir).expanduser().resolve() if args.task_dir else Path(paths["task_context_dir"])
     ticket = _resolve_ticket_path(args.ticket, task_root)
 
@@ -356,7 +332,7 @@ def main() -> int:
 
     try:
         update_manifest_phase(paths, "40", "active")
-        code, failed = dispatch_one(ticket, args.mode, cfg, paths["run_id"])
+        code, failed = dispatch_one(ticket, args.mode, paths["run_id"])
         if code == 0 and not failed:
             update_manifest_phase(paths, "40", "completed")
         else:

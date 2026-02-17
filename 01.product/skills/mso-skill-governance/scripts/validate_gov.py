@@ -10,13 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-try:
-    import yaml
-except Exception:  # pragma: no cover
-    yaml = None
-
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 DEFAULT_MAX_SKILLS = 8
 REQUIRED_SKILLS = [
     "mso-workflow-topology-design",
@@ -41,33 +35,13 @@ REQUIRED_CONTRACT_FIELDS = [
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
 )
 
-
-def read_config(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-
-    try:
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-
-    if yaml is None:
-        return {}
-
-    data = yaml.safe_load(raw)
-    return data if isinstance(data, dict) else {}
+from _cc_defaults import get_default_contracts
 
 
 def collect_skills(skills_root: Path) -> Dict[str, Path]:
@@ -76,7 +50,7 @@ def collect_skills(skills_root: Path) -> Dict[str, Path]:
         return {}
 
     for skill_dir in sorted(skills_root.iterdir()):
-        if not skill_dir.is_dir() or skill_dir.name.startswith("."):
+        if not skill_dir.is_dir() or skill_dir.name.startswith(".") or skill_dir.name.startswith("_"):
             continue
         out[skill_dir.name] = skill_dir
     return out
@@ -170,11 +144,16 @@ def validate_skill_structure(skills: Dict[str, Path], skills_root: Path) -> Tupl
     return warnings, errors
 
 
-def validate_contracts(config_path: Path) -> Tuple[List[dict], List[dict]]:
-    cfg = read_config(config_path)
-    contracts = cfg.get("cc_contracts", {}).get("contracts") if isinstance(cfg.get("cc_contracts"), dict) else None
+def validate_contracts(contracts: List[Dict[str, Any]]) -> Tuple[List[dict], List[dict]]:
     if not contracts:
-        return [], [{"id": "cc-contracts", "severity": "fail", "finding": "cc contracts not found in config.yaml", "evidence": "cc_contracts"}]
+        return [], [
+            {
+                "id": "cc-contracts",
+                "severity": "fail",
+                "finding": "embedded cc defaults not found",
+                "evidence": "scripts/_cc_defaults.py",
+            }
+        ]
 
     if not isinstance(contracts, list):
         return [], [{"id": "cc-contracts", "severity": "fail", "finding": "cc contracts malformed", "evidence": str(type(contracts))}]
@@ -226,7 +205,7 @@ def validate_contracts(config_path: Path) -> Tuple[List[dict], List[dict]]:
                 "id": missing_id,
                 "severity": "fail",
                 "finding": "required CC contract missing",
-                "evidence": f"expected in config.yaml:cc_contracts.contracts[{missing_id}]",
+                "evidence": "expected in scripts/_cc_defaults.py",
             }
         )
 
@@ -259,7 +238,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Validate runtime skill governance")
     parser.add_argument("--pack-root", default=str(ROOT), help="Pack root path")
     parser.add_argument("--report-dir", default=None, help="Governance report output directory")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
     parser.add_argument("--json", action="store_true", help="Print JSON summary")
     parser.add_argument("--run-id", default="", help="Run ID override")
     parser.add_argument("--skill-key", default="msogov", help="Skill key for run-id generation")
@@ -268,7 +246,6 @@ def main() -> int:
     args = parser.parse_args()
 
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=sanitize_case_slug(args.case_slug or "validate-governance"),
@@ -281,15 +258,9 @@ def main() -> int:
 
         pack_root = Path(args.pack_root).expanduser().resolve()
         skills_dir = pack_root / "skills"
-        config_path = Path(args.config).expanduser().resolve()
 
         if not skills_dir.is_dir():
             print(f"ERROR: skills directory not found: {skills_dir}")
-            update_manifest_phase(paths, "70", "failed")
-            return 2
-
-        if not config_path.is_file():
-            print(f"ERROR: config file not found: {config_path}")
             update_manifest_phase(paths, "70", "failed")
             return 2
 
@@ -302,7 +273,7 @@ def main() -> int:
 
         skills = collect_skills(skills_dir)
         w1, e1 = validate_skill_structure(skills, skills_dir)
-        w2, e2 = validate_contracts(config_path)
+        w2, e2 = validate_contracts(get_default_contracts())
 
         warnings = w1 + w2
         errors = e1 + e2

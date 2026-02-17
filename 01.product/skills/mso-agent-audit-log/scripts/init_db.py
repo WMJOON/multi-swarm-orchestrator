@@ -9,14 +9,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 INIT_SQL = Path(__file__).resolve().parent.parent / "schema" / "init.sql"
 MIGRATE_SQL = Path(__file__).resolve().parent.parent / "schema" / "migrate_v1_to_v1_1.sql"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
@@ -54,7 +53,6 @@ def ensure_db(db_path: Path, schema_version: str, run_migrate: bool) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Initialize audit DB")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config file")
     p.add_argument("--db", default=None, help="SQLite DB path override")
     p.add_argument("--schema-version", default="1.3.0", help="Schema version tag")
     p.add_argument("--migrate", action="store_true", help="Run migration script after init")
@@ -65,7 +63,6 @@ def main() -> int:
     args = p.parse_args()
 
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=sanitize_case_slug(args.case_slug or "audit-db"),

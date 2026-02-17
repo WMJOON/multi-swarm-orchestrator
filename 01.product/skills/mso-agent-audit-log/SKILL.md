@@ -35,7 +35,7 @@ disable-model-invocation: true
 
 ### Phase 2: SoT 기록
 
-1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`에 연결 (경로: config.yaml `audit_log.db_path`)
+1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`에 연결 (runtime 기본 경로)
 2. DB 미존재 시 → `scripts/init_db.py`로 스키마 초기화
 3. `audit_logs` 테이블에 INSERT
 4. `decisions`, `evidence` 등 보조 테이블은 payload에 해당 필드 존재 시에만 기록

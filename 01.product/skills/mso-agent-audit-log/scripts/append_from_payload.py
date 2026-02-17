@@ -13,13 +13,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = ROOT / "config.yaml"
 SCHEMA_VERSION = "1.3.0"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
@@ -163,7 +162,6 @@ def insert_audit_row(cur: sqlite3.Cursor, common: Dict[str, Any], task_id: str) 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Append a payload into audit DB")
     parser.add_argument("payload")
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
     parser.add_argument("--db", default=None, help="SQLite DB path override")
     parser.add_argument("--schema-version", default=SCHEMA_VERSION, help="Expected schema version")
     parser.add_argument("--run-id", default="", help="Run ID override")
@@ -177,7 +175,6 @@ def main() -> int:
     case_slug = sanitize_case_slug(args.case_slug or run_id or "audit-append")
 
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=run_id or None,
         skill_key=args.skill_key,
         case_slug=case_slug,

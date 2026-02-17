@@ -13,12 +13,11 @@ from typing import Dict, List
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 PACK_ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = PACK_ROOT / "config.yaml"
 
 if str(PACK_ROOT) not in sys.path:
     sys.path.insert(0, str(PACK_ROOT))
 
-from mso_runtime.runtime_workspace import (  # noqa: E402
+from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
     sanitize_case_slug,
     update_manifest_phase,
@@ -31,7 +30,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--goal-file", help="Read goal from text file")
     parser.add_argument("--output", default="", help="Optional output path override")
     parser.add_argument("--risk", default="medium", choices=["low", "medium", "high"])
-    parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to orchestrator config")
     parser.add_argument("--run-id", default="", help="Run ID override")
     parser.add_argument("--skill-key", default="msowd", help="Skill key for run-id generation")
     parser.add_argument("--case-slug", default="", help="Case slug for run-id generation")
@@ -130,7 +128,6 @@ def main() -> int:
 
     case_slug = args.case_slug.strip() or sanitize_case_slug(goal[:40])
     paths = resolve_runtime_paths(
-        config_path=args.config,
         run_id=args.run_id.strip() or None,
         skill_key=args.skill_key,
         case_slug=case_slug,
