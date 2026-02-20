@@ -1,58 +1,135 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "execution_plan.schema.json",
-  "title": "Execution Plan",
+  "title": "Execution Plan v0.0.3",
+  "description": "Git-metaphor versioned state transition graph for MSO execution pipeline",
   "type": "object",
-  "required": ["run_id", "bundle_ref", "node_chart_map", "task_to_chart_map", "node_mode_policy", "model_selection_policy", "handoff_contract", "fallback_rules"],
+  "required": ["run_id", "bundle_ref", "execution_graph", "fallback_rules"],
   "properties": {
     "run_id": {"type": "string", "minLength": 4},
     "bundle_ref": {"type": "string", "minLength": 1},
-    "node_chart_map": {
+    "execution_graph": {
       "type": "object",
+      "description": "DAG of execution nodes keyed by node_id. Each node represents a commit, branch, or merge point.",
       "additionalProperties": {
         "type": "object",
+        "required": ["type", "bundle_ref", "parent_refs", "tree_hash_type"],
         "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["commit", "branch", "merge"],
+            "description": "commit: 0-1 parents, branch: exactly 1 parent, merge: 2+ parents"
+          },
+          "bundle_ref": {"type": "string", "minLength": 1},
+          "parent_refs": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "description": "Parent node_id references. Cardinality enforced by node type."
+          },
+          "tree_hash_type": {
+            "type": "string",
+            "enum": ["sha256"],
+            "default": "sha256"
+          },
+          "tree_hash_ref": {
+            "type": ["string", "null"],
+            "description": "SHA-256 hash of the handoff state. Null only for root nodes at plan time; filled at execution time."
+          },
+          "model_selection": {"type": "string"},
           "chart_ids": {
             "type": "array",
-            "minItems": 1,
             "items": {"type": "string", "minLength": 1}
           },
-          "checkpoint_id": {"type": "string", "enum": ["preflight", "pre_h1", "pre_h2"]
+          "mode": {
+            "type": "string",
+            "enum": ["plan", "default", "dontAsk", "bypassPermissions", "experimental"]
+          },
+          "handoff_contract": {
+            "type": "object",
+            "properties": {
+              "target": {"type": "string"},
+              "required_keys": {"type": "array", "items": {"type": "string"}},
+              "format": {"type": "string"},
+              "tree_hash_type": {"type": "string"},
+              "tree_hash_ref": {"type": ["string", "null"]}
+            },
+            "additionalProperties": true
+          },
+          "merge_policy": {
+            "type": "object",
+            "description": "Required for type=merge nodes. Defines consensus strategy for fan-in.",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": ["score_weighted", "fast_forward", "manual"]
+              },
+              "scoring_weights": {
+                "type": "object",
+                "description": "Dimension weights whose values must sum to 1.0",
+                "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+              },
+              "quorum": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum number of branch results required for merge"
+              },
+              "manual_review_required": {"type": "boolean", "default": false}
+            },
+            "additionalProperties": true
           }
         },
-        "required": ["chart_ids"]
+        "additionalProperties": true
       }
-    },
-    "task_to_chart_map": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "array",
-        "items": {"type": "string", "minLength": 1}
-      }
-    },
-    "node_mode_policy": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "enum": ["plan", "default", "dontAsk", "bypassPermissions"]
-      }
-    },
-    "model_selection_policy": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "handoff_contract": {
-      "type": "object",
-      "properties": {
-        "target": {"type": "string", "minLength": 1},
-        "required_keys": {"type": "array", "items": {"type": "string", "minLength": 1}}
-      },
-      "additionalProperties": true
     },
     "fallback_rules": {
+      "type": "array",
+      "description": "Error taxonomy array. Each entry maps an error type to a recovery action.",
+      "items": {
+        "type": "object",
+        "required": ["error_type", "severity", "action"],
+        "properties": {
+          "error_type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Error classification key (e.g. schema_validation_error, hallucination, timeout, hitl_block)"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "action": {
+            "type": "string",
+            "enum": ["retry", "checkout", "escalate"],
+            "description": "retry: re-execute node, checkout: rollback to target_commit, escalate: HITL"
+          },
+          "target_commit": {
+            "type": ["string", "null"],
+            "description": "Absolute SHA reference for checkout action. Must be a known committed snapshot."
+          },
+          "max_retry": {"type": "integer", "minimum": 0, "default": 2},
+          "requires_human": {"type": "boolean", "default": false},
+          "retry_profile": {
+            "type": "object",
+            "properties": {
+              "model": {"type": "string"},
+              "temperature": {"type": "number"},
+              "prompt_override": {"type": "string"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "lifecycle_policy": {
       "type": "object",
+      "description": "Storage and cleanup lifecycle for worktrees, branches, and artifacts",
+      "properties": {
+        "branch_ttl_days": {"type": "integer", "minimum": 1, "default": 7},
+        "artifact_retention_days": {"type": "integer", "minimum": 1, "default": 30},
+        "archive_on_merge": {"type": "boolean", "default": true},
+        "cleanup_job_interval_days": {"type": "integer", "minimum": 1, "default": 1}
+      },
       "additionalProperties": true
     },
     "metadata": {

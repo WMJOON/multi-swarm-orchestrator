@@ -1,6 +1,6 @@
 ---
 name: mso-observability
-version: 0.0.1
+version: 0.0.2
 run_input: "audit log db, behavior feed"
 run_output: "observability callback events"
 status_model: "pass | warn | fail"
@@ -13,8 +13,8 @@ status_model: "pass | warn | fail"
 
 ## 입력
 - `run_id` / `artifact_uri`
-- SoT DB 경로 (기본: `agent_log.db`)
-- 증거 이벤트 경로(옵션: `observations/*.jsonl`)
+- SoT DB 경로 (기본: `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`)
+- 증거 이벤트 경로(옵션: `workspace/.mso-context/active/<Run ID>/60_observability/*.jsonl`)
 
 ## 출력
 - 최소 형식의 callback 이벤트:
@@ -29,7 +29,10 @@ status_model: "pass | warn | fail"
     "message": "..."
   },
   "retry_policy": { "max_retries": 2, "backoff_seconds": 10, "on_retry": "queue" },
-  "correlation": { "run_id": "run-...", "artifact_uri": "outputs/..." },
+  "correlation": {
+    "run_id": "20260217-msoobs-observability",
+    "artifact_uri": "workspace/.mso-context/active/20260217-msoobs-observability/30_execution/execution_plan.json"
+  },
   "timestamp": "2026-...Z"
 }
 ```
@@ -37,7 +40,7 @@ status_model: "pass | warn | fail"
 ## 인바운드-아웃바운드 정책
 
 - 입력: SQLite SoT 읽기 전용.
-- 출력: `observations/` 아래 `callback-*` 파일.
+- 출력: `workspace/.mso-context/active/<Run ID>/60_observability/` 아래 `callback-*` 파일.
 - 자동 반영(실제 토폴로지 수정)은 수행하지 않고 제안만 남긴다.
 
 ## 실패/휴리스틱

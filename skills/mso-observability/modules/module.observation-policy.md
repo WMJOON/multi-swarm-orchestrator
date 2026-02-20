@@ -4,7 +4,7 @@
 
 - `audit_logs`(SQLite): 실행 상태/오류/재시도 패턴
 - Behavior feed(JSONL) (옵션): 사용자 개입 힌트
-- 실행 산출물: `outputs/execution_plan.json`
+- 실행 산출물: `workspace/.mso-context/active/<Run ID>/30_execution/execution_plan.json`
 
 ## 신호 정의(예시)
 
@@ -16,4 +16,4 @@
 - `performance_drift`: 동일 작업군의 실행 분산 급증(경고)
 
 ## 출력
-- 각 신호는 `observations/signal_inventory.json`에 집계 후 callback 생성.
+- 각 신호는 `workspace/.mso-context/active/<Run ID>/60_observability/signal_inventory.json`에 집계 후 callback 생성.

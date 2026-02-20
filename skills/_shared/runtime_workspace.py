@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Runtime workspace utilities for MSO v0.0.2.
+"""Runtime workspace utilities for MSO v0.0.3.
 
 This module centralizes runtime path resolution, run lifecycle metadata,
 policy scaffolding, and workspace relocation detection.
+Adds lifecycle_policy, worktree_root, and snapshots_dir for Git-metaphor state model.
 """
 
 from __future__ import annotations
@@ -93,6 +94,12 @@ DEFAULT_POLICY: Dict[str, Any] = {
         "fallback_walk_depth": 3,
         "peer_search_paths": [],
         "on_peer_missing": "warn_and_continue",
+    },
+    "lifecycle_policy": {
+        "branch_ttl_days": 7,
+        "artifact_retention_days": 30,
+        "archive_on_merge": True,
+        "cleanup_job_interval_days": 1,
     },
 }
 
@@ -663,6 +670,8 @@ def resolve_runtime_paths(
         "bundle_path": phases["20_mental-model"] / "mental_model_bundle.json",
         "execution_plan_path": phases["30_execution"] / "execution_plan.json",
         "governance_dir": phases["70_governance"],
+        "worktree_root": run_root / "worktree",
+        "snapshots_dir": phases["50_audit"] / "snapshots",
     }
 
     if strict and not create and not run_root.exists():
@@ -719,6 +728,14 @@ def ensure_run_scaffold_and_manifest(
     paths["audit_db_path"].parent.mkdir(parents=True, exist_ok=True)
     paths["observability_dir"].mkdir(parents=True, exist_ok=True)
     paths["governance_dir"].mkdir(parents=True, exist_ok=True)
+
+    # v0.0.3: worktree and snapshots directories
+    worktree_root = paths.get("worktree_root")
+    if worktree_root:
+        Path(worktree_root).mkdir(parents=True, exist_ok=True)
+    snapshots_dir = paths.get("snapshots_dir")
+    if snapshots_dir:
+        Path(snapshots_dir).mkdir(parents=True, exist_ok=True)
 
     for obs_dir in [
         paths["observation_summary_dir"],

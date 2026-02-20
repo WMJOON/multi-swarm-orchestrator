@@ -1,8 +1,8 @@
 # module.node-bootstrap
 
 ## Purpose
-`task-context/` 노드 루트를 생성한다.
+`workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/` 노드 루트를 생성한다.
 
 ## Output
-- `task-context/tickets/`
-- `task-context/rules.md`
+- `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/tickets/`
+- `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/rules.md`

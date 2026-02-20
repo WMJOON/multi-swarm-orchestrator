@@ -162,5 +162,7 @@ def provider_command(provider: str, executable: str, use_stdin: bool = True) -> 
         cmd_args = config.get("stdin_cmd", config.get("cmd", []))
     else:
         cmd_args = config.get("cmd", [])
-
-    return [executable] + list(cmd_args)
+    # Defensive normalization: drop empty CLI tokens so malformed provider config
+    # cannot inject invalid blank arguments into subprocess execution.
+    normalized_args = [str(token).strip() for token in list(cmd_args) if str(token).strip()]
+    return [executable] + normalized_args

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate CC-01~CC-05 contract definitions and runtime wiring."""
+"""Validate CC-01~CC-06 contract definitions and runtime wiring."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ def resolve_contract_output(paths: Dict[str, Any], contract_id: str) -> Path:
         "CC-03": Path(paths["task_context_dir"]) / "tickets",
         "CC-04": Path(paths["task_context_dir"]) / "tickets",
         "CC-05": Path(paths["audit_db_path"]),
+        "CC-06": Path(paths["execution_plan_path"]),
     }
     return mapping[contract_id]
 
@@ -261,6 +262,56 @@ def check_runtime_wiring(
                         "evidence": str(producer_output),
                     }
                 )
+
+        elif cid == "CC-06":
+            if not producer_output.exists():
+                warnings.append(
+                    {
+                        "contract": cid,
+                        "level": "warn",
+                        "finding": "execution_plan.json missing",
+                        "evidence": str(producer_output),
+                    }
+                )
+                continue
+
+            data = load_json(producer_output)
+            if not isinstance(data, dict):
+                fails.append(
+                    {
+                        "contract": cid,
+                        "level": "fail",
+                        "finding": "execution_plan is not a json object",
+                        "evidence": str(producer_output),
+                    }
+                )
+                continue
+
+            eg = data.get("execution_graph")
+            if not isinstance(eg, dict) or not eg:
+                fails.append(
+                    {
+                        "contract": cid,
+                        "level": "fail",
+                        "finding": "execution_graph missing or empty",
+                        "evidence": str(producer_output),
+                    }
+                )
+                continue
+
+            for node_id, node in eg.items():
+                if not isinstance(node, dict):
+                    continue
+                if "type" not in node:
+                    fails.append(
+                        {
+                            "contract": cid,
+                            "level": "fail",
+                            "finding": f"node {node_id}: missing 'type' field",
+                            "evidence": str(producer_output),
+                        }
+                    )
+                    break
 
         elif producer_output.exists() and producer_output.suffix == ".json":
             ok, problems = check_file_json_fields(producer_output, list(expected["required_output_keys"]))

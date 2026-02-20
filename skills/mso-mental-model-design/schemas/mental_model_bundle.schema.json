@@ -21,7 +21,26 @@
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "name": {"type": "string", "minLength": 1},
-          "type": {"type": "string"}
+          "type": {"type": "string"},
+          "theta_gt_band": {
+            "type": "string",
+            "enum": ["narrow", "moderate", "wide"]
+          },
+          "theta_gt_range": {
+            "type": "object",
+            "properties": {
+              "min": {"type": "number", "minimum": 0, "maximum": 1},
+              "max": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "semantic_entropy_expected": {
+            "type": "number", "minimum": 0, "maximum": 1
+          },
+          "gt_angle_policy": {
+            "type": "string",
+            "enum": ["inherit", "widen", "override"],
+            "default": "inherit"
+          }
         },
         "additionalProperties": true
       }
@@ -42,8 +61,7 @@
       "type": "object",
       "required": ["stage"],
       "properties": {
-        "stage": {"type": "string", "enum": ["preflight", "pre_h1", "pre_h2"]
-        }
+        "stage": {"type": "string", "enum": ["preflight", "pre_h1", "pre_h2"]}
       },
       "additionalProperties": true
     },
@@ -51,6 +69,22 @@
       "type": "object"
     },
     "loading_policy": {"type": "string", "enum": ["eager", "lazy", "on_demand"], "default": "lazy"},
+    "gt_angle_config": {
+      "type": "object",
+      "properties": {
+        "default_policy": {
+          "type": "string",
+          "enum": ["inherit", "widen", "override"],
+          "default": "inherit"
+        },
+        "widen_step": {
+          "type": "string",
+          "enum": ["narrow_to_moderate", "moderate_to_wide"],
+          "description": "How much to widen when gt_angle_policy is widen"
+        }
+      },
+      "additionalProperties": true
+    },
     "metadata": {
       "type": "object",
       "properties": {
