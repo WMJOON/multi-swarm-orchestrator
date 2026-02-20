@@ -21,7 +21,33 @@
           "assigned_dqs": {
             "type": "array",
             "items": {"type": "string", "minLength": 1}
-          }
+          },
+          "stop_condition": {"type": "string"},
+          "explicit_output": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["memo", "decision", "table", "list", "report", "diagram", "checklist", "constraint_set", "recommendation"]
+              },
+              "required_sections": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "acceptance_criteria": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            }
+          },
+          "theta_gt_range": {
+            "type": "object",
+            "properties": {
+              "min": {"type": "number", "minimum": 0, "maximum": 1},
+              "max": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "semantic_entropy_expected": {"type": "number", "minimum": 0, "maximum": 1}
         },
         "additionalProperties": true
       }
@@ -47,6 +73,82 @@
       "properties": {
         "created_at": {"type": "string", "format": "date-time"},
         "updated_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": true
+    },
+    "decision_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "question": {"type": "string", "minLength": 1},
+          "weight": {"type": "number", "minimum": 0, "default": 1.0}
+        },
+        "additionalProperties": true
+      }
+    },
+    "loop_risk_assessment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["loop_type", "where", "risk"],
+        "properties": {
+          "loop_type": {
+            "type": "string",
+            "enum": [
+              "redundancy_accumulation",
+              "semantic_dependency_cycle",
+              "rsv_inflation",
+              "human_deferral_loop",
+              "exploration_spiral",
+              "infinite_loop"
+            ]
+          },
+          "where": {"type": "string"},
+          "risk": {"type": "string", "enum": ["low", "med", "high"]},
+          "mitigation": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "handoff_strategy": {
+      "type": "object",
+      "properties": {
+        "handoff_points": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "minimize_context_loss_rules": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "execution_policy": {
+      "type": "object",
+      "properties": {
+        "continue_reframe_stop_rules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "estimator_integration": {
+          "type": "object",
+          "properties": {
+            "script": {"type": "string"},
+            "invoke_per": {"type": "string"},
+            "normalized_output_schema": {"type": "string"}
+          }
+        },
+        "human_gate_nodes": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
       },
       "additionalProperties": true
     }

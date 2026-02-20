@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run an integrated v0.0.2 sample pipeline on runtime workspace."""
+"""Run an integrated v0.0.3 sample pipeline on runtime workspace."""
 
 from __future__ import annotations
 
@@ -41,12 +41,12 @@ def _ticket_title_slug(task_title: str) -> str:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Run full v0.0.2 sample orchestration")
+    p = argparse.ArgumentParser(description="Run full v0.0.3 sample orchestration")
     p.add_argument("--goal", required=True)
     p.add_argument("--task-title", required=True)
     p.add_argument("--risk", default="medium", choices=["low", "medium", "high"])
     p.add_argument("--skip-cc", action="store_true")
-    p.add_argument("--schema-version", default="1.3.0")
+    p.add_argument("--schema-version", default="1.4.0")
     p.add_argument("--run-id", default="", help="Run ID override")
     p.add_argument("--skill-key", default="msowd", help="Skill key for run-id generation")
     p.add_argument("--case-slug", default="", help="Case slug for run-id generation")
@@ -166,7 +166,7 @@ def main() -> int:
                 "todo",
                 "--tags",
                 "sample",
-                "runtime-v002",
+                "runtime-v0.0.3",
             ]
         ):
             raise RuntimeError("ticket creation failed")
@@ -315,7 +315,7 @@ def main() -> int:
             ):
                 raise RuntimeError("cc validation failed")
 
-        finalize_manifest(paths, "completed", tags=["sample", "runtime-v0.0.2"])
+        finalize_manifest(paths, "completed", tags=["sample", "runtime-v0.0.3"])
         print(f"[pipeline:{run_id}] done")
         return 0
     except Exception as exc:
