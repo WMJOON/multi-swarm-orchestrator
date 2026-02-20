@@ -9,7 +9,7 @@ disable-model-invocation: true
 ## 실행 프로세스
 
 ### Phase 1) 노드 부트스트랩
-- `task-context/`가 없으면 생성
+- `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/`가 없으면 생성
 - `tickets/` 폴더와 `rules.md` 생성
 
 ### Phase 2) 티켓 작성
@@ -30,8 +30,8 @@ disable-model-invocation: true
 
 ## Scripts
 
-- `python3 scripts/bootstrap_node.py --path task-context`
-- `python3 scripts/create_ticket.py "..." --path task-context`
+- `python3 scripts/bootstrap_node.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
+- `python3 scripts/create_ticket.py "..." --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
 - `python3 scripts/update_status.py --ticket ... --status in_progress`
-- `python3 scripts/validate_task_node.py --path task-context`
-- `python3 scripts/archive_tasks.py --path task-context`
+- `python3 scripts/validate_task_node.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
+- `python3 scripts/archive_tasks.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`

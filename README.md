@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator
+# Multi-Swarm Orchestrator (v0.0.3)
 
 복잡한 AI 에이전트 작업을 수행하다 보면 필연적으로 다음과 같은 문제들에 직면합니다.
 
@@ -11,6 +11,40 @@
 
 ---
 
+## v0.0.3: Git-Metaphor 상태 모델
+
+v0.0.3은 단순 DAG 실행을 넘어 **Git 개념의 버전화된 상태 전이 그래프**를 도입합니다.
+
+각 노드(에이전트)의 실행 결과를 **불변 스냅샷(Commit)** 단위로 캡처하고, 에러 복구나 병렬 실험 시 **브랜치(Branch)**와 **병합(Merge)** 개념을 활용하여 자기 치유적(Self-healing) 오케스트레이션을 구현합니다.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Provisioning: Phase 1
+    Provisioning --> Execution: Worktree Ready
+    Execution --> Committed: SHA-256 Hash
+    Committed --> Branching: Fan-out Detected
+    Branching --> Execution: Branch Fork
+    Committed --> Merge: Fan-in
+    Merge --> Committed: Consensus
+    Merge --> ManualReview: Quorum Fail
+    Committed --> Checkout: Error Detected
+    Checkout --> Execution: Rollback to SHA
+    Committed --> [*]: Pipeline Complete
+    ManualReview --> Merge: Approved
+```
+
+| Git 개념 | MSO 런타임 | 설명 |
+|----------|-----------|------|
+| Worktree | Run Workspace | 매 실행마다 격리된 디렉토리 |
+| Commit | Node Snapshot | 노드 완료 시점의 불변 DB 기록 |
+| Branch | Dynamic 분기 | 병렬 실험 경로 |
+| Merge | Fan-in Consensus | 브랜치 결과 합의 |
+| Checkout | Fallback/Rollback | 절대 SHA로 안정 상태 복원 |
+
+> **인프라 노트**: 실제 Git CLI에 의존하지 않습니다. 파일시스템 분리 + SQLite DB 해싱 에뮬레이션 방식입니다.
+
+---
+
 ## 업무 공간과 관제 공간
 
 MSO는 _`다수의 사람`과 `다수의 에이전트`가 동시에 협업하는 환경_ 을 전제로 설계되었습니다. 이를 위해 _`일하는 곳`과 `보는 곳`을 명시적으로 분리_ 합니다.
@@ -19,9 +53,11 @@ MSO는 _`다수의 사람`과 `다수의 에이전트`가 동시에 협업하는
 workspace/                              ← 업무 공간: 에이전트가 실행하고 기록하는 곳
 ├── .mso-context/
 │   ├── active/<Run ID>/                ← Run 단위 실행 산출물
+│   │   ├── worktree/                   ← v0.0.3: 격리된 실행 워크트리
+│   │   └── 50_audit/snapshots/         ← v0.0.3: 스냅샷 아티팩트
 │   ├── archive/                        ← 완료된 Run 보관
 │   ├── registry/manifest-index.jsonl   ← 전체 Run 인덱스
-│	└── config/policy.yaml              ← 운영 정책
+│	└── config/policy.yaml              ← 운영 정책 (lifecycle_policy 포함)
 
 mso-observation-workspace/              ← 관제 공간: 사람이 현황을 확인하는 곳
 ├── <observer-id>/
@@ -56,12 +92,15 @@ graph LR
 
     subgraph Infra ["인프라"]
         S06["Observability"] -->|reads| S05["Audit Log"]
+        S05 -.->|snapshots| SNAP["Node Snapshots"]
     end
 
     S02 -->|기록| S05
+    S02 -->|스냅샷| SNAP
     S06 -.->|개선 제안| S00
     S06 -.->|개선 제안| S01
     S04 -->|티켓 상태| S03
+    S04 -->|branch/merge| SNAP
 
     GOV["Governance"] -->|검증| Design
     GOV -->|검증| Ops
@@ -82,7 +121,7 @@ graph LR
 
 1. **Topology Design** — 목표를 노드(Node)와 엣지(Edge)로 구조화합니다. 작업을 어떤 단위로 나누고, 어떤 순서로 실행할지를 정의합니다.
 2. **Mental Model Design** — 각 노드에 적절한 사고 모델(Mental Model)을 부여합니다. 어떤 노드는 명확한 판단이 필요하고, 어떤 노드는 광범위한 탐색이 필요할 수 있습니다.
-3. **Execution Design** — 위의 두 가지를 통합하여 최종 실행 계획(Execution Plan)을 수립합니다. 실행 모드 정책, 핸드오프(Handoff) 규칙, 폴백(Fallback) 전략까지 포함됩니다.
+3. **Execution Design** — 위의 두 가지를 통합하여 최종 실행 계획(Execution Plan)을 수립합니다. v0.0.3에서는 `execution_graph`(Git-metaphor DAG)로 출력되며, 브랜칭/머지 정책, 에러 분류 체계 기반 폴백 전략, 라이프사이클 정책까지 포함됩니다.
 
 Topology와 Mental Model은 상호보완적입니다. 어느 쪽에서 시작하든, 서로의 출력이 상대방을 정제하고 보완하는 구조를 가집니다.
 
@@ -92,13 +131,13 @@ Topology와 Mental Model은 상호보완적입니다. 어느 쪽에서 시작하
 
 `Task Context Management`가 티켓을 발행하고 상태를 관리합니다. `todo → in_progress → done`으로 이어지는 상태 전이는 상태 머신(State Machine)에 의해 엄격하게 관리되며, 완료된 티켓은 로그에 기록된 후 정리됩니다.
 
-멀티에이전트 협업이 필요한 경우에는 `Agent Collaboration`으로 작업을 분배(Dispatch)합니다. 수동 해결이 가능한 단일 티켓이라면 이 단계는 선택적으로 건너뛸 수 있습니다.
+멀티에이전트 협업이 필요한 경우에는 `Agent Collaboration`으로 작업을 분배(Dispatch)합니다. v0.0.3에서는 브랜치 노드의 포크와 머지 노드의 집계가 6개 에이전트 역할(Provisioning/Execution/Handoff/Branching/Critic-Judge/Sentinel)에 의해 수행됩니다.
 
 ### 인프라 (Infra)
 
 실행 결과는 단순히 사라지지 않고 자산화됩니다.
 
-`Audit Log`가 모든 실행 기록을 SQLite 데이터베이스에 남기고, `Observability`가 저장된 로그를 분석하여 패턴을 도출합니다. 반복적인 실패, 비정상적인 비용 발생, 병목 구간 등이 감지되면, 이를 해결하기 위한 개선 제안을 설계 파이프라인으로 다시 전달합니다.
+`Audit Log`가 모든 실행 기록을 SQLite 데이터베이스에 남기고(v0.0.3: `node_snapshots` 테이블 포함), `Observability`가 저장된 로그를 분석하여 패턴을 도출합니다. 반복적인 실패, 비정상적인 비용 발생, 병목 구간, 분기/머지 빈도 등이 감지되면, 이를 해결하기 위한 개선 제안을 설계 파이프라인으로 다시 전달합니다.
 
 이러한 `피드백 루프(Feedback Loop)`가 동일한 실패의 반복을 끊어내는 핵심 메커니즘입니다.
 
@@ -106,15 +145,16 @@ Topology와 Mental Model은 상호보완적입니다. 어느 쪽에서 시작하
 
 ## 스킬 간 계약 (Contracts)
 
-스킬 간 데이터 교환은 암묵적인 합의에 의존하지 않습니다. 5가지 핵심 계약(CC-01~CC-05)을 통해 "반드시 존재해야 하는 필드와 포맷"을 명시적으로 정의합니다.
+스킬 간 데이터 교환은 암묵적인 합의에 의존하지 않습니다. 6가지 핵심 계약(CC-01~CC-06)을 통해 "반드시 존재해야 하는 필드와 포맷"을 명시적으로 정의합니다.
 
 ```mermaid
 flowchart LR
     Topology -- CC-01 --> Execution
     MentalModel["Mental Model"] -- CC-02 --> Execution
+    Execution -- CC-06 --> AuditLog["Audit Log"]
 
     TaskContext["Task Context"] -- CC-03 --> Collaboration
-    Collaboration -- CC-04 --> AuditLog["Audit Log"]
+    Collaboration -- CC-04 --> AuditLog
     AuditLog -- CC-05 --> Observability
 ```
 
@@ -131,24 +171,24 @@ skills/
 ├── mso-skill-governance/            ← 계약 검증, 구조 점검
 ├── mso-workflow-topology-design/    ← 목표 → 노드 구조
 ├── mso-mental-model-design/        ← 노드별 사고 모델
-├── mso-execution-design/           ← 실행 계획 생성
+├── mso-execution-design/           ← 실행 계획 생성 (execution_graph)
 ├── mso-task-context-management/    ← 티켓 관리
-├── mso-agent-collaboration/        ← 멀티에이전트 디스패치
-├── mso-agent-audit-log/            ← 감사 로그 (SQLite)
-└── mso-observability/              ← 관찰, 환류
+├── mso-agent-collaboration/        ← 멀티에이전트 디스패치 (branch/merge)
+├── mso-agent-audit-log/            ← 감사 로그 (SQLite, node_snapshots)
+├── mso-observability/              ← 관찰, 환류 (스냅샷 패턴 분석)
+└── _shared/                        ← 공통 유틸 (runtime_workspace.py)
 rules/
 └── ORCHESTRATOR.md                 ← 실행 순서 가이드
 ```
 
 각 스킬 디렉토리에는 `SKILL.md` 파일이 포함되어 있습니다. 이 문서만 확인하면 해당 스킬의 목적, 입출력, 실행 절차를 모두 파악할 수 있으며, `modules/`나 `schemas/`는 상세 구현을 확인할 때만 참조하면 됩니다.
 
-`v0.0.2`부터는 별도 `config.yaml` 없이 동작합니다. 실행 기본값은 코드 내장값을 사용하며, 환경별 오버라이드는 `MSO_WORKSPACE_ROOT`, `MSO_OBSERVATION_ROOT`, `MSO_OBSERVER_ID`로만 처리합니다.
+`v0.0.3`부터는 별도 `config.yaml` 없이 동작합니다. 실행 기본값은 코드 내장값을 사용하며, 환경별 오버라이드는 `MSO_WORKSPACE_ROOT`, `MSO_OBSERVATION_ROOT`, `MSO_OBSERVER_ID`로만 처리합니다.
 
 ### 1. 워크플로우 설계 (Design)
 
 ```bash
-# v0.0.2는 Run 단위 Runtime Workspace(`workspace/.mso-context`)에 산출물을 기록합니다.
-# 여러 스텝을 같은 Run으로 묶으려면 --run-id를 명시하세요.
+# v0.0.3은 Run 단위 Runtime Workspace에 산출물을 기록합니다.
 RUN_ID="YYYYMMDD-msowd-onboarding"
 
 # 목표(Goal)를 입력하면 노드 구조(Topology)가 생성됩니다.
@@ -164,7 +204,7 @@ python3 skills/mso-mental-model-design/scripts/build_bundle.py \
   --skill-key msowd \
   --case-slug onboarding
 
-# 위 두 결과를 통합하여 최종 실행 계획을 생성합니다.
+# 위 두 결과를 통합하여 execution_graph를 생성합니다.
 python3 skills/mso-execution-design/scripts/build_plan.py \
   --run-id "$RUN_ID" \
   --skill-key msowd \
@@ -174,14 +214,12 @@ python3 skills/mso-execution-design/scripts/build_plan.py \
 ### 2. 티켓 운영 (Ops)
 
 ```bash
-# 티켓 발행 (task-context는 collaboration phase 내부에 위치합니다)
 TASK_ROOT="workspace/.mso-context/active/$RUN_ID/40_collaboration/task-context"
 
 python3 skills/mso-task-context-management/scripts/create_ticket.py \
   "온보딩 플로우 구현" \
   --path "$TASK_ROOT"
 
-# 완료된 티켓 정리 — 로그에 기록 후 삭제(Archive) 처리합니다
 python3 skills/mso-task-context-management/scripts/archive_tasks.py \
   --path "$TASK_ROOT"
 ```
@@ -189,7 +227,7 @@ python3 skills/mso-task-context-management/scripts/archive_tasks.py \
 ### 3. 검증 (Validation)
 
 ```bash
-# 스키마 정합성 확인
+# 스키마 정합성 확인 (--schema-version 1.4.0)
 python3 skills/mso-skill-governance/scripts/validate_schemas.py \
   --run-id "$RUN_ID" \
   --skill-key msogov \
@@ -229,6 +267,87 @@ stateDiagram-v2
 
 `done`과 `cancelled`는 `터미널 상태(Terminal State)`입니다. 한 번 이 상태에 도달하면 이전 상태로 되돌릴 수 없습니다.
 또한, 동일한 상태로의 전이를 중복 요청하더라도 오류 없이 안전하게 무시됩니다(Idempotent).
+
+---
+
+## v0.0.3 변경 이력
+
+### 핵심 변경
+
+| 변경 | 내용 |
+|------|------|
+| **execution_graph 도입** | 기존 flat 구조(`node_chart_map`, `task_to_chart_map`, `node_mode_policy`, `model_selection_policy`) → `execution_graph` DAG 객체로 전면 교체. 각 노드에 `type`(commit/branch/merge), `parent_refs`, `tree_hash_ref`(SHA-256, nullable) 포함 |
+| **node_snapshots 테이블** | Audit DB v1.4.0에 불변 스냅샷 기록용 테이블 추가. `agent_role`(6종), `phase`(1-4), `merge_policy`, `fallback_target` 포함. FTS5 + 인덱스 + lineage 뷰 |
+| **에러 분류 체계** | `fallback_rules`를 object → array로 변경. 4가지 에러 유형(`schema_validation_error`/`hallucination`/`timeout`/`hitl_block`)에 `severity`/`action`/`max_retry` 매핑 |
+| **CC-06 계약** | `mso-execution-design` → `mso-agent-audit-log` 간 신규 계약. execution_graph 노드가 node_snapshots로 기록 가능해야 함 |
+| **lifecycle_policy** | `branch_ttl_days`(7), `artifact_retention_days`(30), `archive_on_merge`(true), `cleanup_job_interval_days`(1) |
+| **6개 에이전트 역할** | Provisioning, Execution, Handoff, Branching, Critic/Judge, Sentinel — 4단계 런타임 Phase에 매핑 |
+
+### 수정 파일 (22개)
+
+**스키마/인프라 (Layer 1)**
+- `skills/mso-execution-design/schemas/execution_plan.schema.json` — 재작성
+- `skills/mso-agent-audit-log/schema/init.sql` — v1.4.0, node_snapshots 추가
+- `skills/mso-agent-audit-log/schema/migrate_v1_3_to_v1_4.sql` — **신규** (멱등 마이그레이션)
+- `skills/_shared/runtime_workspace.py` — lifecycle_policy, worktree_root, snapshots_dir 추가
+
+**스크립트 (Layer 2)**
+- `skills/mso-execution-design/scripts/build_plan.py` — execution_graph DAG 출력으로 리팩터
+- `skills/mso-agent-audit-log/scripts/init_db.py` — v1.4.0, 마이그레이션 로직 추가
+
+**스킬 문서 (Layer 3)**
+- `skills/mso-execution-design/` — SKILL.md, core.md, modules_index.md 재작성 + `module.execution-graph.md`, `module.merge-policy.md` **신규**
+- `skills/mso-agent-audit-log/` — SKILL.md, core.md 수정
+- `skills/mso-agent-collaboration/SKILL.md` — 6-agent 역할, Phase 2b 브랜칭/머지
+- `skills/mso-observability/` — SKILL.md 수정, `observability_callback.schema.json` 이벤트 타입 8종으로 확장
+
+**룰/문서 (Layer 4)**
+- `rules/ORCHESTRATOR.md` — v0.0.3 전면 재작성 (Git-Metaphor, 런타임 Phase, 에러 분류, 라이프사이클)
+- `README.md` — v0.0.3 반영
+
+**거버넌스 (Layer 5)**
+- `skills/mso-skill-governance/scripts/_cc_defaults.py` — CC_VERSION 0.0.3, CC-06 추가
+- `skills/mso-skill-governance/scripts/validate_schemas.py` — 출력 버전 0.0.3
+- `skills/mso-skill-governance/scripts/validate_cc_contracts.py` — CC-06 핸들링
+- `skills/mso-skill-governance/scripts/run_sample_pipeline.py` — v0.0.3 태그, 스키마 1.4.0
+
+### 검증 결과
+
+Codex CLI(`gpt-5.3-codex-spark`, reasoning effort `xhigh`)로 2회 검증 수행.
+
+| 항목 | 1차 | 2차 (수정 후) |
+|------|-----|--------------|
+| V1. Schema Consistency | PASS | PASS |
+| V2. SQL Integrity | PASS | PASS |
+| V3. Script Correctness | PASS | PASS |
+| V4. Cross-Reference Integrity | PASS | PASS |
+| V5. runtime_workspace.py | PASS | PASS |
+| V6. Documentation Coherence | PASS | PASS |
+| V7. Tag Consistency | FAIL → 수정 | PASS |
+
+1차에서 발견된 `runtime-v003`/`runtime-v0.0.3` 태그 불일치를 수정 후 2차 검증에서 7/7 PASS.
+
+### Skill Authoring Best Practices 검토
+
+[Skill-authoring-best-practices.md](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/best-practices) 기준으로 4개 SKILL.md 검토 후 5건 수정.
+
+| 이슈 | 조치 |
+|------|------|
+| `mso-execution-design` description에 "Use when" 누락 | 추가 |
+| `mso-agent-collaboration`에 `when_unsure` + `상세 파일 참조` 누락 | 추가 |
+| 모듈 파일 참조 2레벨 깊이 | SKILL.md에서 직접 참조 추가 |
+| description이 3인칭이 아닌 명령형 서술 | 4개 모두 3인칭으로 수정 |
+| 에이전트 역할 테이블 중복 | 현행 유지 (각 Skill은 독립 로드 단위) |
+
+---
+
+## 하위 호환 노트 (v0.0.2 → v0.0.3)
+
+- **스키마**: `additionalProperties: true` 유지로 v0.0.2 아티팩트 로드는 가능하나, `execution_graph` required 키가 없으므로 validation은 실패
+- **build_plan.py**: 기존 flat 키(`node_chart_map`, `task_to_chart_map` 등) 제거. `execution_graph` 구조만 출력 (clean break)
+- **SQL**: `node_snapshots`는 순수 추가. 기존 테이블/트리거 변경 없음
+- **CC Contracts**: CC-01~CC-05 유지, CC-06 추가 (execution_graph → node_snapshots)
+- **Runtime workspace**: `lifecycle_policy` 등 신규 정책 키는 `_deep_merge_missing()`으로 자동 채워짐
 
 ---
 

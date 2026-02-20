@@ -1,8 +1,9 @@
 ---
 name: mso-agent-audit-log
 description: |
-  에이전트 실행 로그를 SQLite SoT로 표준화한다.
+  Standardizes agent execution logs into a SQLite SoT.
   Use when an execution result, run-manifest, or dispatch output needs audit trail recording.
+  v0.0.3: Adds node_snapshots table for Git-metaphor state snapshots.
 disable-model-invocation: true
 ---
 
@@ -19,7 +20,7 @@ disable-model-invocation: true
 |------|------|
 | **SoT** | `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` (SQLite). 모든 감사 데이터의 단일 진실 원천 |
 | **audit payload** | `run_id`, `artifact_uri`, `status`, `errors`, `warnings`, `next_actions`, `metadata` |
-| **schema_version** | 현재 `1.3.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references` |
+| **schema_version** | 현재 `1.4.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references`, `user_feedback`, `node_snapshots` |
 
 ---
 
@@ -33,12 +34,19 @@ disable-model-invocation: true
 
 **when_unsure**: `run_id`가 없으면 타임스탬프 기반 임시 ID 생성 후 warning 기록.
 
-### Phase 2: SoT 기록
+### Phase 2a: SoT 기록
 
 1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`에 연결 (runtime 기본 경로)
 2. DB 미존재 시 → `scripts/init_db.py`로 스키마 초기화
 3. `audit_logs` 테이블에 INSERT
 4. `decisions`, `evidence` 등 보조 테이블은 payload에 해당 필드 존재 시에만 기록
+
+### Phase 2b: 스냅샷 기록 (v0.0.3)
+
+1. 입력에 `node_type`, `parent_refs`, `tree_hash_ref` 필드가 포함된 경우 스냅샷 기록
+2. `node_snapshots` 테이블에 INSERT: `id`(SNAP-*), `run_id`, `node_id`, `node_type`, `parent_refs`(JSON), `tree_hash_type`, `tree_hash_ref`, `agent_role`, `phase`, `status`
+3. merge 노드인 경우 `merge_policy` JSON도 저장
+4. 폴백 대상이 있으면 `fallback_target`에 절대 SHA 참조 저장
 
 ### Phase 3: 결과 확인
 
@@ -60,7 +68,7 @@ disable-model-invocation: true
 
 | 연결 | 스킬 | 설명 |
 |------|------|------|
-| ← | `mso-execution-design` | 실행 결과 로그 수신 |
+| ← | `mso-execution-design` | CC-06: execution_graph 노드 → 스냅샷 기록 |
 | ← | `mso-agent-collaboration` | CC-04: dispatch 결과를 audit payload로 수신 |
 | → | `mso-observability` | CC-05: audit DB를 읽기 전용으로 제공 |
 

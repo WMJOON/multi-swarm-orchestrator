@@ -7,7 +7,16 @@
   "properties": {
     "event_type": {
       "type": "string",
-      "enum": ["improvement_proposal", "anomaly_detected", "periodic_report", "hitl_request"]
+      "enum": [
+        "improvement_proposal",
+        "anomaly_detected",
+        "periodic_report",
+        "hitl_request",
+        "branch_created",
+        "merge_completed",
+        "checkout_executed",
+        "snapshot_committed"
+      ]
     },
     "checkpoint_id": {"type": "string", "minLength": 1},
     "payload": {
@@ -15,7 +24,11 @@
       "properties": {
         "target_skills": {"type": "array", "items": {"type": "string"}},
         "severity": {"type": "string", "enum": ["info", "warning", "critical"]},
-        "message": {"type": "string"}
+        "message": {"type": "string"},
+        "node_id": {"type": "string"},
+        "node_type": {"type": "string", "enum": ["commit", "branch", "merge"]},
+        "tree_hash_ref": {"type": ["string", "null"]},
+        "parent_refs": {"type": "array", "items": {"type": "string"}}
       },
       "additionalProperties": true
     },
@@ -32,7 +45,8 @@
       "type": "object",
       "properties": {
         "run_id": {"type": "string"},
-        "artifact_uri": {"type": "string"}
+        "artifact_uri": {"type": "string"},
+        "snapshot_id": {"type": "string"}
       },
       "additionalProperties": true
     },
