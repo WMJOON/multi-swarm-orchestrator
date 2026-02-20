@@ -3,7 +3,7 @@ name: mso-agent-audit-log
 description: |
   Standardizes agent execution logs into a SQLite SoT.
   Use when an execution result, run-manifest, or dispatch output needs audit trail recording.
-  v0.0.3: Adds node_snapshots table for Git-metaphor state snapshots.
+  v0.0.4: Global DB, extended work tracking (work_type, intent, pattern_tag), suggestion_history.
 disable-model-invocation: true
 ---
 
@@ -18,9 +18,9 @@ disable-model-invocation: true
 
 | 개념 | 정의 |
 |------|------|
-| **SoT** | `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` (SQLite). 모든 감사 데이터의 단일 진실 원천 |
+| **SoT** | `workspace/.mso-context/audit_global.db` (SQLite). 모든 감사 데이터의 단일 진실 원천 |
 | **audit payload** | `run_id`, `artifact_uri`, `status`, `errors`, `warnings`, `next_actions`, `metadata` |
-| **schema_version** | 현재 `1.4.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references`, `user_feedback`, `node_snapshots` |
+| **schema_version** | 현재 `1.5.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references`, `user_feedback`, `node_snapshots`, `suggestion_history` |
 
 ---
 
@@ -36,12 +36,12 @@ disable-model-invocation: true
 
 ### Phase 2a: SoT 기록
 
-1. `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`에 연결 (runtime 기본 경로)
+1. `workspace/.mso-context/audit_global.db`에 연결 (global DB 기본 경로)
 2. DB 미존재 시 → `scripts/init_db.py`로 스키마 초기화
 3. `audit_logs` 테이블에 INSERT
 4. `decisions`, `evidence` 등 보조 테이블은 payload에 해당 필드 존재 시에만 기록
 
-### Phase 2b: 스냅샷 기록 (v0.0.3)
+### Phase 2b: 스냅샷 기록
 
 1. 입력에 `node_type`, `parent_refs`, `tree_hash_ref` 필드가 포함된 경우 스냅샷 기록
 2. `node_snapshots` 테이블에 INSERT: `id`(SNAP-*), `run_id`, `node_id`, `node_type`, `parent_refs`(JSON), `tree_hash_type`, `tree_hash_ref`, `agent_role`, `phase`, `status`

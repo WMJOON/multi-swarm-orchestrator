@@ -6,7 +6,7 @@
   "warnings": [],
   "next_actions": ["run sample observability"],
   "metadata": {
-    "schema_version": "1.3.0",
+    "schema_version": "1.5.0",
     "source": "run_sample_pipeline",
     "source_id": "run-sample-0001"
   },
@@ -15,6 +15,14 @@
   "mode": "execution",
   "action": "orchestrate",
   "script": "run_sample_pipeline.py",
+  "work_type": "execution",
+  "triggered_by": "user_request",
+  "duration_sec": 12.5,
+  "files_affected": ["outputs/execution_plan.json", "outputs/topology_spec.json"],
+  "sprint": "sprint-01",
+  "pattern_tag": "pipeline-e2e",
+  "session_id": "sess-sample-001",
+  "intent": "End-to-end pipeline verification run",
   "decisions": [
     {
       "id": "DEC-SAMPLE-0001",

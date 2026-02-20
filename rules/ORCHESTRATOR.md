@@ -1,12 +1,12 @@
 ---
 name: mso-orchestrator-rule
-description: Multi-swarm orchestrator policy and execution contract for v0.0.3 runtime workspace.
+description: Multi-swarm orchestrator policy and execution contract for v0.0.4 runtime workspace.
 type: cursor-rule
-version: 0.0.3
+version: 0.0.4
 always_apply: false
 ---
 
-# Multi-Swarm Orchestrator Rule (v0.0.3)
+# Multi-Swarm Orchestrator Rule (v0.0.4)
 
 > 이 문서는 실행 가능한 스킬이 아니라 `multi-swarm-orchestrator`의 오케스트레이션 룰 문서다.
 > Runtime Workspace(`workspace/.mso-context`)를 기준으로 단계·경로·체크포인트를 규정한다.
@@ -16,12 +16,12 @@ always_apply: false
 - 스킬 간 데이터 전달: Runtime Workspace 파일 아티팩트
 - 감사/추적: `workspace/.mso-context/active/<Run ID>/`의 `manifest.json` + phase 산출물
 
-### 1b) Git-Metaphor 상태 모델 (v0.0.3)
+### 1b) Git-Metaphor 상태 모델 (v0.0.4)
 
-v0.0.3은 실행 계획을 **버전화된 상태 전이 그래프(Versioned State Transition Graph)**로 취급한다.
+v0.0.4는 실행 계획을 **버전화된 상태 전이 그래프(Versioned State Transition Graph)**로 취급한다.
 실제 Git CLI에 의존하지 않으며, 파일시스템 분리 + SQLite DB 해싱 에뮬레이션 방식을 채택한다.
 
-| Git 개념 | MSO v0.0.3 런타임 | 설명 |
+| Git 개념 | MSO v0.0.4 런타임 | 설명 |
 |----------|-------------------|------|
 | **Worktree** | **Run Workspace** | 매 실행(Run)마다 격리된 작업 디렉토리. `.mso-context/active/{Run ID}` |
 | **Commit** | **Node Snapshot** | 노드 실행 완료 시점의 불변 기록. DB 내 `node_snapshots` 테이블 |
@@ -55,7 +55,8 @@ v0.0.3은 실행 계획을 **버전화된 상태 전이 그래프(Versioned Stat
 - `mso-observability`(관측/feedback)
 
 경로:
-`workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`
+`workspace/.mso-context/audit_global.db` (v0.0.4 global DB)
+`workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` (레거시/Run-local 호환)
 `→ workspace/.mso-context/active/<Run ID>/60_observability/callback-*.json`
 `→ mso-observability`
 
@@ -65,7 +66,7 @@ v0.0.3은 실행 계획을 **버전화된 상태 전이 그래프(Versioned Stat
 경로:
 `workspace/.mso-context/active/<Run ID>/70_governance/`
 
-### 2.5 런타임 Phase (v0.0.3)
+### 2.5 런타임 Phase (v0.0.4)
 
 4단계 × 6 에이전트 역할 매핑:
 
@@ -81,7 +82,7 @@ v0.0.3은 실행 계획을 **버전화된 상태 전이 그래프(Versioned Stat
 
 - 필드: `event_type`, `checkpoint_id`, `payload`, `retry_policy`, `correlation`, `timestamp`
 - 필수 이벤트 유형: `improvement_proposal`, `anomaly_detected`, `periodic_report`, `hitl_request`
-- v0.0.3 추가 이벤트: `branch_created`, `merge_completed`, `checkout_executed`, `snapshot_committed`
+- v0.0.4 추가 이벤트: `branch_created`, `merge_completed`, `checkout_executed`, `snapshot_committed`
 - 출력 위치: `workspace/.mso-context/active/<Run ID>/60_observability/*.json`
 - 수신자: `mso-observability`
 
@@ -117,7 +118,7 @@ v0.0.3은 실행 계획을 **버전화된 상태 전이 그래프(Versioned Stat
 
 `validate_all`/`run_sample_pipeline` 등 스크립트는 Runtime Workspace 정책을 준수해 산출물을 생성/검증한다.
 
-## 7) Storage & Cleanup Lifecycle Policy (v0.0.3)
+## 7) Storage & Cleanup Lifecycle Policy (v0.0.4)
 
 Worktree 기반 실행 시 파일 용량과 잔존물 관리 규칙:
 
@@ -130,10 +131,13 @@ Worktree 기반 실행 시 파일 용량과 잔존물 관리 규칙:
 
 정책은 `workspace/.mso-context/config/policy.yaml`의 `lifecycle_policy` 블록에서 오버라이드 가능.
 
-## 8) 인프라 노트 (v0.0.3)
+## 8) 인프라 노트 (v0.0.4)
 
 - **Git CLI 미사용**: 실제 `git` 명령어에 의존하지 않음. 파일시스템 에뮬레이션 + SQLite DB 방식
-- **SQLite SoT**: `agent_log.db`의 `node_snapshots` 테이블이 불변 감사 기록 담당
+- **SQLite SoT**: `audit_global.db`가 전체 감사 데이터의 단일 진실 원천. 스키마 v1.5.0
+- **WAL 모드**: `PRAGMA journal_mode=WAL` 적용으로 동시 읽기 성능 향상
+- **Global DB**: v0.0.4부터 `workspace/.mso-context/audit_global.db`를 기본 경로로 사용. Run-local DB(`50_audit/agent_log.db`)는 레거시 호환
 - **SHA-256 해싱**: `tree_hash_ref`는 산출물의 SHA-256 해시로, 실행 시점에 Execution Agent가 생성
 - **Worktree 격리**: 각 Run은 `run_root/worktree/` 디렉토리에서 독립적 실행 컨텍스트 유지
 - **스냅샷 저장**: `run_root/50_audit/snapshots/`에 스냅샷 관련 아티팩트 보관
+- **스크립트 독립성**: `init_db.py`, `append_from_payload.py`는 `_shared` 의존 없이 독립 실행 가능

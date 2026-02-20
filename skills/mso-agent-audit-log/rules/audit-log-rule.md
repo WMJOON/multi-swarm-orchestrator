@@ -6,7 +6,7 @@
 
 | 유형 | 의미 | 예시 위치 |
 |------|------|-----------|
-| **에이전트 로그** | 에이전트 작업/의사결정 기록 | `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` |
+| **에이전트 로그** | 에이전트 작업/의사결정 기록 | `workspace/.mso-context/audit_global.db` |
 | **도메인 로그** | 서비스/상담/이벤트 원천 데이터 | 프로젝트별 DB 또는 파일 |
 
 모호하면 대상 로그를 먼저 확인한 뒤 진행한다.
@@ -17,7 +17,7 @@
 
 **에이전트 로그는 SQLite DB 단일 저장소로 운영한다.**
 
-- 권장 DB: `workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db`
+- 권장 DB: `workspace/.mso-context/audit_global.db`
 - 마크다운 로그 파일 수동 중복 기록 금지
 
 ---
@@ -109,7 +109,55 @@ WHERE reference_type NOT IN ('mention', 'read', 'edit', 'create')
 
 ---
 
-*Version: 1.3.0 | Portable — 프로젝트 독립적*
+*Version: 1.5.0 | Portable — 프로젝트 독립적*
+
+---
+
+## Self-Recording Rules (v0.0.4)
+
+에이전트는 작업 단위별로 자기 기록(1차)을 남겨야 한다. Hook은 점진적(2차)으로 도입한다.
+
+| work_type | 기록 트리거 | 기록 단위 |
+|-----------|------------|-----------|
+| `execution` | 스크립트/파이프라인 실행 완료 | 1 run = 1 row |
+| `modification` | 기존 파일 수정 | 파일 묶음 단위 |
+| `structure` | 디렉토리/스키마 구조 변경 | 변경 세트 단위 |
+| `document` | 문서 작성/편집 | 문서 1건 |
+| `skill` | 스킬 정의 생성/수정 | 스킬 1건 |
+| `error` | 오류 발생 및 해결 | 오류 1건 |
+| `review` | 코드/문서 리뷰 | 리뷰 세션 1건 |
+
+### 기록 제외 대상
+
+- 단순 조회 (read-only 탐색)
+- 짧은 Q&A (1-2 턴)
+- 동일 작업의 미세 반복 (3초 이내 재시도)
+
+---
+
+## Merge Rules (v0.0.4)
+
+- 동일 `work_type` + 동일 `files_affected` 조합이 연속 발생 → 단일 행으로 통합 가능
+- **예외**: `status:fail` 또는 `work_type:error`인 행은 절대 병합하지 않는다
+- 통합 시 `duration_sec`은 합산, `notes`는 마지막 값 유지
+
+---
+
+## Logging Policy (v0.0.4)
+
+- `pattern_tag`는 비동기 배치로 할당 (실시간 부하 방지)
+- 정책 조정(policy_change) 제안은 **사용자 승인 필수**
+- 사용자가 제안을 거절하면 `suggestion_history.rejected_weight += 1.0` (마이너스 가중치)
+- 3회 이상 거절된 패턴은 자동 제안에서 제외
+
+---
+
+## Worklog Operating Standards (v0.0.4)
+
+인프라 작업(스키마 변경, 마이그레이션, CI/CD 수정)은 반드시 기록한다:
+- `work_type`: `structure` 또는 `skill`
+- `intent`: 변경 목적을 1줄로 명시
+- `files_affected`: 변경된 파일 JSON 배열
 
 ---
 

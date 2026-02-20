@@ -1,28 +1,37 @@
 #!/usr/bin/env python3
-"""Append one audit record from a run payload JSON file."""
+"""Append one audit record from a run payload JSON file (standalone — no _shared dependency)."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-ROOT = Path(__file__).resolve().parents[3]
-SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.5.0"
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from skills._shared.runtime_workspace import (  # noqa: E402
-    resolve_runtime_paths,
-    sanitize_case_slug,
-    update_manifest_phase,
-)
+def resolve_audit_db_path(cli_db: str | None = None) -> Path:
+    """Resolve audit DB path with priority: CLI arg > env > CWD walk > fallback."""
+    if cli_db:
+        return Path(cli_db).expanduser().resolve()
+
+    ws = os.environ.get("MSO_WORKSPACE")
+    if ws:
+        return Path(ws).expanduser().resolve() / ".mso-context" / "audit_global.db"
+
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        candidate = parent / ".mso-context"
+        if candidate.is_dir():
+            return candidate / "audit_global.db"
+
+    return Path.home() / ".mso-context" / "audit_global.db"
 
 
 def gen_task_id(run_id: str, prefix: str = "TASK") -> str:
@@ -80,6 +89,11 @@ def build_common(payload: Dict[str, Any], run_id: str, default_artifact: str) ->
             ],
         )
 
+    # v0.0.4 new fields
+    files_affected = payload.get("files_affected")
+    if isinstance(files_affected, list):
+        files_affected = json.dumps(files_affected, ensure_ascii=False)
+
     return {
         "run_id": safe_text(payload.get("run_id"), run_id),
         "artifact_uri": safe_text(payload.get("artifact_uri") or payload.get("artifact"), default_artifact),
@@ -92,6 +106,15 @@ def build_common(payload: Dict[str, Any], run_id: str, default_artifact: str) ->
         "mode": safe_text(payload.get("mode"), "pipeline"),
         "action": safe_text(payload.get("action"), "record"),
         "script": safe_text(payload.get("script"), Path(__file__).name),
+        # v0.0.4 fields
+        "work_type": payload.get("work_type"),
+        "triggered_by": payload.get("triggered_by"),
+        "duration_sec": payload.get("duration_sec"),
+        "files_affected": files_affected,
+        "sprint": payload.get("sprint"),
+        "pattern_tag": payload.get("pattern_tag"),
+        "session_id": payload.get("session_id"),
+        "intent": payload.get("intent"),
     }
 
 
@@ -135,9 +158,14 @@ def insert_audit_row(cur: sqlite3.Cursor, common: Dict[str, Any], task_id: str) 
         INSERT OR REPLACE INTO audit_logs (
             id, date, task_name, mode, action, input_path, output_path, script_path,
             status, notes, context_for_next, continuation_hint,
-            transition_repeated, transition_reuse, transition_decision, created_at, updated_at
+            transition_repeated, transition_reuse, transition_decision,
+            work_type, triggered_by, duration_sec, files_affected,
+            sprint, pattern_tag, session_id, intent,
+            created_at, updated_at
         ) VALUES (
-            ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         """,
         (
@@ -155,6 +183,14 @@ def insert_audit_row(cur: sqlite3.Cursor, common: Dict[str, Any], task_id: str) 
             to_bool_int(metadata.get("transition_repeated", 0)),
             to_bool_int(metadata.get("transition_reuse", 0)),
             to_bool_int(metadata.get("transition_decision", 0)),
+            common.get("work_type"),
+            common.get("triggered_by"),
+            common.get("duration_sec"),
+            common.get("files_affected"),
+            common.get("sprint"),
+            common.get("pattern_tag"),
+            common.get("session_id"),
+            common.get("intent"),
         ),
     )
 
@@ -164,44 +200,25 @@ def main() -> int:
     parser.add_argument("payload")
     parser.add_argument("--db", default=None, help="SQLite DB path override")
     parser.add_argument("--schema-version", default=SCHEMA_VERSION, help="Expected schema version")
-    parser.add_argument("--run-id", default="", help="Run ID override")
-    parser.add_argument("--skill-key", default="msoal", help="Skill key for run-id generation")
-    parser.add_argument("--case-slug", default="", help="Case slug for run-id generation")
-    parser.add_argument("--observer-id", default="", help="Observer ID override")
     args = parser.parse_args()
 
     payload = load_payload(Path(args.payload).expanduser().resolve())
-    run_id = args.run_id.strip() or safe_text(payload.get("run_id"), "")
-    case_slug = sanitize_case_slug(args.case_slug or run_id or "audit-append")
+    run_id = safe_text(payload.get("run_id"), "")
 
-    paths = resolve_runtime_paths(
-        run_id=run_id or None,
-        skill_key=args.skill_key,
-        case_slug=case_slug,
-        observer_id=args.observer_id.strip() or None,
-        create=True,
-    )
-    effective_run_id = run_id or paths["run_id"]
-
-    common = build_common(payload, effective_run_id, str(paths["execution_plan_path"]))
+    db = resolve_audit_db_path(args.db)
+    common = build_common(payload, run_id, "")
     task_id = safe_text(payload.get("task_id"), gen_task_id(common["run_id"]))
-    db = Path(args.db).expanduser().resolve() if args.db else Path(paths["audit_db_path"])
 
     if not db.exists():
         raise SystemExit(f"DB not found: {db}")
 
-    try:
-        update_manifest_phase(paths, "50", "active")
-        with sqlite3.connect(str(db)) as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
-            cur = conn.cursor()
-            insert_audit_row(cur, common, task_id)
-            insert_decision_rows(cur, task_id, payload.get("decisions", []))
-            conn.commit()
-        update_manifest_phase(paths, "50", "completed")
-    except Exception:
-        update_manifest_phase(paths, "50", "failed")
-        raise
+    with sqlite3.connect(str(db)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode=WAL;")
+        cur = conn.cursor()
+        insert_audit_row(cur, common, task_id)
+        insert_decision_rows(cur, task_id, payload.get("decisions", []))
+        conn.commit()
 
     print(
         json.dumps(
