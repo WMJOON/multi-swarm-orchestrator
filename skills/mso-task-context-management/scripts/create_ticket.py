@@ -67,7 +67,7 @@ def main() -> int:
         f"dependencies: {deps}\n"
         f"tags: {args.tags}\n"
         f"created: {datetime.now().strftime('%Y-%m-%d')}\n"
-        "updated: null\n"
+        f"updated: {datetime.now().strftime('%Y-%m-%d')}\n"
         "---\n\n"
         f"# {args.title}\n",
         encoding="utf-8",
