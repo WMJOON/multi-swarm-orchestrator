@@ -12,8 +12,8 @@
 - 티켓 제목, 우선순위, 상태, 태그, 의존성, 소유자, 마감일
 
 ## Output Interface
-- `task-context/tickets/<id>.md`
-- 아카이브: `task-context/archive/<year>/...`
+- `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/tickets/<id>.md`
+- 아카이브: `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/archive/<year>/...`
 
 ## Invariants
 - 상태 enum: `todo`, `in_progress`, `blocked`, `done`, `cancelled`
@@ -22,5 +22,5 @@
 - 의존성은 존재하는 티켓 파일명 stem과 일치해야 함.
 
 ## when_unsure
-- 경로를 못 찾으면 `task-context` 기준 경로로 새 노드를 부트스트랩한다.
+- 경로를 못 찾으면 `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context` 기준 경로로 새 노드를 부트스트랩한다.
 - 의존성 missing은 warning으로 노출하고 강제 실패 대신 보류 상태를 반환한다.

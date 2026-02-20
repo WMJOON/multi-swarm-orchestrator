@@ -23,6 +23,85 @@ from skills._shared.runtime_workspace import (  # noqa: E402
     update_manifest_phase,
 )
 
+# ---------------------------------------------------------------------------
+# theta_gt_range mapping (band -> numeric range)
+# ---------------------------------------------------------------------------
+THETA_RANGE_MAP = {
+    "narrow": {"min": 0.0, "max": 0.2},
+    "moderate": {"min": 0.2, "max": 0.6},
+    "wide": {"min": 0.4, "max": 0.9},
+}
+
+# ---------------------------------------------------------------------------
+# Default loop risk profiles per topology type
+# ---------------------------------------------------------------------------
+DEFAULT_LOOP_RISKS: Dict[str, List[Dict[str, object]]] = {
+    "linear": [
+        {
+            "loop_type": "redundancy_accumulation",
+            "where": "sequential nodes",
+            "risk": "low",
+            "mitigation": ["output schema enforces distinct sections"],
+        }
+    ],
+    "fan_out": [
+        {
+            "loop_type": "exploration_spiral",
+            "where": "parallel branches",
+            "risk": "med",
+            "mitigation": ["max_axes cap per branch", "orthogonality check"],
+        },
+        {
+            "loop_type": "redundancy_accumulation",
+            "where": "branch outputs",
+            "risk": "med",
+            "mitigation": ["deduplicate at synthesis node"],
+        },
+    ],
+    "fan_in": [
+        {
+            "loop_type": "rsv_inflation",
+            "where": "convergence node",
+            "risk": "med",
+            "mitigation": ["RSV cap at synthesis", "DQ re-scope if exceeded"],
+        }
+    ],
+    "dag": [
+        {
+            "loop_type": "semantic_dependency_cycle",
+            "where": "cross-dependency edges",
+            "risk": "med",
+            "mitigation": ["DAG validation", "merge or insert synthesis node"],
+        },
+        {
+            "loop_type": "rsv_inflation",
+            "where": "multi-path convergence",
+            "risk": "med",
+            "mitigation": ["DQ boundary review", "goal decomposition if needed"],
+        },
+    ],
+    "loop": [
+        {
+            "loop_type": "infinite_loop",
+            "where": "cycle back-edge",
+            "risk": "high",
+            "mitigation": ["max_iterations cap", "convergence check per iteration"],
+        },
+        {
+            "loop_type": "redundancy_accumulation",
+            "where": "repeated iterations",
+            "risk": "high",
+            "mitigation": ["output length cap", "delta_entropy threshold"],
+        },
+        {
+            "loop_type": "human_deferral_loop",
+            "where": "HITL gate",
+            "risk": "med",
+            "mitigation": ["explicit judgment criteria at gate"],
+        },
+    ],
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate workflow_topology_spec.json")
@@ -58,30 +137,60 @@ def choose_topology(goal: str) -> str:
     return "linear"
 
 
-def tokenize_dqs(goal: str) -> List[str]:
+def tokenize_dqs(goal: str) -> List[Dict[str, object]]:
+    """Split goal into DQs with normalized weights."""
     parts = re.split(r"[.?!\n]|그리고 |및 |또는 ", goal)
-    dq = [p.strip() for p in parts if len(p.strip()) > 2]
-    if not dq:
-        return [goal.strip()]
-    return dq[:6]
+    raw = [p.strip() for p in parts if len(p.strip()) > 2]
+    if not raw:
+        raw = [goal.strip()]
+    raw = raw[:6]
+    n = len(raw)
+    base_weight = round(1.0 / max(1, n), 2)
+    return [
+        {"id": f"DQ{i}", "question": q, "weight": base_weight}
+        for i, q in enumerate(raw, start=1)
+    ]
 
 
-def build_nodes(dqs: List[str]) -> List[Dict[str, object]]:
+def _output_type_for_position(index: int, total: int) -> str:
+    if index == 0:
+        return "memo"
+    if index == total - 1:
+        return "decision"
+    return "table"
+
+
+def build_nodes(dqs: List[Dict[str, object]]) -> List[Dict[str, object]]:
     nodes = []
-    for i, dq in enumerate(dqs, start=1):
-        dqsig = min(1.0, max(0.05, 1.0 / max(1, len(dqs)) + 0.05 * (i - 1)))
-        theta = "moderate"
-        if i == 1:
+    n = len(dqs)
+    for i, dq in enumerate(dqs):
+        idx = i + 1
+        dqsig = min(1.0, max(0.05, 1.0 / max(1, n) + 0.05 * i))
+
+        if i == 0:
             theta = "wide"
-        elif i == len(dqs):
+        elif i == n - 1:
             theta = "narrow"
+        else:
+            theta = "moderate"
+
         nodes.append(
             {
-                "id": f"T{i}",
-                "label": dq[:60],
+                "id": f"T{idx}",
+                "label": str(dq["question"])[:60],
                 "theta_gt_band": theta,
-                "assigned_dqs": [f"DQ{i}"],
+                "assigned_dqs": [dq["id"]],
                 "rsv_target": round(min(1.0, dqsig), 2),
+                "stop_condition": f"{dq['id']} closed OR redundancy detected",
+                "explicit_output": {
+                    "type": _output_type_for_position(i, n),
+                    "required_sections": [],
+                    "acceptance_criteria": [],
+                },
+                "theta_gt_range": THETA_RANGE_MAP[theta],
+                "semantic_entropy_expected": round(
+                    (THETA_RANGE_MAP[theta]["min"] + THETA_RANGE_MAP[theta]["max"]) / 2, 2
+                ),
             }
         )
     return nodes
@@ -96,11 +205,60 @@ def build_edges(nodes: List[Dict[str, object]]) -> List[Dict[str, str]]:
     return edges
 
 
+def _build_execution_policy(
+    risk: str, topology_type: str, nodes: List[Dict[str, object]]
+) -> Dict[str, object]:
+    rules = [
+        "CONTINUE: delta_entropy > epsilon AND new DQ closure detected",
+        "REFRAME: redundancy flag AND delta_rsv == 0 for 2 consecutive iterations",
+        "STOP: all assigned DQs closed OR rsv_accumulated >= rsv_total",
+    ]
+    if risk == "high":
+        rules.append("STOP: strategy_gate triggered — require human approval before proceed")
+
+    human_gates: List[str] = []
+    if risk == "high" and nodes:
+        human_gates = [str(nodes[-1]["id"])]
+
+    return {
+        "continue_reframe_stop_rules": rules,
+        "estimator_integration": {
+            "script": "scripts/estimator.py",
+            "invoke_per": "node_iteration",
+            "normalized_output_schema": "canonical_output with decision_questions, claims, assumptions",
+        },
+        "human_gate_nodes": human_gates,
+    }
+
+
+def _build_handoff_strategy(
+    topology_type: str, nodes: List[Dict[str, object]]
+) -> Dict[str, object] | None:
+    if topology_type not in ("fan_out", "fan_in", "dag"):
+        return None
+    handoff_points = []
+    if topology_type == "fan_out" and len(nodes) > 1:
+        handoff_points = [str(nodes[0]["id"])]
+    elif topology_type == "fan_in" and len(nodes) > 1:
+        handoff_points = [str(nodes[-1]["id"])]
+    elif topology_type == "dag":
+        handoff_points = [str(n["id"]) for n in nodes if n.get("theta_gt_band") == "narrow"]
+
+    return {
+        "handoff_points": handoff_points,
+        "minimize_context_loss_rules": [
+            "pass structured DQ status, not prose summaries",
+            "include constraint_list and open_dqs at each handoff",
+        ],
+    }
+
+
 def build_spec(goal: str, risk: str, run_id: str) -> Dict[str, object]:
     dqs = tokenize_dqs(goal)
     nodes = build_nodes(dqs)
     topology_type = choose_topology(goal)
-    return {
+
+    spec: Dict[str, object] = {
         "run_id": run_id,
         "nodes": nodes,
         "edges": build_edges(nodes),
@@ -112,7 +270,19 @@ def build_spec(goal: str, risk: str, run_id: str) -> Dict[str, object]:
             "source": "workflow-topology-design",
             "goal_preview": goal[:120],
         },
+        "decision_questions": [
+            {"id": dq["id"], "question": dq["question"], "weight": dq["weight"]}
+            for dq in dqs
+        ],
+        "loop_risk_assessment": DEFAULT_LOOP_RISKS.get(topology_type, []),
+        "execution_policy": _build_execution_policy(risk, topology_type, nodes),
     }
+
+    handoff = _build_handoff_strategy(topology_type, nodes)
+    if handoff:
+        spec["handoff_strategy"] = handoff
+
+    return spec
 
 
 def ensure_dir(path: Path) -> None:

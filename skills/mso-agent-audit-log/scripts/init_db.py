@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 INIT_SQL = Path(__file__).resolve().parent.parent / "schema" / "init.sql"
 MIGRATE_SQL = Path(__file__).resolve().parent.parent / "schema" / "migrate_v1_to_v1_1.sql"
+MIGRATE_V1_3_SQL = Path(__file__).resolve().parent.parent / "schema" / "migrate_v1_3_to_v1_4.sql"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -46,6 +47,16 @@ def ensure_db(db_path: Path, schema_version: str, run_migrate: bool) -> int:
                         "INSERT OR REPLACE INTO _skill_meta(k, v) VALUES ('schema_version', ?)",
                         (schema_version,),
                     )
+            # v1.3 → v1.4 migration: add node_snapshots if missing
+            snapshots_table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='node_snapshots'"
+            ).fetchone()
+            if not snapshots_table and MIGRATE_V1_3_SQL.exists():
+                conn.executescript(MIGRATE_V1_3_SQL.read_text(encoding="utf-8"))
+                conn.execute(
+                    "INSERT OR REPLACE INTO _skill_meta(k, v) VALUES ('schema_version', ?)",
+                    (schema_version,),
+                )
         return 0
     finally:
         conn.close()
@@ -54,7 +65,7 @@ def ensure_db(db_path: Path, schema_version: str, run_migrate: bool) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description="Initialize audit DB")
     p.add_argument("--db", default=None, help="SQLite DB path override")
-    p.add_argument("--schema-version", default="1.3.0", help="Schema version tag")
+    p.add_argument("--schema-version", default="1.4.0", help="Schema version tag")
     p.add_argument("--migrate", action="store_true", help="Run migration script after init")
     p.add_argument("--run-id", default="", help="Run ID override")
     p.add_argument("--skill-key", default="msoal", help="Skill key for run-id generation")

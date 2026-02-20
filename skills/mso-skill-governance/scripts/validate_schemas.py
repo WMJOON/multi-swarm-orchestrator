@@ -381,7 +381,7 @@ def main() -> int:
         payload = {
             "status": "ok" if not failures else "fail",
             "generated_at": datetime.utcnow().isoformat() + "Z",
-            "version": "0.0.2",
+            "version": "0.0.3",
             "run_id": paths["run_id"],
             "jsonschema_available": has_jsonschema,
             "strict_mode": bool(args.strict),

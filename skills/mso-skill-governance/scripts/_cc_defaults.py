@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Embedded CC contract defaults for runtime workspace v0.0.2."""
+"""Embedded CC contract defaults for runtime workspace v0.0.3."""
 
 from __future__ import annotations
 
 import copy
 from typing import Any, Dict, List
 
-CC_VERSION = "0.0.2"
+CC_VERSION = "0.0.3"
 
 DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
     {
@@ -17,7 +17,7 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "required_input_keys": ["run_id", "nodes", "topology_type"],
         "compatibility_policy": "strict",
         "status": "ok",
-        "validation_rule": "exec의 node_chart_map key가 topology node id에 존재해야 함",
+        "validation_rule": "execution_graph 노드 ID가 topology node id에 존재해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/10_topology/workflow_topology_spec.json",
     },
     {
@@ -28,7 +28,7 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "required_input_keys": ["run_id", "nodes", "assigned_dqs", "theta_gt_band"],
         "compatibility_policy": "strict",
         "status": "ok",
-        "validation_rule": "exec의 node_chart_map.chart_ids가 bundle chart id에 존재해야 함",
+        "validation_rule": "execution_graph 각 노드의 chart_ids가 bundle chart id에 존재해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/20_mental-model/mental_model_bundle.json",
     },
     {
@@ -68,6 +68,17 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "status": "ok",
         "validation_rule": "observability는 audit 스키마를 입력으로 읽고 이벤트를 재생성 가능해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/50_audit/agent_log.db",
+    },
+    {
+        "id": "CC-06",
+        "producer": "mso-execution-design",
+        "consumer": "mso-agent-audit-log",
+        "required_output_keys": ["run_id", "execution_graph", "fallback_rules"],
+        "required_input_keys": ["run_id", "node_id", "node_type", "parent_refs", "tree_hash_ref"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "execution_graph 노드가 node_snapshots 테이블에 스냅샷으로 기록 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/30_execution/execution_plan.json",
     },
 ]
 
