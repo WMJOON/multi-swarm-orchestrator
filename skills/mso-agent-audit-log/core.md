@@ -1,6 +1,6 @@
 ---
 name: mso-agent-audit-log
-version: 0.0.3
+version: 0.0.4
 run_input: "run-manifest, task context event, behavior events, node snapshots"
 run_output: "sqlite rows in audit_logs, decision graph tables, and node_snapshots"
 status_model: "success | fail | in_progress"
@@ -18,7 +18,7 @@ status_model: "success | fail | in_progress"
   - `artifact_uri` (필수)
   - `status`, `errors`, `warnings`, `next_actions` (기본 필드)
   - `metadata` (`schema_version` 포함 권장)
-  - `node_snapshot` (v0.0.3, 선택적)
+  - `node_snapshot` (선택적)
     - `node_id`, `node_type` (commit|branch|merge)
     - `parent_refs` (JSON array)
     - `tree_hash_type`, `tree_hash_ref`
@@ -26,10 +26,20 @@ status_model: "success | fail | in_progress"
     - `phase` (1-4)
     - `merge_policy` (merge 노드 전용, JSON)
     - `fallback_target` (절대 SHA 참조)
+  - v0.0.4 확장 필드 (선택적)
+    - `work_type` (execution|modification|structure|document|skill|error|review)
+    - `triggered_by` (user_request|auto|hook)
+    - `duration_sec` (REAL)
+    - `files_affected` (JSON array)
+    - `sprint` (TEXT)
+    - `pattern_tag` (TEXT)
+    - `session_id` (TEXT)
+    - `intent` (TEXT)
 
 ## 출력
 - `audit_logs` 행, `decisions`, `evidence`, `impacts`, `document_references` 테이블의 가시적 갱신
-- `node_snapshots` 행 (v0.0.3): node_type, parent_refs, tree_hash_ref, agent_role, phase, status 기록
+- `node_snapshots` 행: node_type, parent_refs, tree_hash_ref, agent_role, phase, status 기록
+- `suggestion_history` 행 (v0.0.4): 패턴 제안, 사용자 승인/거절 이력 기록
 - 수동 승인 요청이 필요한 경우 `notes`/`continuation_hint`로 힌트 기록
 
 ## 공통 출력 형태
@@ -43,9 +53,17 @@ status_model: "success | fail | in_progress"
   "warnings": ["..."],
   "next_actions": ["..."],
   "metadata": {
-    "schema_version": "1.4.0",
+    "schema_version": "1.5.0",
     "producer": "mso-agent-audit-log"
   },
+  "work_type": "execution",
+  "triggered_by": "auto",
+  "duration_sec": 5.2,
+  "files_affected": ["outputs/execution_plan.json"],
+  "sprint": null,
+  "pattern_tag": null,
+  "session_id": "sess-001",
+  "intent": "Pipeline node execution",
   "node_snapshot": {
     "node_id": "node_01",
     "node_type": "commit",

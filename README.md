@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (v0.0.3)
+# Multi-Swarm Orchestrator (v0.0.4)
 
 복잡한 AI 에이전트 작업을 수행하다 보면 필연적으로 다음과 같은 문제들에 직면합니다.
 
@@ -45,6 +45,52 @@ stateDiagram-v2
 
 ---
 
+## v0.0.4: Global DB와 Work Tracking
+
+v0.0.4는 **에이전트 자기 기록(Self-Recording)**과 **패턴 기반 개선 제안**을 도입합니다.
+
+### Global Audit DB
+
+Run-local DB(`active/<Run ID>/50_audit/agent_log.db`)를 **Global DB**(`workspace/.mso-context/audit_global.db`)로 통합합니다. 모든 Run의 감사 데이터가 하나의 DB에 축적되어 Cross-Run 패턴 분석이 가능해집니다.
+
+```
+workspace/.mso-context/
+├── audit_global.db          ← v0.0.4: 전체 감사 데이터 SoT (WAL 모드)
+├── active/<Run ID>/         ← Run별 산출물 (기존)
+└── config/policy.yaml       ← 운영 정책
+```
+
+### Work Tracking 스키마 (v1.5.0)
+
+`audit_logs` 테이블에 8개 컬럼이 추가되어 작업의 유형, 소요 시간, 영향 범위를 구조적으로 기록합니다.
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `work_type` | TEXT | execution, modification, structure, document, skill, error, review |
+| `triggered_by` | TEXT | user_request, auto, hook |
+| `duration_sec` | REAL | 작업 소요 시간(초) |
+| `files_affected` | TEXT | 영향받은 파일 목록 (JSON array) |
+| `sprint` | TEXT | 스프린트 식별자 |
+| `pattern_tag` | TEXT | 반복 패턴 태그 (비동기 배치 할당) |
+| `session_id` | TEXT | 세션 식별자 |
+| `intent` | TEXT | 작업 목적 1줄 요약 |
+
+### 패턴 분석 시그널
+
+Observability가 새로운 3가지 시그널을 자동 탐지합니다.
+
+| 시그널 | 조건 | 이벤트 |
+|--------|------|--------|
+| **Work Type Imbalance** | 단일 work_type > 50% | `improvement_proposal` |
+| **Pattern Tag Candidate** | (work_type, files_affected) 3회+ 반복 | `improvement_proposal` |
+| **Error Hotspot** | 동일 파일 fail 2회+ | `anomaly_detected` |
+
+### 스크립트 독립화
+
+`init_db.py`와 `append_from_payload.py`가 `_shared` 모듈 의존 없이 독립 실행 가능합니다. DB 경로는 4단계 우선순위로 resolve됩니다: CLI 인자 → `MSO_WORKSPACE` 환경변수 → CWD 상위 탐색 → `~/.mso-context/audit_global.db`.
+
+---
+
 ## 업무 공간과 관제 공간
 
 MSO는 _`다수의 사람`과 `다수의 에이전트`가 동시에 협업하는 환경_ 을 전제로 설계되었습니다. 이를 위해 _`일하는 곳`과 `보는 곳`을 명시적으로 분리_ 합니다.
@@ -52,6 +98,7 @@ MSO는 _`다수의 사람`과 `다수의 에이전트`가 동시에 협업하는
 ```
 workspace/                              ← 업무 공간: 에이전트가 실행하고 기록하는 곳
 ├── .mso-context/
+│   ├── audit_global.db                 ← v0.0.4: 전체 감사 데이터 SoT (WAL)
 │   ├── active/<Run ID>/                ← Run 단위 실행 산출물
 │   │   ├── worktree/                   ← v0.0.3: 격리된 실행 워크트리
 │   │   └── 50_audit/snapshots/         ← v0.0.3: 스냅샷 아티팩트
@@ -137,7 +184,7 @@ Topology와 Mental Model은 상호보완적입니다. 어느 쪽에서 시작하
 
 실행 결과는 단순히 사라지지 않고 자산화됩니다.
 
-`Audit Log`가 모든 실행 기록을 SQLite 데이터베이스에 남기고(v0.0.3: `node_snapshots` 테이블 포함), `Observability`가 저장된 로그를 분석하여 패턴을 도출합니다. 반복적인 실패, 비정상적인 비용 발생, 병목 구간, 분기/머지 빈도 등이 감지되면, 이를 해결하기 위한 개선 제안을 설계 파이프라인으로 다시 전달합니다.
+`Audit Log`가 모든 실행 기록을 SQLite 데이터베이스에 남기고(v0.0.4: Global DB, `node_snapshots` + `suggestion_history` 테이블 포함), `Observability`가 저장된 로그를 분석하여 패턴을 도출합니다. 반복적인 실패, 비정상적인 비용 발생, 병목 구간, 분기/머지 빈도, work_type 편중, 에러 핫스팟 등이 감지되면, 이를 해결하기 위한 개선 제안을 설계 파이프라인으로 다시 전달합니다.
 
 이러한 `피드백 루프(Feedback Loop)`가 동일한 실패의 반복을 끊어내는 핵심 메커니즘입니다.
 
@@ -174,8 +221,9 @@ skills/
 ├── mso-execution-design/           ← 실행 계획 생성 (execution_graph)
 ├── mso-task-context-management/    ← 티켓 관리
 ├── mso-agent-collaboration/        ← 멀티에이전트 디스패치 (branch/merge)
-├── mso-agent-audit-log/            ← 감사 로그 (SQLite, node_snapshots)
-├── mso-observability/              ← 관찰, 환류 (스냅샷 패턴 분석)
+├── mso-agent-audit-log/            ← 감사 로그 (SQLite, node_snapshots, suggestion_history)
+│   └── history/                    ← v0.0.4: 스키마 버전 스냅샷
+├── mso-observability/              ← 관찰, 환류 (패턴 분석 + v0.0.4 시그널)
 └── _shared/                        ← 공통 유틸 (runtime_workspace.py)
 rules/
 └── ORCHESTRATOR.md                 ← 실행 순서 가이드
@@ -227,7 +275,7 @@ python3 skills/mso-task-context-management/scripts/archive_tasks.py \
 ### 3. 검증 (Validation)
 
 ```bash
-# 스키마 정합성 확인 (--schema-version 1.4.0)
+# 스키마 정합성 확인 (--schema-version 1.5.0)
 python3 skills/mso-skill-governance/scripts/validate_schemas.py \
   --run-id "$RUN_ID" \
   --skill-key msogov \
@@ -267,6 +315,66 @@ stateDiagram-v2
 
 `done`과 `cancelled`는 `터미널 상태(Terminal State)`입니다. 한 번 이 상태에 도달하면 이전 상태로 되돌릴 수 없습니다.
 또한, 동일한 상태로의 전이를 중복 요청하더라도 오류 없이 안전하게 무시됩니다(Idempotent).
+
+---
+
+## v0.0.4 변경 이력
+
+### 핵심 변경
+
+| 변경 | 내용 |
+|------|------|
+| **Global Audit DB** | Run-local DB → `audit_global.db`로 통합. Cross-Run 패턴 분석 기반 마련 |
+| **스키마 v1.5.0** | `audit_logs`에 8개 work tracking 컬럼 추가. `suggestion_history` 테이블, 분석 뷰 3개 |
+| **WAL 모드** | `PRAGMA journal_mode=WAL` 적용으로 동시 읽기 성능 향상 |
+| **스크립트 독립화** | `init_db.py`, `append_from_payload.py`에서 `_shared` 의존성 제거. 4단계 DB 경로 resolve |
+| **패턴 분석 시그널** | Observability에 work_type imbalance, pattern_tag candidate, error hotspot 탐지 추가 |
+| **Self-Recording Rules** | 7개 work_type별 기록 트리거/단위 정의. 기록 제외 대상, Merge Rules, Logging Policy |
+| **Suggestion History** | 패턴 제안의 승인/거절 이력 기록. 3회 거절 시 자동 제안 제외 |
+
+### 수정 파일 (13개)
+
+**스키마 (Layer 1)**
+- `skills/mso-agent-audit-log/schema/init.sql` — v1.5.0, 8개 컬럼 + suggestion_history + 뷰 3개
+- `skills/mso-agent-audit-log/schema/migrate_v1_4_to_v1_5.sql` — **신규** (멱등 마이그레이션)
+
+**스크립트 (Layer 2)**
+- `skills/mso-agent-audit-log/scripts/init_db.py` — _shared 제거, resolve_audit_db_path(), WAL
+- `skills/mso-agent-audit-log/scripts/append_from_payload.py` — _shared 제거, 8개 신규 필드 매핑
+
+**샘플/규칙 (Layer 3)**
+- `skills/mso-agent-audit-log/samples/pipeline_completed.json` — schema 1.5.0 + 8개 필드
+- `skills/mso-agent-audit-log/rules/audit-log-rule.md` — Self-Recording/Merge/Logging Policy
+
+**문서 (Layer 4)**
+- `skills/mso-agent-audit-log/SKILL.md` — v0.0.4, global DB, schema 1.5.0
+- `skills/mso-agent-audit-log/core.md` — v0.0.4, 입출력 필드 확장
+- `skills/mso-observability/SKILL.md` — v0.0.4, 3개 탐지 시그널
+- `skills/mso-observability/scripts/collect_observations.py` — 3개 탐지 함수 + 스키마 fallback
+- `rules/ORCHESTRATOR.md` — v0.0.4, global DB, WAL, 스크립트 독립성
+
+**히스토리 (신규)**
+- `skills/mso-agent-audit-log/history/init_v1.5.0.sql` — **신규** (스키마 스냅샷)
+- `skills/mso-agent-audit-log/history/README.md` — **신규** (스냅샷 인덱스)
+
+### 검증 결과
+
+Claude Code(Opus 4.6)로 4개 에이전트 병렬 리뷰 수행.
+
+| 영역 | 결과 |
+|------|------|
+| Schema 정합성 (init.sql ↔ migration ↔ history) | PASS |
+| Script 로직 (독립 실행, 컬럼 매핑, placeholder 수) | PASS |
+| 문서 정합성 (버전, 경로, 내용 완전성) | PASS (4건 수정 후) |
+| Observability 스크립트 (탐지 함수, fallback, 통합) | PASS |
+
+### 하위 호환 노트 (v0.0.3 → v0.0.4)
+
+- **DB 경로**: Global DB가 기본이나, 기존 Run-local 경로도 레거시 fallback으로 지원
+- **스키마**: 8개 신규 컬럼은 모두 nullable. 기존 INSERT 쿼리는 수정 없이 동작
+- **Observability**: `read_db_rows()`가 try/except로 구 스키마 자동 fallback
+- **_shared**: `collect_observations.py`는 기존대로 `_shared` 의존 유지 (리뷰 스코프 외)
+- **CC Contracts**: CC-01~CC-06 변경 없음
 
 ---
 

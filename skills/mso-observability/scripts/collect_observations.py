@@ -40,11 +40,22 @@ def read_db_rows(db_path: Path, limit: int) -> List[Dict[str, Any]]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
-        cur = conn.execute(
-            "SELECT id, date, task_name, mode, action, status, notes, continuation_hint, transition_repeated, created_at, updated_at "
-            "FROM audit_logs ORDER BY COALESCE(created_at, date||' 00:00:00') DESC LIMIT ?",
-            (limit,),
-        )
+        # Try v1.5.0 schema first (with new columns), fall back to v1.4.0
+        try:
+            cur = conn.execute(
+                "SELECT id, date, task_name, mode, action, status, notes, continuation_hint, "
+                "transition_repeated, created_at, updated_at, "
+                "work_type, pattern_tag, duration_sec, files_affected, session_id, intent "
+                "FROM audit_logs ORDER BY COALESCE(created_at, date||' 00:00:00') DESC LIMIT ?",
+                (limit,),
+            )
+        except sqlite3.OperationalError:
+            cur = conn.execute(
+                "SELECT id, date, task_name, mode, action, status, notes, continuation_hint, "
+                "transition_repeated, created_at, updated_at "
+                "FROM audit_logs ORDER BY COALESCE(created_at, date||' 00:00:00') DESC LIMIT ?",
+                (limit,),
+            )
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -78,6 +89,80 @@ def emit_event(
         "correlation": correlation,
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+
+def detect_work_type_imbalance(rows: List[Dict[str, Any]], run_id: str, artifact: str) -> List[Dict[str, Any]]:
+    """Single work_type > 50% of total → improvement_proposal."""
+    events: List[Dict[str, Any]] = []
+    typed = [r for r in rows if r.get("work_type")]
+    if not typed:
+        return events
+    wt_counts = Counter(r["work_type"] for r in typed)
+    for wt, cnt in wt_counts.items():
+        if cnt > len(typed) * 0.5:
+            now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+            events.append(
+                emit_event(
+                    event_type="improvement_proposal",
+                    checkpoint_id=f"IP-{now_stamp}-wt-{wt}",
+                    severity="warning",
+                    message=f"work_type imbalance: '{wt}' accounts for {cnt}/{len(typed)} ({round(cnt*100/len(typed))}%)",
+                    target_skills=["mso-agent-audit-log", "mso-skill-governance"],
+                    correlation={"run_id": run_id, "artifact_uri": artifact},
+                    retry_policy={"max_retries": 0, "backoff_seconds": 0, "on_retry": "drop"},
+                )
+            )
+    return events
+
+
+def detect_pattern_tag_candidates(rows: List[Dict[str, Any]], run_id: str, artifact: str) -> List[Dict[str, Any]]:
+    """(work_type, files_affected) combo repeated 3+ times → improvement_proposal."""
+    events: List[Dict[str, Any]] = []
+    combos: Counter = Counter()
+    for r in rows:
+        wt = r.get("work_type")
+        fa = r.get("files_affected")
+        if wt and fa:
+            combos[(wt, fa)] += 1
+    for (wt, fa), cnt in combos.items():
+        if cnt >= 3:
+            now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+            events.append(
+                emit_event(
+                    event_type="improvement_proposal",
+                    checkpoint_id=f"IP-{now_stamp}-ptag-{wt}",
+                    severity="info",
+                    message=f"pattern_tag candidate: ({wt}, {fa}) repeated {cnt} times",
+                    target_skills=["mso-agent-audit-log", "mso-observability"],
+                    correlation={"run_id": run_id, "artifact_uri": artifact},
+                    retry_policy={"max_retries": 0, "backoff_seconds": 0, "on_retry": "drop"},
+                )
+            )
+    return events
+
+
+def detect_error_hotspots(rows: List[Dict[str, Any]], run_id: str, artifact: str) -> List[Dict[str, Any]]:
+    """Fail logs referencing same file 2+ times → anomaly_detected."""
+    events: List[Dict[str, Any]] = []
+    fail_files: Counter = Counter()
+    for r in rows:
+        if str(r.get("status") or "").lower() == "fail" and r.get("files_affected"):
+            fail_files[r["files_affected"]] += 1
+    for fa, cnt in fail_files.items():
+        if cnt >= 2:
+            now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+            events.append(
+                emit_event(
+                    event_type="anomaly_detected",
+                    checkpoint_id=f"AS-{now_stamp}-hotspot",
+                    severity="warning",
+                    message=f"error hotspot: file(s) {fa} appear in {cnt} fail logs",
+                    target_skills=["mso-execution-design", "mso-agent-audit-log"],
+                    correlation={"run_id": run_id, "artifact_uri": artifact},
+                    retry_policy={"max_retries": 1, "backoff_seconds": 10, "on_retry": "queue"},
+                )
+            )
+    return events
 
 
 def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: str) -> List[Dict[str, Any]]:
@@ -159,6 +244,11 @@ def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: s
                 retry_policy={"max_retries": 5, "backoff_seconds": 20, "on_retry": "queue"},
             )
         )
+
+    # v0.0.4 pattern analysis
+    events.extend(detect_work_type_imbalance(rows, run_id, artifact))
+    events.extend(detect_pattern_tag_candidates(rows, run_id, artifact))
+    events.extend(detect_error_hotspots(rows, run_id, artifact))
 
     if not events:
         events.append(
