@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Check runtime dependencies for multi-swarm-orchestrator v0.0.2.
+"""Check runtime dependencies for multi-swarm-orchestrator.
 
-This script is environment-tolerant:
-- `ai-collaborator` is optional.
-- Missing dependency does not block core pipeline.
+Verifies that required skill scripts and modules are present.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -26,65 +24,34 @@ class DependencyResult:
     status: str  # ok | warning | error
 
 
-def detect_path_for_ai(root: Path) -> str | None:
-    embedded = root / "skills" / "mso-agent-collaboration"
-    embedded_marker = embedded / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
-    if embedded_marker.exists():
-        return str(embedded.resolve())
-    return None
+def check_mso_agent_collaboration() -> DependencyResult:
+    """Verify mso-agent-collaboration dispatch script is present."""
+    skill_dir = ROOT / "skills" / "mso-agent-collaboration"
+    dispatch_script = skill_dir / "scripts" / "dispatch.py"
 
-
-def check_ai_collaborator() -> DependencyResult:
-    path = detect_path_for_ai(ROOT)
-    if not path:
+    if not skill_dir.exists():
         return DependencyResult(
-            name="ai-collaborator",
+            name="mso-agent-collaboration",
             configured=False,
             resolved_path=None,
-            reason="embedded ai-collaborator runtime not found",
-            status="warning",
+            reason="skill directory not found",
+            status="error",
         )
 
-    candidate = Path(path)
-    script = candidate / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
-    if not script.exists():
+    if not dispatch_script.exists():
         return DependencyResult(
-            name="ai-collaborator",
+            name="mso-agent-collaboration",
             configured=False,
-            resolved_path=str(candidate),
-            reason="resolve success but collaborate.py missing (expected v0.0.1/Skill/ai-collaborator/scripts/collaborate.py)",
-            status="warning",
-        )
-
-    try:
-        proc = subprocess.run(
-            ["python3", str(script), "status", "--format", "json"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-        if proc.returncode != 0:
-            return DependencyResult(
-                name="ai-collaborator",
-                configured=False,
-                resolved_path=str(candidate),
-                reason=(proc.stderr or proc.stdout or "healthcheck failed").strip()[:180],
-                status="warning",
-            )
-    except Exception as exc:
-        return DependencyResult(
-            name="ai-collaborator",
-            configured=False,
-            resolved_path=str(candidate),
-            reason=f"healthcheck invocation error: {exc}",
-            status="warning",
+            resolved_path=str(skill_dir),
+            reason="dispatch.py script missing",
+            status="error",
         )
 
     return DependencyResult(
-        name="ai-collaborator",
+        name="mso-agent-collaboration",
         configured=True,
-        resolved_path=str(candidate),
-        reason="available and healthy",
+        resolved_path=str(skill_dir),
+        reason="available",
         status="ok",
     )
 
@@ -94,19 +61,24 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args()
 
-    result = check_ai_collaborator()
+    results: List[DependencyResult] = [
+        check_mso_agent_collaboration(),
+    ]
 
-    if args.json:
-        print(json.dumps(result.__dict__))
-    else:
-        print(f"Dependency check: {result.name}")
-        print(f"  configured: {result.configured}")
-        print(f"  status: {result.status}")
-        print(f"  path: {result.resolved_path or '-'}")
-        print(f"  reason: {result.reason}")
+    has_error = False
+    for result in results:
+        if result.status == "error":
+            has_error = True
+        if args.json:
+            print(json.dumps(result.__dict__))
+        else:
+            print(f"Dependency check: {result.name}")
+            print(f"  configured: {result.configured}")
+            print(f"  status: {result.status}")
+            print(f"  path: {result.resolved_path or '-'}")
+            print(f"  reason: {result.reason}")
 
-    # ai-collaborator is optional by design
-    return 0
+    return 1 if has_error else 0
 
 
 if __name__ == "__main__":

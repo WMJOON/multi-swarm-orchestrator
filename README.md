@@ -577,7 +577,6 @@ Codex CLI(`gpt-5.3-codex-spark`, reasoning effort `xhigh`)로 2회 검증 수행
 ## 의존성
 
 - `Python 3.10+`
-- `ai-collaborator` — 외부 의존. 이 저장소에 포함되지 않으며, `mso-agent-collaboration`이 실행 시 호출합니다. 미설치 시 fallback 결과를 반환합니다.
 
 ---
 

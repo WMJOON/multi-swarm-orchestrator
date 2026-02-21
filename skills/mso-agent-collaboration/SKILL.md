@@ -1,7 +1,7 @@
 ---
 name: mso-agent-collaboration
 description: >
-  Adapts ticket inputs to ai-collaborator and integrates run output.
+  Dispatches tickets for multi-agent execution and integrates run output.
   Use when a ticket requires multi-agent execution.
   v0.0.3: Supports 6-agent role model with branching and merge dispatch.
 disable-model-invocation: true
@@ -40,8 +40,8 @@ disable-model-invocation: true
   - quorum 충족 시 merge commit 생성, 미달 시 HITL 에스컬레이션
 
 ### Phase 3) 실행
-- 외부 `ai-collaborator`를 호출하여 실행한다 (`run`/`batch`/`swarm`).
-- `ai-collaborator` 미설치 또는 실행 실패 시 `fallback` 결과를 생성하고 `requires_manual_confirmation=true` 반환
+- `dispatch_mode`에 따라 직접 실행한다 (`run`/`batch`/`swarm`).
+- 실행 실패 시 `fallback` 결과를 생성하고 `requires_manual_confirmation=true` 반환
 
 ### Phase 4) 결과 반영
 - `output-report`의 `status`를 ticket 상태로 반영
@@ -56,7 +56,6 @@ disable-model-invocation: true
 
 ### when_unsure
 - dispatch_mode 판별이 불명확하면 `run`(단일 실행)을 기본값으로 사용하고, 판단 근거를 audit payload에 기록한다.
-- 외부 런타임 탐색 실패 시 내장 번들로 fallback하고 `requires_manual_confirmation=true`를 반환한다.
 
 ---
 
