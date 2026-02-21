@@ -95,6 +95,10 @@ def main() -> int:
     p.add_argument("--db", default=None, help="SQLite DB path override")
     p.add_argument("--schema-version", default="1.5.0", help="Schema version tag")
     p.add_argument("--migrate", action="store_true", help="Run migration script after init")
+    p.add_argument("--run-id", default="", help="Run ID (accepted for pipeline compatibility)")
+    p.add_argument("--skill-key", default="msoal", help="Skill key (accepted for pipeline compatibility)")
+    p.add_argument("--case-slug", default="", help="Case slug (accepted for pipeline compatibility)")
+    p.add_argument("--observer-id", default="", help="Observer ID (accepted for pipeline compatibility)")
     args = p.parse_args()
 
     db = resolve_audit_db_path(args.db)
