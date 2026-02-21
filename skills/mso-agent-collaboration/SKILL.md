@@ -40,9 +40,8 @@ disable-model-invocation: true
   - quorum 충족 시 merge commit 생성, 미달 시 HITL 에스컬레이션
 
 ### Phase 3) 실행
-- 기본적으로 내장된 `v0.0.1/Skill/ai-collaborator`를 호출 (`run`/`batch`/`swarm`).
-- 외부 런타임 탐색은 비활성화되어 있으며, 내장 번들만 사용합니다.
-- 내장본/외부 모두 실패 시 `fallback` 결과를 생성하고 `requires_manual_confirmation=true` 반환
+- 외부 `ai-collaborator`를 호출하여 실행한다 (`run`/`batch`/`swarm`).
+- `ai-collaborator` 미설치 또는 실행 실패 시 `fallback` 결과를 생성하고 `requires_manual_confirmation=true` 반환
 
 ### Phase 4) 결과 반영
 - `output-report`의 `status`를 ticket 상태로 반영
