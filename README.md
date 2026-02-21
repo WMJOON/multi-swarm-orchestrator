@@ -146,12 +146,12 @@ work process는 `workflow의 프리셋(template)`에 가깝습니다. 반복적�
 
 ### Hand-off Templates
 
-작업 간 인수인계를 위한 표준 템플릿이 `templates/` 디렉토리에 정의되어 있습니다.
+작업 간 인수인계를 위한 표준 템플릿이 `skills/mso-task-context-management/templates/` 디렉토리에 정의되어 있습니다.
 
 | 템플릿 | 파일 | 용도 |
 |--------|------|------|
-| **PRD** | `templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
-| **SPEC** | `templates/SPEC.md` | 실행 계획 + Execution Policy + Ticket List + Check List. Scenario별 구체적 실행 명세 |
+| **PRD** | `skills/mso-task-context-management/templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
+| **SPEC** | `skills/mso-task-context-management/templates/SPEC.md` | 실행 계획 + Execution Policy + Ticket List + Check List. Scenario별 구체적 실행 명세 |
 
 PRD의 각 Scenario에는 `worktree branch: True|False`, `worktree id`, `worktree name` 메타데이터를 명시합니다.
 SPEC의 Execution Policy에는 Retry Policy, Timeout/Fallback, Human Override Point를 정의합니다.
@@ -281,15 +281,13 @@ flowchart LR
 ### 디렉토리 구조
 
 ```
-templates/                              ← v0.0.5: Hand-off Templates
-├── PRD.md                              ← PRD 표준 템플릿
-└── SPEC.md                             ← SPEC 표준 템플릿
 skills/
 ├── mso-skill-governance/            ← 계약 검증, 구조 점검
 ├── mso-workflow-topology-design/    ← 목표 → 노드 구조
 ├── mso-mental-model-design/        ← 노드별 사고 모델
 ├── mso-execution-design/           ← 실행 계획 생성 (execution_graph)
 ├── mso-task-context-management/    ← 티켓 관리
+│   └── templates/                  ← v0.0.5: Hand-off Templates (PRD.md, SPEC.md)
 ├── mso-agent-collaboration/        ← 멀티에이전트 디스패치 (branch/merge)
 ├── mso-agent-audit-log/            ← 감사 로그 (SQLite, node_snapshots, suggestion_history)
 │   └── history/                    ← v0.0.4: 스키마 버전 스냅샷
@@ -398,13 +396,13 @@ stateDiagram-v2
 | **Workspace Main 사용 원칙** | workflow topology 변경, orchestration 규칙 수정 등 핵심 변경은 반드시 worktree branch process를 통해서만 진행 |
 | **Worktree Branch Process** | "생각 → 미리보기 → 실행" 단계 분리. Mermaid 기반 topology preview를 실행 전 필수 생성 |
 | **Work Process 정의** | Planning Process(2-depth Planning)와 Discussion Process(Critique Discussion) 표준화 |
-| **Hand-off Templates** | PRD.md, SPEC.md 표준 템플릿 도입. `templates/` 디렉토리에 배치 |
+| **Hand-off Templates** | PRD.md, SPEC.md 표준 템플릿 도입. `skills/mso-task-context-management/templates/` 디렉토리에 배치 |
 
 ### 수정 파일 (4개)
 
 **템플릿 (신규)**
-- `templates/PRD.md` — **신규** (PRD 표준 템플릿: frontmatter + Object + Scenarios + Discussion)
-- `templates/SPEC.md` — **신규** (SPEC 표준 템플릿: frontmatter + Object + Execution Policy + Ticket List + Check List + Discussion)
+- `skills/mso-task-context-management/templates/PRD.md` — **신규** (PRD 표준 템플릿: frontmatter + Object + Scenarios + Discussion)
+- `skills/mso-task-context-management/templates/SPEC.md` — **신규** (SPEC 표준 템플릿: frontmatter + Object + Execution Policy + Ticket List + Check List + Discussion)
 
 **문서 (수정)**
 - `rules/ORCHESTRATOR.md` — v0.0.5: 용어 정의(0a, 0b), Worktree Branch Process(1c), Work Process(1d) 추가
@@ -415,7 +413,7 @@ stateDiagram-v2
 - **스키마**: 변경 없음. DB 스키마 v1.5.0 유지
 - **CC Contracts**: CC-01~CC-06 변경 없음
 - **스크립트**: 실행 스크립트 변경 없음. 기존 파이프라인 호환성 유지
-- **신규 추가만**: templates/ 디렉토리와 ORCHESTRATOR.md 프로세스 섹션은 순수 추가. 기존 동작에 영향 없음
+- **신규 추가만**: skills/mso-task-context-management/templates/ 디렉토리와 ORCHESTRATOR.md 프로세스 섹션은 순수 추가. 기존 동작에 영향 없음
 
 ---
 
