@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (v0.0.4)
+# Multi-Swarm Orchestrator (v0.0.5)
 
 복잡한 AI 에이전트 작업을 수행하다 보면 필연적으로 다음과 같은 문제들에 직면합니다.
 
@@ -88,6 +88,73 @@ Observability가 새로운 3가지 시그널을 자동 탐지합니다.
 ### 스크립트 독립화
 
 `init_db.py`와 `append_from_payload.py`가 `_shared` 모듈 의존 없이 독립 실행 가능합니다. DB 경로는 4단계 우선순위로 resolve됩니다: CLI 인자 → `MSO_WORKSPACE` 환경변수 → CWD 상위 탐색 → `~/.mso-context/audit_global.db`.
+
+---
+
+## v0.0.5: Worktree Branch Process와 Work Process
+
+v0.0.5는 **worktree 단위의 작업 관리를 명시적 프로세스로 정의**하고, **반복 작업 패턴을 구조화된 Work Process로 표준화**합니다.
+
+### 용어 도입
+
+worktree 단위의 작업을 명확히 관리하기 위해 다음 Git 개념을 명시적으로 도입합니다.
+
+| 용어 | 정의 |
+|------|------|
+| **branch** | worktree는 항상 특정 branch에 연결되어야 합니다. 실험·변경·검토가 필요한 모든 작업은 branch 단위로 분리하여 main의 안정성을 유지합니다. |
+| **pull request (PR)** | worktree branch에서 수행한 작업 결과를 workspace main으로 반영하기 위한 공식 검토 단위입니다. 계획·의도·변경 범위를 설명하는 커뮤니케이션 인터페이스로 취급합니다. |
+| **merge** | 검토가 완료된 branch를 main에 반영하는 행위입니다. workflow 변경이 포함된 경우에는 human approval을 필수로 요구합니다. |
+
+### Workspace Main 사용 원칙
+
+workspace의 main에서는 직접 작업을 지양해야 합니다. 다음 유형의 작업은 반드시 worktree branch process를 통해서만 진행해야 합니다.
+
+- workflow topology 변경
+- agent orchestration 규칙 수정
+- execution order, dependency, concurrency 변경
+- 공용 template(PRD, SPEC, Skill 등) 수정
+
+### Worktree Branch Process
+
+worktree branch process는 "생각 → 미리보기 → 실행"의 단계를 분리합니다.
+
+```mermaid
+flowchart LR
+    Preview["1. Topology Preview<br/>(Mermaid 다이어그램)"] --> HITL["2. Human Review<br/>(승인/반려)"]
+    HITL -->|승인| Plan["3. Plan MD 작성"]
+    HITL -->|반려| Preview
+    Plan --> Execute["4. Execution"]
+    Execute --> PR["5. Pull Request"]
+    PR --> Merge["6. Merge to Main"]
+```
+
+**Planning 단계**에서는 workflow를 직접 수정하지 않고, Mermaid 기반 topology preview를 먼저 생성합니다. 노드(Agent, Skill, Tool), Edge(Trigger, Dependency, Fan-out/Fan-in), 변경 전/후 비교를 포함하여 "이 변경이 전체 시스템에 어떤 파장을 일으키는가"를 실행 없이 검증합니다.
+
+### Work Process
+
+work process는 `workflow의 프리셋(template)`에 가깝습니다. 반복적으로 등장하는 작업 패턴을 구조화합니다.
+
+**Planning Process — 2-depth Planning**
+
+1. **에이전트 초안 작성**: 구조와 범위 정의 목적. "불확실한 지점"과 "추정한 전제"를 명시합니다.
+2. **Human-in-the-loop 검토**: 승인(계획 고정) 또는 반려(수정 요청). 책임 소재를 명확히 합니다.
+3. **Plan MD 작성**: 승인 기준으로 이후 모든 실행·토론·SPEC의 기준점(anchor)이 됩니다.
+
+**Discussion Process — Critique Discussion**
+
+판단 품질을 높이기 위한 구조적 마찰을 의도합니다. critique는 누락된 가정, 과도한 낙관, 시스템적 리스크(확장성·비용·통제성) 관점을 최소한으로 포함해야 합니다.
+
+### Hand-off Templates
+
+작업 간 인수인계를 위한 표준 템플릿이 `templates/` 디렉토리에 정의되어 있습니다.
+
+| 템플릿 | 파일 | 용도 |
+|--------|------|------|
+| **PRD** | `templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
+| **SPEC** | `templates/SPEC.md` | 실행 계획 + Execution Policy + Ticket List + Check List. Scenario별 구체적 실행 명세 |
+
+PRD의 각 Scenario에는 `worktree branch: True|False`, `worktree id`, `worktree name` 메타데이터를 명시합니다.
+SPEC의 Execution Policy에는 Retry Policy, Timeout/Fallback, Human Override Point를 정의합니다.
 
 ---
 
@@ -214,6 +281,9 @@ flowchart LR
 ### 디렉토리 구조
 
 ```
+templates/                              ← v0.0.5: Hand-off Templates
+├── PRD.md                              ← PRD 표준 템플릿
+└── SPEC.md                             ← SPEC 표준 템플릿
 skills/
 ├── mso-skill-governance/            ← 계약 검증, 구조 점검
 ├── mso-workflow-topology-design/    ← 목표 → 노드 구조
@@ -315,6 +385,37 @@ stateDiagram-v2
 
 `done`과 `cancelled`는 `터미널 상태(Terminal State)`입니다. 한 번 이 상태에 도달하면 이전 상태로 되돌릴 수 없습니다.
 또한, 동일한 상태로의 전이를 중복 요청하더라도 오류 없이 안전하게 무시됩니다(Idempotent).
+
+---
+
+## v0.0.5 변경 이력
+
+### 핵심 변경
+
+| 변경 | 내용 |
+|------|------|
+| **Worktree 용어 도입** | branch, pull request(PR), merge를 명시적 운영 개념으로 정의. worktree 단위 작업 관리 체계 확립 |
+| **Workspace Main 사용 원칙** | workflow topology 변경, orchestration 규칙 수정 등 핵심 변경은 반드시 worktree branch process를 통해서만 진행 |
+| **Worktree Branch Process** | "생각 → 미리보기 → 실행" 단계 분리. Mermaid 기반 topology preview를 실행 전 필수 생성 |
+| **Work Process 정의** | Planning Process(2-depth Planning)와 Discussion Process(Critique Discussion) 표준화 |
+| **Hand-off Templates** | PRD.md, SPEC.md 표준 템플릿 도입. `templates/` 디렉토리에 배치 |
+
+### 수정 파일 (4개)
+
+**템플릿 (신규)**
+- `templates/PRD.md` — **신규** (PRD 표준 템플릿: frontmatter + Object + Scenarios + Discussion)
+- `templates/SPEC.md` — **신규** (SPEC 표준 템플릿: frontmatter + Object + Execution Policy + Ticket List + Check List + Discussion)
+
+**문서 (수정)**
+- `rules/ORCHESTRATOR.md` — v0.0.5: 용어 정의(0a, 0b), Worktree Branch Process(1c), Work Process(1d) 추가
+- `README.md` — v0.0.5 반영: 용어, 프로세스, 템플릿, 디렉토리 구조, 변경 이력
+
+### 하위 호환 노트 (v0.0.4 → v0.0.5)
+
+- **스키마**: 변경 없음. DB 스키마 v1.5.0 유지
+- **CC Contracts**: CC-01~CC-06 변경 없음
+- **스크립트**: 실행 스크립트 변경 없음. 기존 파이프라인 호환성 유지
+- **신규 추가만**: templates/ 디렉토리와 ORCHESTRATOR.md 프로세스 섹션은 순수 추가. 기존 동작에 영향 없음
 
 ---
 
