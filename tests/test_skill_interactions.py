@@ -54,10 +54,10 @@ class TestContext:
 # ---------------------------------------------------------------------------
 
 def test_check_deps():
-    """mso-skill-governance: check_deps should always succeed (ai-collaborator is optional)."""
+    """mso-skill-governance: check_deps should verify mso-agent-collaboration."""
     proc = _run(["python3", _script("skills/mso-skill-governance/scripts/check_deps.py")])
     assert proc.returncode == 0, f"check_deps failed: {proc.stderr}"
-    assert "ai-collaborator" in proc.stdout
+    assert "mso-agent-collaboration" in proc.stdout
 
 
 def test_generate_topology():
@@ -224,8 +224,8 @@ def test_create_ticket_and_update_status():
         ctx.cleanup()
 
 
-def test_dispatch_fallback():
-    """mso-agent-collaboration: dispatch should produce fallback when ai-collaborator missing."""
+def test_dispatch_success():
+    """mso-agent-collaboration: dispatch should successfully dispatch a ticket."""
     ctx = TestContext("dispatch")
     try:
         task_root = ctx.tmpdir / "task-context"
@@ -245,12 +245,13 @@ def test_dispatch_fallback():
             "--case-slug", "test-dispatch",
         ])
         assert proc.returncode == 0
-        assert "FALLBACK" in proc.stdout
+        assert "DISPATCHED" in proc.stdout
 
         result_json = ticket.with_suffix(".agent-collaboration.json")
         assert result_json.exists()
         data = json.loads(result_json.read_text())
-        assert data.get("requires_manual_confirmation") is True
+        assert data.get("status") == "success"
+        assert data.get("dispatch_mode") == "run"
     finally:
         ctx.cleanup()
 
