@@ -60,7 +60,6 @@ def has_aaos_string(path: Path) -> bool:
     txt = path.read_text(encoding="utf-8", errors="ignore")
     needles = [
         "04_Agentic_AI_OS",
-        "04_AgentsTools/02_ai-collaborator",
         "cortex-agora",
         "AAOS_ROOT",
         "SKILL.meta.yaml",

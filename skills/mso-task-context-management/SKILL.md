@@ -28,6 +28,14 @@ disable-model-invocation: true
 ### when_unsure
 - 의존성이 불명하면 사용자가 확인하도록 warning + `blocked`로 남긴다.
 
+## Templates
+
+| 템플릿 | 파일 | 용도 |
+|--------|------|------|
+| **PRD** | [templates/PRD.md](templates/PRD.md) | "왜 지금 이 방식이어야 하는가"를 설명하는 문서 |
+| **SPEC** | [templates/SPEC.md](templates/SPEC.md) | 실행 계획 + 정책 + 티켓 리스트 + 체크리스트 |
+| **ADR** | [templates/ADR.md](templates/ADR.md) | 아키텍처 의사결정 기록. 결정·대안·기각 사유·영향 추적 |
+
 ## Scripts
 
 - `python3 scripts/bootstrap_node.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
