@@ -146,15 +146,16 @@ work process는 `workflow의 프리셋(template)`에 가깝습니다. 반복적�
 
 ### Hand-off Templates
 
-작업 간 인수인계를 위한 표준 템플릿이 `skills/mso-task-context-management/templates/` 디렉토리에 정의되어 있습니다.
+작업 간 인수인계를 위한 표준 템플릿이 각 스킬의 `templates/` 디렉토리에 정의되어 있습니다. 전체 인덱스는 `skills/mso-orchestrator/SKILL.md`에서 관리합니다.
 
-| 템플릿 | 파일 | 용도 |
-|--------|------|------|
-| **PRD** | `skills/mso-task-context-management/templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
-| **SPEC** | `skills/mso-task-context-management/templates/SPEC.md` | 실행 계획 + Execution Policy + Ticket List + Check List. Scenario별 구체적 실행 명세 |
-
-PRD의 각 Scenario에는 `worktree branch: True|False`, `worktree id`, `worktree name` 메타데이터를 명시합니다.
-SPEC의 Execution Policy에는 Retry Policy, Timeout/Fallback, Human Override Point를 정의합니다.
+| 템플릿 | 소속 스킬 | 용도 |
+|--------|----------|------|
+| **PRD** | mso-task-context-management | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
+| **SPEC** | mso-task-context-management | 실행 계획 + Execution Policy + Ticket List + Check List. Scenario별 구체적 실행 명세 |
+| **ADR** | mso-task-context-management | 아키텍처 의사결정 기록. 결정·대안·기각 사유·영향을 독립 문서로 추적 |
+| **HITL Escalation Brief** | mso-observability | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 구조화된 판단 요청서 |
+| **Run Retrospective** | mso-observability | Run 완료 후 메트릭·교훈·이월 항목을 종합하는 회고 문서 |
+| **Design Handoff Summary** | mso-execution-design | Design Swarm 산출물을 Ops Swarm에 전달하는 요약 문서 |
 
 ---
 
@@ -287,14 +288,16 @@ skills/
 ├── mso-mental-model-design/        ← 노드별 사고 모델
 ├── mso-execution-design/           ← 실행 계획 생성 (execution_graph)
 ├── mso-task-context-management/    ← 티켓 관리
-│   └── templates/                  ← v0.0.5: Hand-off Templates (PRD.md, SPEC.md)
+│   └── templates/                  ← Hand-off Templates (PRD.md, SPEC.md, ADR.md)
 ├── mso-agent-collaboration/        ← 멀티에이전트 디스패치 (branch/merge)
 ├── mso-agent-audit-log/            ← 감사 로그 (SQLite, node_snapshots, suggestion_history)
 │   └── history/                    ← v0.0.4: 스키마 버전 스냅샷
 ├── mso-observability/              ← 관찰, 환류 (패턴 분석 + v0.0.4 시그널)
+│   └── templates/                  ← Hand-off Templates (HITL_ESCALATION_BRIEF.md, RUN_RETROSPECTIVE.md)
+├── mso-orchestrator/               ← 메타 오케스트레이션 (라우팅, 프로세스, 템플릿 인덱스)
 └── _shared/                        ← 공통 유틸 (runtime_workspace.py)
 rules/
-└── ORCHESTRATOR.md                 ← 실행 순서 가이드
+└── ORCHESTRATOR.md                 ← 불변 정책 (운영 상세는 mso-orchestrator/SKILL.md)
 ```
 
 각 스킬 디렉토리에는 `SKILL.md` 파일이 포함되어 있습니다. 이 문서만 확인하면 해당 스킬의 목적, 입출력, 실행 절차를 모두 파악할 수 있으며, `modules/`나 `schemas/`는 상세 구현을 확인할 때만 참조하면 됩니다.
@@ -396,24 +399,37 @@ stateDiagram-v2
 | **Workspace Main 사용 원칙** | workflow topology 변경, orchestration 규칙 수정 등 핵심 변경은 반드시 worktree branch process를 통해서만 진행 |
 | **Worktree Branch Process** | "생각 → 미리보기 → 실행" 단계 분리. Mermaid 기반 topology preview를 실행 전 필수 생성 |
 | **Work Process 정의** | Planning Process(2-depth Planning)와 Discussion Process(Critique Discussion) 표준화 |
-| **Hand-off Templates** | PRD.md, SPEC.md 표준 템플릿 도입. `skills/mso-task-context-management/templates/` 디렉토리에 배치 |
+| **Hand-off Templates 확장** | PRD, SPEC, ADR, HITL Escalation Brief, Run Retrospective, Design Handoff Summary 6종. 각 스킬의 `templates/` 디렉토리에 배치 |
+| **mso-orchestrator 스킬 분리** | `rules/ORCHESTRATOR.md`를 불변 정책만 남기고, 운영 상세(라우팅, 프로세스, 에러 분류, 인프라)를 `skills/mso-orchestrator/SKILL.md`로 분리 |
 
-### 수정 파일 (4개)
+### 수정 파일
+
+**스킬 (신규)**
+- `skills/mso-orchestrator/SKILL.md` — **신규** (메타 오케스트레이션: 실행 모델, 라우팅, Work Process, 템플릿 인덱스, 에러 분류, 인프라 노트)
 
 **템플릿 (신규)**
-- `skills/mso-task-context-management/templates/PRD.md` — **신규** (PRD 표준 템플릿: frontmatter + Object + Scenarios + Discussion)
-- `skills/mso-task-context-management/templates/SPEC.md` — **신규** (SPEC 표준 템플릿: frontmatter + Object + Execution Policy + Ticket List + Check List + Discussion)
+- `skills/mso-task-context-management/templates/PRD.md` — **신규** (PRD 표준 템플릿)
+- `skills/mso-task-context-management/templates/SPEC.md` — **신규** (SPEC 표준 템플릿)
+- `skills/mso-task-context-management/templates/ADR.md` — **신규** (Architecture Decision Record)
+- `skills/mso-observability/templates/HITL_ESCALATION_BRIEF.md` — **신규** (HITL 에스컬레이션 판단 요청서)
+- `skills/mso-observability/templates/RUN_RETROSPECTIVE.md` — **신규** (Run 회고 문서)
+- `skills/mso-execution-design/templates/DESIGN_HANDOFF_SUMMARY.md` — **신규** (Design → Ops 핸드오프 요약)
 
 **문서 (수정)**
-- `rules/ORCHESTRATOR.md` — v0.0.5: 용어 정의(0a, 0b), Worktree Branch Process(1c), Work Process(1d) 추가
-- `README.md` — v0.0.5 반영: 용어, 프로세스, 템플릿, 디렉토리 구조, 변경 이력
+- `rules/ORCHESTRATOR.md` — 불변 정책만 남기고 축소 (`mso-runtime-policy`로 이름 변경)
+- `skills/mso-task-context-management/SKILL.md` — Templates 섹션 추가
+- `skills/mso-observability/SKILL.md` — Templates 섹션 추가
+- `skills/mso-execution-design/SKILL.md` — Templates 섹션 추가
+- `skills/_shared/runtime_workspace.py` — `mso-orchestrator`/`msoorch` 스킬 키 추가
+- `README.md` — v0.0.5 반영
 
 ### 하위 호환 노트 (v0.0.4 → v0.0.5)
 
 - **스키마**: 변경 없음. DB 스키마 v1.5.0 유지
 - **CC Contracts**: CC-01~CC-06 변경 없음
 - **스크립트**: 실행 스크립트 변경 없음. 기존 파이프라인 호환성 유지
-- **신규 추가만**: skills/mso-task-context-management/templates/ 디렉토리와 ORCHESTRATOR.md 프로세스 섹션은 순수 추가. 기존 동작에 영향 없음
+- **ORCHESTRATOR.md**: 기존 운영 상세는 `skills/mso-orchestrator/SKILL.md`로 이동. 정책 내용은 보존
+- **신규 추가만**: 템플릿, mso-orchestrator 스킬, 스킬 키 매핑은 순수 추가. 기존 동작에 영향 없음
 
 ---
 
