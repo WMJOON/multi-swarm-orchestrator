@@ -102,12 +102,12 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 
 ### Hand-off Templates (v0.0.5)
 
-작업 간 인수인계를 위한 표준 템플릿이 `templates/` 디렉토리에 정의되어 있다.
+작업 간 인수인계를 위한 표준 템플릿이 `skills/mso-task-context-management/templates/` 디렉토리에 정의되어 있다.
 
 | 템플릿 | 파일 | 용도 |
 |--------|------|------|
-| **PRD** | `templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명하는 문서. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
-| **SPEC** | `templates/SPEC.md` | 실행 계획 + 정책 + 티켓 리스트 + 체크리스트. 단일 Scenario의 구체적 실행 명세 |
+| **PRD** | `skills/mso-task-context-management/templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명하는 문서. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
+| **SPEC** | `skills/mso-task-context-management/templates/SPEC.md` | 실행 계획 + 정책 + 티켓 리스트 + 체크리스트. 단일 Scenario의 구체적 실행 명세 |
 
 PRD의 각 Scenario에는 worktree branch 필수 여부(`True|False`), worktree id, worktree name 메타데이터를 명시해야 한다.
 SPEC의 Execution Policy에는 Retry Policy, Timeout/Fallback, Human Override Point를 정의한다.
