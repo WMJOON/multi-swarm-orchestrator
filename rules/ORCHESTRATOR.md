@@ -102,15 +102,23 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 
 ### Hand-off Templates (v0.0.5)
 
-작업 간 인수인계를 위한 표준 템플릿이 `skills/mso-task-context-management/templates/` 디렉토리에 정의되어 있다.
+작업 간 인수인계를 위한 표준 템플릿이 각 스킬의 `templates/` 디렉토리에 정의되어 있다.
 
-| 템플릿 | 파일 | 용도 |
-|--------|------|------|
-| **PRD** | `skills/mso-task-context-management/templates/PRD.md` | "왜 지금 이 방식이어야 하는가"를 설명하는 문서. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
-| **SPEC** | `skills/mso-task-context-management/templates/SPEC.md` | 실행 계획 + 정책 + 티켓 리스트 + 체크리스트. 단일 Scenario의 구체적 실행 명세 |
+| 템플릿 | 파일 | 소속 스킬 | 용도 |
+|--------|------|----------|------|
+| **PRD** | `skills/mso-task-context-management/templates/PRD.md` | mso-task-context-management | "왜 지금 이 방식이어야 하는가"를 설명하는 문서. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
+| **SPEC** | `skills/mso-task-context-management/templates/SPEC.md` | mso-task-context-management | 실행 계획 + 정책 + 티켓 리스트 + 체크리스트. 단일 Scenario의 구체적 실행 명세 |
+| **ADR** | `skills/mso-task-context-management/templates/ADR.md` | mso-task-context-management | 아키텍처 의사결정 기록. 결정 사항·대안·기각 사유·영향을 독립 문서로 추적 |
+| **HITL Escalation Brief** | `skills/mso-observability/templates/HITL_ESCALATION_BRIEF.md` | mso-observability | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 구조화된 판단 요청서 |
+| **Run Retrospective** | `skills/mso-observability/templates/RUN_RETROSPECTIVE.md` | mso-observability | Run 완료 후 메트릭·교훈·이월 항목을 종합하는 회고 문서 |
+| **Design Handoff Summary** | `skills/mso-execution-design/templates/DESIGN_HANDOFF_SUMMARY.md` | mso-execution-design | Design Swarm 산출물(topology, mental model, execution plan)을 Ops Swarm에 전달하는 요약 문서 |
 
 PRD의 각 Scenario에는 worktree branch 필수 여부(`True|False`), worktree id, worktree name 메타데이터를 명시해야 한다.
 SPEC의 Execution Policy에는 Retry Policy, Timeout/Fallback, Human Override Point를 정의한다.
+ADR의 status는 `proposed → accepted → deprecated|superseded`로 전이하며, superseded 시 후속 ADR의 decision-id를 참조한다.
+HITL Escalation Brief는 `mso-observability`의 `module.hitl-interaction`이 `hitl_request` 이벤트 생성 시 함께 작성한다.
+Run Retrospective는 Run 종료 후 `mso-observability`의 `improvement_proposal`, `anomaly_detected` 이벤트를 기반으로 작성한다.
+Design Handoff Summary는 `mso-execution-design`이 CC-01, CC-02, CC-06 산출물을 모두 생성한 후 작성한다.
 
 ## 2) 단계 라우팅
 ### 2.1 Design pipeline
