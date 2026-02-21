@@ -200,6 +200,10 @@ def main() -> int:
     parser.add_argument("payload")
     parser.add_argument("--db", default=None, help="SQLite DB path override")
     parser.add_argument("--schema-version", default=SCHEMA_VERSION, help="Expected schema version")
+    parser.add_argument("--run-id", default="", help="Run ID (accepted for pipeline compatibility)")
+    parser.add_argument("--skill-key", default="msoal", help="Skill key (accepted for pipeline compatibility)")
+    parser.add_argument("--case-slug", default="", help="Case slug (accepted for pipeline compatibility)")
+    parser.add_argument("--observer-id", default="", help="Observer ID (accepted for pipeline compatibility)")
     args = parser.parse_args()
 
     payload = load_payload(Path(args.payload).expanduser().resolve())
