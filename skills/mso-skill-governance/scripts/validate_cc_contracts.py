@@ -42,6 +42,12 @@ def resolve_contract_output(paths: Dict[str, Any], contract_id: str) -> Path:
 
 def render_override(raw_override: str, paths: Dict[str, Any], fallback: Path) -> Path:
     text = raw_override.replace("{run_id}", paths["run_id"])
+    # Replace "workspace/" prefix with actual workspace root so that
+    # CC contract paths resolve correctly even when MSO_WORKSPACE_ROOT
+    # points to a non-default location.
+    if text.startswith("workspace/"):
+        ws_root = str(paths.get("workspace_root", "workspace"))
+        text = ws_root + text[len("workspace"):]
     path = Path(text).expanduser()
     if not path.is_absolute():
         path = (Path(paths["settings"]["project_root"]) / path).resolve()
