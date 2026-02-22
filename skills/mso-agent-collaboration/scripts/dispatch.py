@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Adapter entrypoint for ticket -> ai-collaborator bridge."""
+"""Dispatch entrypoint for ticket-based multi-agent collaboration."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -27,19 +25,6 @@ try:
     import yaml
 except Exception:  # pragma: no cover
     yaml = None
-
-
-def resolve_ai_root() -> Path | None:
-    bundled = (ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator").resolve()
-    if (bundled / "scripts" / "collaborate.py").exists():
-        return (ROOT / "skills" / "mso-agent-collaboration").resolve()
-
-    return None
-
-
-def expected_ai_root_hint() -> str:
-    expected = ROOT / "skills" / "mso-agent-collaboration" / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
-    return str(expected.resolve())
 
 
 def parse_frontmatter(path: Path) -> Dict[str, str]:
@@ -112,7 +97,7 @@ def build_payload(fm: Dict[str, str], mode: str, artifact_uri: str, run_id: str)
     owner = fm.get("owner", "agent")
 
     safe_title = title.replace(":", " - ").replace("\n", " ").strip() or "ticket"
-    task_spec = f"codex:{safe_title}:{task_id}"
+    task_spec = f"msoac:{safe_title}:{task_id}"
     handoff_payload: Dict[str, Any] = {
         "run_id": run_id,
         "task_id": task_id,
@@ -138,78 +123,20 @@ def build_payload(fm: Dict[str, str], mode: str, artifact_uri: str, run_id: str)
     return task_spec, handoff_payload
 
 
-def run_cli(ai_root: Path, mode: str, task_spec: str) -> Dict[str, Any]:
-    script = ai_root / "v0.0.1" / "Skill" / "ai-collaborator" / "scripts" / "collaborate.py"
-    if not script.exists():
-        raise FileNotFoundError(f"collaborator script missing: {script}")
+def execute_dispatch(mode: str, task_spec: str, handoff_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute dispatch directly within mso-agent-collaboration.
 
-    task_timeout_s = int(os.environ.get("MSO_COLLAB_TASK_TIMEOUT", "30"))
-    proc_timeout_s = int(os.environ.get("MSO_COLLAB_PROC_TIMEOUT", str(max(60, task_timeout_s + 20))))
-
-    base_cmd = [
-        "python3",
-        str(script),
-        "run",
-        "--provider",
-        "codex",
-        "--tasks",
-        task_spec,
-        "--timeout",
-        str(task_timeout_s),
-        "--format",
-        "json",
-        "--no-fail",
-    ]
-    if mode == "batch":
-        base_cmd.extend(["--parallel", "3"])
-
-    proc = subprocess.run(base_cmd, capture_output=True, text=True, timeout=proc_timeout_s)
-    if proc.returncode != 0:
-        return {
-            "status": "failure",
-            "raw_stdout": proc.stdout.strip(),
-            "raw_stderr": proc.stderr.strip(),
-            "error": f"cli_exit={proc.returncode}",
-        }
-
-    if not proc.stdout.strip():
-        return {"status": "success", "raw_stdout": "", "raw_stderr": proc.stderr.strip()}
-
-    try:
-        return json.loads(proc.stdout)
-    except Exception:
-        return {"status": "success", "raw_stdout": proc.stdout.strip(), "raw_stderr": proc.stderr.strip()}
-
-
-def build_fallback(task_id: str, reason: str, artifact_uri: str, run_id: str, mode: str) -> Dict[str, Any]:
+    This is the core execution point. In the current document-guided orchestration
+    model, dispatch records the handoff payload and marks the task as ready for
+    agent execution. Actual agent invocation is coordinated by the orchestrator.
+    """
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
-        "dispatch_mode": mode,
-        "handoff_payload": {
-            "task_id": task_id,
-            "mode": mode,
-            "artifact_uri": artifact_uri,
-            "requires_manual_confirmation": True,
-            "fallback_reason": reason,
-            "run_id": run_id,
-        },
-        "requires_manual_confirmation": True,
-        "fallback_reason": reason,
-        "status": "in_progress",
-        "next_actions": ["manual_dispatch", "validate_manual_route"],
-        "artifact_uri": artifact_uri,
-        "run_id": run_id,
-        "errors": [reason],
-        "warnings": ["ai-collaborator runtime missing or unavailable"],
-        "metadata": {
-            "schema_version": "0.0.2",
-            "cc_coupling_id": "CC-04",
-            "required_skill_ids": [
-                "mso-agent-collaboration",
-                "mso-task-context-management",
-                "mso-agent-audit-log",
-            ],
-            "missing_dependency_action": "manual_required",
-        },
+        "status": "dispatched",
+        "mode": mode,
+        "task_spec": task_spec,
+        "dispatched_at": now,
+        "handoff_payload": handoff_payload,
     }
 
 
@@ -227,34 +154,41 @@ def dispatch_one(ticket: Path, requested_mode: str | None, run_id: str) -> Tuple
     handoff_payload["dispatch_mode"] = mode
     handoff_payload["requires_manual_confirmation"] = False
 
-    ai_root = resolve_ai_root()
     out_json_path = ticket.with_suffix(".agent-collaboration.json")
 
-    if not ai_root:
-        result = build_fallback(
-            task_id,
-            f"embedded ai-collaborator runtime missing: {expected_ai_root_hint()}",
-            artifact_uri,
-            run_id,
-            mode,
-        )
-        out_json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"FALLBACK: {ticket}")
-        return 0, False
-
     try:
-        cli_result = run_cli(ai_root, mode, task_spec)
+        dispatch_result = execute_dispatch(mode, task_spec, handoff_payload)
     except Exception as exc:
-        result = build_fallback(task_id, f"collaborator execution failed: {exc}", artifact_uri, run_id, mode)
+        result = {
+            "dispatch_mode": mode,
+            "handoff_payload": handoff_payload,
+            "requires_manual_confirmation": True,
+            "fallback_reason": f"dispatch execution failed: {exc}",
+            "status": "in_progress",
+            "next_actions": ["manual_dispatch"],
+            "artifact_uri": artifact_uri,
+            "run_id": run_id,
+            "errors": [str(exc)],
+            "warnings": [],
+            "metadata": {
+                "schema_version": "0.0.2",
+                "cc_coupling_id": "CC-04",
+                "required_skill_ids": [
+                    "mso-agent-collaboration",
+                    "mso-task-context-management",
+                    "mso-agent-audit-log",
+                ],
+                "missing_dependency_action": "manual_required",
+            },
+        }
         out_json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"FALLBACK: {ticket}")
         return 0, False
 
-    requires_manual = False
+    requires_manual = dispatch_result.get("status") != "dispatched"
     fallback_reason = None
-    if isinstance(cli_result, dict) and cli_result.get("status") == "failure":
-        requires_manual = True
-        fallback_reason = cli_result.get("error", "unknown collaborator failure")
+    if requires_manual:
+        fallback_reason = dispatch_result.get("error", "dispatch failed")
 
     summary = {
         "dispatch_mode": mode,
@@ -264,8 +198,8 @@ def dispatch_one(ticket: Path, requested_mode: str | None, run_id: str) -> Tuple
         "status": "success" if not requires_manual else "in_progress",
         "run_id": run_id,
         "artifact_uri": artifact_uri,
-        "errors": cli_result.get("errors", []) if isinstance(cli_result, dict) else [],
-        "warnings": cli_result.get("warnings", []) if isinstance(cli_result, dict) else [],
+        "errors": [],
+        "warnings": [],
         "next_actions": ["monitor"],
         "metadata": {
             "schema_version": "0.0.2",
