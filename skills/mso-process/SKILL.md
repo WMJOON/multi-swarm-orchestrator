@@ -1,17 +1,16 @@
 ---
-name: mso-orchestrator
+name: mso-process
 description: |
-  Cross-cutting orchestration skill for multi-swarm coordination.
-  Defines execution model, phase routing, work processes, hand-off templates index,
-  error taxonomy, callback contracts, and infrastructure conventions.
-  Not affiliated with any specific swarm — operates as meta-coordination layer.
+  Defines work processes, hand-off templates, phase routing, callback contracts,
+  error taxonomy, and infrastructure conventions for multi-swarm execution.
+  Loaded by the Governance layer as a process/convention reference.
 disable-model-invocation: true
 version: 0.0.5
 ---
 
-# mso-orchestrator
+# mso-process
 
-> 이 스킬은 Design Swarm과 Ops Swarm 위에서 전체 흐름을 조율하는 메타 스킬이다.
+> 이 스킬은 MSO 런타임의 프로세스·규약·템플릿을 정의한다.
 > 불변 정책은 `rules/ORCHESTRATOR.md`에, 운영 상세는 이 문서에 정의한다.
 
 ---
