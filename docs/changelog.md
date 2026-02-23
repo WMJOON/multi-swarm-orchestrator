@@ -11,20 +11,21 @@
 | **Worktree Branch Process** | "생각 → 미리보기 → 실행" 단계 분리. Mermaid 기반 topology preview를 실행 전 필수 생성 |
 | **Work Process 정의** | Planning Process(2-depth Planning)와 Discussion Process(Critique Discussion) 표준화 |
 | **Hand-off Templates 확장** | PRD, SPEC, ADR, HITL Escalation Brief, Run Retrospective, Design Handoff Summary 6종 |
-| **mso-orchestrator 스킬 분리** | `rules/ORCHESTRATOR.md`를 불변 정책만 남기고, 운영 상세를 `skills/mso-orchestrator/SKILL.md`로 분리 |
+| **mso-process-template 스킬 분리** | `rules/ORCHESTRATOR.md`를 불변 정책만 남기고, 운영 상세를 `skills/mso-process-template/SKILL.md`로 분리 |
 
 ### 수정 파일
 
 **스킬 (신규)**
-- `skills/mso-orchestrator/SKILL.md` — 메타 오케스트레이션: 실행 모델, 라우팅, Work Process, 템플릿 인덱스, 에러 분류, 인프라 노트
+- `skills/mso-process-template/SKILL.md` — 프로세스 규약, Hand-off 템플릿 레퍼런스
+- `skills/mso-process-template/core.md` — 실행 모델, 라우팅, Work Process, 에러 분류, 인프라 노트
 
-**템플릿 (신규)**
-- `skills/mso-task-context-management/templates/PRD.md`
-- `skills/mso-task-context-management/templates/SPEC.md`
-- `skills/mso-task-context-management/templates/ADR.md`
-- `skills/mso-observability/templates/HITL_ESCALATION_BRIEF.md`
-- `skills/mso-observability/templates/RUN_RETROSPECTIVE.md`
-- `skills/mso-execution-design/templates/DESIGN_HANDOFF_SUMMARY.md`
+**템플릿 (SoT: mso-process-template/templates/)**
+- `skills/mso-process-template/templates/PRD.md`
+- `skills/mso-process-template/templates/SPEC.md`
+- `skills/mso-process-template/templates/ADR.md`
+- `skills/mso-process-template/templates/HITL_ESCALATION_BRIEF.md`
+- `skills/mso-process-template/templates/RUN_RETROSPECTIVE.md`
+- `skills/mso-process-template/templates/DESIGN_HANDOFF_SUMMARY.md`
 
 ### 하위 호환 (v0.0.4 → v0.0.5)
 

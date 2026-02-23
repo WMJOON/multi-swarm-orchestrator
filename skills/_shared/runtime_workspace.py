@@ -46,7 +46,7 @@ SKILL_KEY_ENUM = {
     "msoac",
     "msoal",
     "msoobs",
-    "msoorch",
+    "msopt",
 }
 
 RUN_ID_PATTERN = re.compile(r"^(?P<date>\d{8})-(?P<skill_key>[a-z]+)-(?P<case_slug>[a-z0-9-]{1,40})$")
@@ -60,7 +60,7 @@ DEFAULT_SKILL_KEY_MAP: Dict[str, str] = {
     "mso-agent-collaboration": "msoac",
     "mso-agent-audit-log": "msoal",
     "mso-observability": "msoobs",
-    "mso-orchestrator": "msoorch",
+    "mso-process-template": "msopt",
     "msogov": "msogov",
     "msowd": "msowd",
     "msomm": "msomm",
@@ -69,7 +69,7 @@ DEFAULT_SKILL_KEY_MAP: Dict[str, str] = {
     "msoac": "msoac",
     "msoal": "msoal",
     "msoobs": "msoobs",
-    "msoorch": "msoorch",
+    "msopt": "msopt",
 }
 
 DEFAULT_POLICY: Dict[str, Any] = {

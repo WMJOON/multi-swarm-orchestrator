@@ -15,7 +15,7 @@ skills/
 │   └── history/                     ← 스키마 버전 스냅샷
 ├── mso-observability/               ← 관찰, 환류 (패턴 분석)
 │   └── templates/                   ← HITL_ESCALATION_BRIEF.md, RUN_RETROSPECTIVE.md
-├── mso-orchestrator/                ← 메타 오케스트레이션 (라우팅, 프로세스, 템플릿 인덱스)
+├── mso-process-template/            ← 프로세스 규약, Hand-off 템플릿 SoT
 └── _shared/                         ← 공통 유틸 (runtime_workspace.py)
 rules/
 └── ORCHESTRATOR.md                  ← 불변 정책
