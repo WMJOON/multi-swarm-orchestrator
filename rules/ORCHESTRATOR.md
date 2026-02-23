@@ -1,22 +1,24 @@
 ---
-description: |
-  Immutable policies and invariants for multi-swarm orchestrator v0.0.5 runtime.
-alwaysApply: true
+name: mso-runtime-policy
+description: Immutable policies and invariants for multi-swarm orchestrator v0.0.5 runtime.
+type: cursor-rule
+version: 0.0.5
+always_apply: false
 ---
 
 # Multi-Swarm Orchestrator Policy (v0.0.5)
 
-> 이 문서는 불변 정책만 정의한다. 운영 상세(라우팅, 프로세스, 템플릿, 에러 분류, 인프라)는 `skills/mso-orchestrator/SKILL.md`를 참조한다.
+> 이 문서는 불변 정책만 정의한다. 운영 상세(라우팅, 프로세스, 템플릿, 에러 분류, 인프라)는 `skills/mso-process-template/SKILL.md`를 참조한다.
 
 ## 1) 용어 정의
 
 ### Worktree 관련 용어
 
-| 용어                  | 정의                                                                                                                                                                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **branch**            | worktree는 항상 특정 branch에 연결되어야 한다. branch는 작업의 논리적 단위를 의미하며, 실험·변경·검토가 필요한 모든 작업은 branch 단위로 분리해야 한다. 이를 통해 main의 안정성을 유지하고, 병렬 작업을 가능하게 한다. |
-| **pull request (PR)** | worktree branch에서 수행한 작업 결과를 workspace main으로 반영하기 위한 공식 검토 단위다. PR은 단순 병합 요청이 아니라, 계획·의도·변경 범위를 설명하는 커뮤니케이션 인터페이스로 취급한다.                             |
-| **merge**             | 검토가 완료된 branch를 main에 반영하는 행위다. merge는 자동화될 수 있으나, workflow 변경이 포함된 경우에는 human approval을 필수로 요구해야 한다.                                                                      |
+| 용어 | 정의 |
+|------|------|
+| **branch** | worktree는 항상 특정 branch에 연결되어야 한다. branch는 작업의 논리적 단위를 의미하며, 실험·변경·검토가 필요한 모든 작업은 branch 단위로 분리해야 한다. 이를 통해 main의 안정성을 유지하고, 병렬 작업을 가능하게 한다. |
+| **pull request (PR)** | worktree branch에서 수행한 작업 결과를 workspace main으로 반영하기 위한 공식 검토 단위다. PR은 단순 병합 요청이 아니라, 계획·의도·변경 범위를 설명하는 커뮤니케이션 인터페이스로 취급한다. |
+| **merge** | 검토가 완료된 branch를 main에 반영하는 행위다. merge는 자동화될 수 있으나, workflow 변경이 포함된 경우에는 human approval을 필수로 요구해야 한다. |
 
 ## 2) Workspace Main 사용 원칙
 
@@ -42,31 +44,34 @@ workspace의 main에서는 직접 작업을 지양해야 한다. 특히 다음 �
 - 무한 재시도 금지 — 모든 retry에는 `max_retry` 상한이 필수
 - CC 검증/정합 실패 시 `70_governance` 결과 기록 후 `manifest.status=failed`
 
-## 5) Role-Skill 바인딩 정책
+## 5) Phase × Swarm 실행 흐름
 
-에이전트 세션/인스턴스는 자신의 역할에 따라 아래 스킬을 반드시 로드해야 한다.
-운영 상세(스킬 간 데이터 흐름, 경로 규약)는 `skills/mso-process/SKILL.md` 섹션 5를 참조한다.
+```mermaid
+sequenceDiagram
+    participant Gov as Governance
+    participant DS as Design Swarm
+    participant Ops as Ops Swarm
+    participant Infra as Infra
 
-### 5.1 Swarm(파이프라인) 기준
+    Note over Gov,Infra: Ph 1 — Provisioning
+    Gov->>Ops: mso-process
+    Ops->>Ops: mso-task-context-management
 
-| Swarm        | Required Skills                                                                   |
-| ------------ | --------------------------------------------------------------------------------- |
-| Design Swarm | `mso-workflow-topology-design`, `mso-mental-model-design`, `mso-execution-design` |
-| Ops Swarm    | `mso-task-context-management`, `mso-agent-collaboration`                          |
-| Infra        | `mso-agent-audit-log`, `mso-observability`                                        |
-| Governance   | `mso-skill-governance`, `mso-process`                                             |
+    Note over Gov,Infra: Ph 2 — Execution & Commit
+    DS->>Ops: mso-execution-design
+    Ops->>Ops: mso-agent-collaboration
+    Ops->>Infra: mso-agent-audit-log
 
-### 5.2 Phase × Role 기준
+    Note over Gov,Infra: Ph 3 — Branching & Merge
+    DS->>DS: mso-workflow-topology-design
+    DS->>Ops: mso-execution-design
+    Infra->>Infra: mso-observability
+    Gov->>Infra: mso-skill-governance
 
-| Phase | Role               | Swarm      | Required Skills                                  |
-| ----- | ------------------ | ---------- | ------------------------------------------------ |
-| 1     | Provisioning Agent | Ops        | `mso-task-context-management`                    |
-| 2     | Execution Agent    | Ops        | `mso-agent-collaboration`, `mso-agent-audit-log` |
-| 2     | Handoff Agent      | Ops        | `mso-execution-design`                           |
-| 3     | Branching Agent    | Design     | `mso-workflow-topology-design`                   |
-| 3     | Handoff Agent      | Ops        | `mso-execution-design`                           |
-| 3     | Critic/Judge Agent | Infra      | `mso-observability`                              |
-| 4     | Sentinel Agent     | Infra      | `mso-agent-audit-log`, `mso-observability`       |
+    Note over Gov,Infra: Ph 4 — Sentinel / Fallback
+    Infra->>Infra: mso-agent-audit-log
+    Infra->>Infra: mso-observability
+    Infra->>Gov: Run Retrospective
+```
 
-- 동일 role이 복수 phase에 등장할 경우 스킬 집합은 합산된다.
-- Swarm 기준과 Phase×Role 기준이 충돌하면 Phase×Role 기준을 우선한다.
+> 전체 매트릭스(실행 방식 · Phase · Swarm · Role): `docs/usage_matrix.md`

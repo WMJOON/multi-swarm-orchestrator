@@ -17,7 +17,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 | mso-agent-audit-log | `single` | 인프라 | 감사 로그 기록 · SQLite DB 삽입 |
 | mso-observability | `single`, `parallel`(복수 Run 동시 점검) | 인프라 | 관측 / 피드백 / HITL 에스컬레이션 |
 | mso-skill-governance | `single` | 거버넌스 | CC 계약 검증 · 스킬 정합성 감사 |
-| mso-process | `cross-swarm` | 거버넌스 | 전 Swarm 공통 프로세스 규약 · 템플릿 기준 |
+| mso-process-template | `cross-swarm` | 거버넌스 | 전 Swarm 공통 프로세스 규약 · 템플릿 기준 |
 
 ### 실행 방식 가이드
 
@@ -42,7 +42,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 | mso-agent-audit-log | ⚪ | ✅(Snapshot 기록) | ⚪ | ⚪ | ⚪ | ⚪ | ✅(에러 로그) |
 | mso-observability | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ✅ | ✅ |
 | mso-skill-governance | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ✅(CC 검증) | ⚪ |
-| mso-process | ✅(초기화 규약) | ✅(실행 규약) | ✅(Handoff 템플릿) | ✅(Branch 규약) | ✅(Handoff 템플릿) | ✅(검토 규약) | ✅(복구 규약) |
+| mso-process-template | ✅(초기화 규약) | ✅(실행 규약) | ✅(Handoff 템플릿) | ✅(Branch 규약) | ✅(Handoff 템플릿) | ✅(검토 규약) | ✅(복구 규약) |
 
 > `✅` : 해당 Phase/Role에서 직접 실행 · 필수 로드 / `⚪` : 보조 또는 비개입
 
@@ -77,7 +77,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 | mso-agent-audit-log | ⚪ | ⚪ | ✅ | ⚪ |
 | mso-observability | ⚪ | ⚪ | ✅ | ⚪ |
 | mso-skill-governance | ⚪ | ⚪ | ⚪ | ✅ |
-| mso-process | ⚪ | ⚪ | ⚪ | ✅ |
+| mso-process-template | ⚪ | ⚪ | ⚪ | ✅ |
 
 > `✅` = 1차 소속 Swarm (1개), `⚪` = 비핵심 / 간접 지원
 
@@ -94,7 +94,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 
 ## 4) 운영 권장 순서
 
-- **Run 시작 시**: `mso-process` → `mso-workflow-topology-design` → `mso-mental-model-design` → `mso-execution-design`
+- **Run 시작 시**: `mso-process-template` → `mso-workflow-topology-design` → `mso-mental-model-design` → `mso-execution-design`
 - **실행 단계**: `mso-task-context-management` → `mso-agent-collaboration` + `mso-agent-audit-log`
 - **분기/합류 시**: `mso-workflow-topology-design` + `mso-execution-design` + `mso-observability`
 - **이상 탐지 / Fallback**: `mso-agent-audit-log` + `mso-observability` + `mso-skill-governance`
@@ -112,17 +112,17 @@ sequenceDiagram
     participant Infra as Infra
 
     Note over Gov,Infra: Phase 1 — Worktree Initialization
-    Gov->>Ops: mso-process (초기화 규약)
+    Gov->>Ops: mso-process-template (초기화 규약)
     Ops->>Ops: mso-task-context-management<br/>[Provisioning Agent]
 
     Note over Gov,Infra: Phase 2 — Node Execution & Commit
-    Gov->>Ops: mso-process (실행 규약)
+    Gov->>Ops: mso-process-template (실행 규약)
     DS->>Ops: mso-execution-design<br/>[Handoff Agent → Handoff Contract]
     Ops->>Ops: mso-agent-collaboration<br/>[Execution Agent]
     Ops->>Infra: mso-agent-audit-log<br/>[Node Snapshot Commit]
 
     Note over Gov,Infra: Phase 3 — Dynamic Branching & Merge
-    Gov->>DS: mso-process (Branch 규약)
+    Gov->>DS: mso-process-template (Branch 규약)
     DS->>DS: mso-workflow-topology-design<br/>[Branching Agent]
     DS->>DS: mso-mental-model-design<br/>[분기 모델 보정]
     DS->>Ops: mso-execution-design<br/>[Handoff Agent → Fan-in Contract]

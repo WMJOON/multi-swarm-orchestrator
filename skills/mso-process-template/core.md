@@ -1,17 +1,4 @@
----
-name: mso-process
-description: |
-  Defines work processes, hand-off templates, phase routing, callback contracts,
-  error taxonomy, and infrastructure conventions for multi-swarm execution.
-  Loaded by the Governance layer as a process/convention reference.
-disable-model-invocation: true
-version: 0.0.5
----
-
-# mso-process
-
-> 이 스킬은 MSO 런타임의 프로세스·규약·템플릿을 정의한다.
-> 불변 정책은 `rules/ORCHESTRATOR.md`에, 운영 상세는 이 문서에 정의한다.
+# mso-process-template — 상세 프로세스 정의
 
 ---
 
@@ -79,6 +66,51 @@ work process는 `workflow의 프리셋(template)`에 가깝다. 반복적으로 
 
 discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 위한 구조적 마찰을 의도한다.
 
+**실행 조건**: PRD/SPEC의 `discussion-required: true`인 경우에만 멀티 모델 fan-out을 실행한다.
+단순 케이스에서 무분별한 멀티 에이전트 호출을 방지하기 위한 정책이다.
+
+#### discussion-required 판단 기준
+
+`true`로 설정해야 하는 경우:
+
+복합 추론:
+- 복수의 설계 대안 중 우열이 불명확한 경우
+- 단일 모델 추론의 편향 가능성이 높은 경우 (확증 편향 위험, 신규 도메인/미지 영역)
+
+비가역성:
+- 외부 서비스 호출·프로덕션 배포가 포함된 실행 (롤백 불가)
+- 데이터 삭제 또는 스키마 파괴적 변경
+
+영향 범위:
+- 단일 결정이 복수 스킬/노드의 동작을 동시에 변경
+- 공용 API·스키마·인터페이스 계약 변경 (downstream 전파)
+- Merge policy 변경 (fan-in 합의 기준 자체가 달라지는 경우)
+- topology 재설계, 공용 규칙 변경
+
+불확실성:
+- HITL escalation 이후 재시작 케이스 (이미 한 번 판단 실패) → 자동으로 `true`
+- Fallback 경로가 설계되지 않은 상태에서 실행 진입
+
+비용/성능:
+- 토큰·API 비용이 예상 대비 현저히 초과될 가능성
+- 고동시성·대규모 데이터 처리 경로 첫 설계
+
+`false`로 유지해도 되는 경우 (기본값):
+- 범위가 명확한 단순 리서치 또는 병렬 정보 수집
+- 실행 절차가 확정된 routine 태스크
+- 단일 SPEC 내 독립적인 구현 작업
+
+#### 권고 트리거 케이스 (참고용)
+
+| trigger | 설명 | 권고 여부 |
+|---------|------|----------|
+| `critique` | 설계안 전반의 구조적 결함 탐색 | 권고 |
+| `risk-review` | 리스크·가정 검토, 고위험 결정 전 | 권고 |
+| `design-compare` | 복수 설계 대안 비교 | 선택 |
+| `custom` | 사용자 정의 | 선택 |
+
+#### 실행 절차
+
 1. Hand-off Template 결과를 입력으로 critique process를 실행한다.
 2. critique는 다음 관점을 최소한으로 포함해야 한다:
    - 누락된 가정
@@ -88,20 +120,9 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 
 ---
 
-## 4) Hand-off Templates
+## 4) Hand-off Templates 사용 규칙
 
-작업 간 인수인계를 위한 표준 템플릿이 각 스킬의 `templates/` 디렉토리에 정의되어 있다.
-
-| 템플릿 | 파일 | 소속 스킬 | 용도 |
-|--------|------|----------|------|
-| **PRD** | `skills/mso-task-context-management/templates/PRD.md` | mso-task-context-management | "왜 지금 이 방식이어야 하는가"를 설명하는 문서. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
-| **SPEC** | `skills/mso-task-context-management/templates/SPEC.md` | mso-task-context-management | 실행 계획 + 정책 + 티켓 리스트 + 체크리스트. 단일 Scenario의 구체적 실행 명세 |
-| **ADR** | `skills/mso-task-context-management/templates/ADR.md` | mso-task-context-management | 아키텍처 의사결정 기록. 결정 사항·대안·기각 사유·영향을 독립 문서로 추적 |
-| **HITL Escalation Brief** | `skills/mso-observability/templates/HITL_ESCALATION_BRIEF.md` | mso-observability | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 구조화된 판단 요청서 |
-| **Run Retrospective** | `skills/mso-observability/templates/RUN_RETROSPECTIVE.md` | mso-observability | Run 완료 후 메트릭·교훈·이월 항목을 종합하는 회고 문서 |
-| **Design Handoff Summary** | `skills/mso-execution-design/templates/DESIGN_HANDOFF_SUMMARY.md` | mso-execution-design | Design Swarm 산출물(topology, mental model, execution plan)을 Ops Swarm에 전달하는 요약 문서 |
-
-### 템플릿 사용 규칙
+템플릿 파일은 [templates/](templates/) 디렉토리에 위치한다.
 
 - PRD의 각 Scenario에는 worktree branch 필수 여부(`True|False`), worktree id, worktree name 메타데이터를 명시해야 한다.
 - SPEC의 Execution Policy에는 Retry Policy, Timeout/Fallback, Human Override Point를 정의한다.
@@ -114,44 +135,34 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 
 ## 5) 단계 라우팅
 
+자세한 파이프라인 정의는 [pipelines.md](pipelines.md) 참조.
+
 ### 5.1 Design pipeline
-- `mso-workflow-topology-design`
-- `mso-mental-model-design`
-- `mso-execution-design`
+- `mso-workflow-topology-design` → `mso-mental-model-design` → `mso-execution-design`
 
 경로:
 `workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json`
-`→ workspace/.mso-context/active/<Run ID>/20_mental-model/mental_model_bundle.json`
-`→ workspace/.mso-context/active/<Run ID>/30_execution/execution_plan.json`
+`→ 20_mental-model/mental_model_bundle.json`
+`→ 30_execution/execution_plan.json`
 
 ### 5.2 Ops pipeline
-- `mso-task-context-management` → 티켓 생성/상태 관리
-- `mso-agent-collaboration` → 선택적 실행 레이어 (`run`/`batch`/`swarm`)
+- `mso-task-context-management` → `mso-agent-collaboration`
 
 경로:
 `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/tickets/TKT-0001.md`
-`→ mso-agent-collaboration`
 `→ *.agent-collaboration.json`
 
 ### 5.3 Infra pipeline
-- `mso-agent-audit-log`(로그 소스)
-- `mso-observability`(관측/feedback)
+- `mso-agent-audit-log` → `mso-observability`
 
 경로:
 `workspace/.mso-context/audit_global.db` (v0.0.5 global DB)
-`workspace/.mso-context/active/<Run ID>/50_audit/agent_log.db` (레거시/Run-local 호환)
-`→ workspace/.mso-context/active/<Run ID>/60_observability/callback-*.json`
-`→ mso-observability`
+`→ active/<Run ID>/60_observability/callback-*.json`
 
 ### 5.4 Governance pipeline
-- `mso-skill-governance`
-
-경로:
-`workspace/.mso-context/active/<Run ID>/70_governance/`
+- `mso-skill-governance` → `workspace/.mso-context/active/<Run ID>/70_governance/`
 
 ### 5.5 런타임 Phase (v0.0.5)
-
-4단계 × 6 에이전트 역할 매핑:
 
 | Phase | 단계 | 에이전트 역할 | 핵심 업무 |
 |-------|------|-------------|----------|
@@ -176,8 +187,6 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 
 ## 7) 에러/폴백 규칙
 
-에러 분류 체계(Error Taxonomy)에 따라 행동한다:
-
 | error_type | severity | action | target_commit | max_retry | requires_human |
 |-----------|----------|--------|---------------|-----------|----------------|
 | `schema_validation_error` | high | checkout | 절대 SHA | 2 | false |
@@ -201,13 +210,9 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 4. `python3 skills/mso-skill-governance/scripts/validate_gov.py --skill-key msogov --case-slug "..." --json`
 5. `python3 skills/mso-skill-governance/scripts/validate_all.py --case-slug "..."`
 
-`validate_all`/`run_sample_pipeline` 등 스크립트는 Runtime Workspace 정책을 준수해 산출물을 생성/검증한다.
-
 ---
 
 ## 9) Storage & Cleanup Lifecycle Policy
-
-Worktree 기반 실행 시 파일 용량과 잔존물 관리 규칙:
 
 | 정책 | 기본값 | 설명 |
 |------|--------|------|

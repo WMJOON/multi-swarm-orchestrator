@@ -90,10 +90,12 @@ disable-model-invocation: true
 
 ## Templates
 
+템플릿 SoT: `mso-process-template/templates/`
+
 | 템플릿 | 파일 | 용도 |
 |--------|------|------|
-| **HITL Escalation Brief** | [templates/HITL_ESCALATION_BRIEF.md](templates/HITL_ESCALATION_BRIEF.md) | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 판단 요청서 |
-| **Run Retrospective** | [templates/RUN_RETROSPECTIVE.md](templates/RUN_RETROSPECTIVE.md) | Run 완료 후 메트릭·교훈·이월 항목을 종합하는 회고 문서 |
+| **HITL Escalation Brief** | [../mso-process-template/templates/HITL_ESCALATION_BRIEF.md](../mso-process-template/templates/HITL_ESCALATION_BRIEF.md) | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 판단 요청서 |
+| **Run Retrospective** | [../mso-process-template/templates/RUN_RETROSPECTIVE.md](../mso-process-template/templates/RUN_RETROSPECTIVE.md) | Run 완료 후 메트릭·교훈·이월 항목을 종합하는 회고 문서 |
 
 ---
 

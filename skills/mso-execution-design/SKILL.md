@@ -61,9 +61,11 @@ disable-model-invocation: true
 
 ## Templates
 
+템플릿 SoT: `mso-process-template/templates/`
+
 | 템플릿 | 파일 | 용도 |
 |--------|------|------|
-| **Design Handoff Summary** | [templates/DESIGN_HANDOFF_SUMMARY.md](templates/DESIGN_HANDOFF_SUMMARY.md) | Design Swarm 산출물을 Ops Swarm에 전달하는 요약 문서 |
+| **Design Handoff Summary** | [../mso-process-template/templates/DESIGN_HANDOFF_SUMMARY.md](../mso-process-template/templates/DESIGN_HANDOFF_SUMMARY.md) | Design Swarm 산출물을 Ops Swarm에 전달하는 요약 문서 |
 
 ---
 
