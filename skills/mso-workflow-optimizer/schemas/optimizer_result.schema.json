@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "optimizer_result",
+  "description": "mso-workflow-optimizer 실행 결과 스키마 (decision_output + goal)",
+  "type": "object",
+  "required": ["run_id", "workflow_name", "decision_output", "goal"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "실행 식별자 (audit_global.db의 run_id와 동일)"
+    },
+    "workflow_name": {
+      "type": "string",
+      "description": "최적화 대상 워크플로우 이름"
+    },
+    "trigger_type": {
+      "type": "string",
+      "enum": ["direct", "external"],
+      "description": "트리거 유형"
+    },
+    "decision_output": {
+      "type": "object",
+      "required": ["automation_level", "rationale", "escalation_needed"],
+      "properties": {
+        "automation_level": {
+          "type": "integer",
+          "enum": [10, 20, 30],
+          "description": "선택된 Automation Level"
+        },
+        "rationale": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Signal A/B/C 판단 근거 목록"
+        },
+        "escalation_needed": {
+          "type": "boolean",
+          "description": "operation-agent 에스컬레이션 필요 여부"
+        }
+      }
+    },
+    "report_path": {
+      "type": "string",
+      "description": "생성된 report.md의 경로"
+    },
+    "goal": {
+      "type": "object",
+      "required": ["next_automation_level", "optimization_directives", "carry_over_issues", "approved_by"],
+      "properties": {
+        "next_automation_level": {
+          "type": "integer",
+          "enum": [10, 20, 30],
+          "description": "다음 주기에 적용할 Automation Level"
+        },
+        "optimization_directives": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "다음 실행 주기에 반영할 최적화 지시 사항"
+        },
+        "carry_over_issues": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "미해결 이슈 (다음 주기로 이월)"
+        },
+        "approved_by": {
+          "type": "string",
+          "enum": ["human_feedback", "timeout_fallback"],
+          "description": "goal 승인 주체"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": { "type": "string", "format": "date-time" },
+        "level_before": { "type": "integer", "enum": [10, 20, 30] },
+        "level_after": { "type": "integer", "enum": [10, 20, 30] },
+        "hitl_responded": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -18,6 +18,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 | mso-observability | `single`, `parallel`(복수 Run 동시 점검) | 인프라 | 관측 / 피드백 / HITL 에스컬레이션 |
 | mso-skill-governance | `single` | 거버넌스 | CC 계약 검증 · 스킬 정합성 감사 |
 | mso-process-template | `cross-swarm` | 거버넌스 | 전 Swarm 공통 프로세스 규약 · 템플릿 기준 |
+| mso-workflow-optimizer | `single`, `loop`(HITL 포함) | 운영 | 워크플로우 성과 평가 → Automation Level 판단 → 최적화 리포트 + goal 생성 |
 
 ### 실행 방식 가이드
 
@@ -43,6 +44,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 | mso-observability | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ✅ | ✅ |
 | mso-skill-governance | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ✅(CC 검증) | ⚪ |
 | mso-process-template | ✅(초기화 규약) | ✅(실행 규약) | ✅(Handoff 템플릿) | ✅(Branch 규약) | ✅(Handoff 템플릿) | ✅(검토 규약) | ✅(복구 규약) |
+| mso-workflow-optimizer | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ✅(성과 평가) | ✅(최적화 goal) |
 
 > `✅` : 해당 Phase/Role에서 직접 실행 · 필수 로드 / `⚪` : 보조 또는 비개입
 
@@ -74,6 +76,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 | mso-execution-design | ✅ | ⚪ | ⚪ | ⚪ |
 | mso-task-context-management | ⚪ | ✅ | ⚪ | ⚪ |
 | mso-agent-collaboration | ⚪ | ✅ | ⚪ | ⚪ |
+| mso-workflow-optimizer | ⚪ | ✅ | ⚪ | ⚪ |
 | mso-agent-audit-log | ⚪ | ⚪ | ✅ | ⚪ |
 | mso-observability | ⚪ | ⚪ | ✅ | ⚪ |
 | mso-skill-governance | ⚪ | ⚪ | ⚪ | ✅ |
@@ -98,7 +101,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 - **실행 단계**: `mso-task-context-management` → `mso-agent-collaboration` + `mso-agent-audit-log`
 - **분기/합류 시**: `mso-workflow-topology-design` + `mso-execution-design` + `mso-observability`
 - **이상 탐지 / Fallback**: `mso-agent-audit-log` + `mso-observability` + `mso-skill-governance`
-- **Run 완료 후**: `mso-observability`(Run Retrospective) + `mso-skill-governance`(CC 검증)
+- **Run 완료 후**: `mso-observability`(Run Retrospective) + `mso-skill-governance`(CC 검증) + `mso-workflow-optimizer`(성과 평가 → 최적화 goal)
 
 ---
 
@@ -135,4 +138,10 @@ sequenceDiagram
     Infra->>Infra: mso-observability<br/>[Sentinel — hitl_request 에스컬레이션]
     Infra->>Gov: Run Retrospective 전달
     Gov->>Gov: mso-skill-governance<br/>[manifest.status 기록]
+
+    Note over Gov,Infra: Phase 5 — Workflow Optimization (Run 완료 후)
+    Infra->>Ops: mso-observability → mso-workflow-optimizer<br/>[CC-07: audit 이력 + improvement_proposal]
+    Ops->>Ops: mso-workflow-optimizer<br/>[agent-decision → Automation Level 실행]
+    Ops->>Infra: mso-workflow-optimizer → mso-agent-audit-log<br/>[CC-08: decision + HITL 피드백 기록]
+    Ops->>Ops: mso-workflow-optimizer → mso-task-context-management<br/>[CC-09: goal → 티켓 등록]
 ```

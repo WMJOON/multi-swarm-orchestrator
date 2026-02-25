@@ -70,6 +70,7 @@ disable-model-invocation: true
 |------|------|------|
 | ← | `mso-execution-design` | CC-06: execution_graph 노드 → 스냅샷 기록 |
 | ← | `mso-agent-collaboration` | CC-04: dispatch 결과를 audit payload로 수신 |
+| ← | `mso-workflow-optimizer` | CC-08: decision_output + HITL 피드백을 audit_logs/user_feedback에 기록 |
 | → | `mso-observability` | CC-05: audit DB를 읽기 전용으로 제공 |
 
 ---

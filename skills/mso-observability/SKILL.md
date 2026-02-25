@@ -85,6 +85,7 @@ disable-model-invocation: true
 | ← | `mso-agent-audit-log` | CC-05: audit DB를 읽기 전용 소비 |
 | → | `mso-workflow-topology-design` | 환류: topology 노드 구조 개선 제안 (사용자 승인 필요) |
 | → | `mso-mental-model-design` | 환류: chart/checkpoint 조정 제안 (사용자 승인 필요) |
+| → | `mso-workflow-optimizer` | CC-07: audit 이력 + improvement_proposal를 Signal C 입력으로 제공 |
 
 ---
 
