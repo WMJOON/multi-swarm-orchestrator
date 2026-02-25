@@ -1,5 +1,42 @@
 # 변경 이력
 
+## v0.0.6
+
+### 핵심 변경
+
+| 변경 | 내용 |
+|------|------|
+| **mso-workflow-optimizer 스킬 추가** | 워크플로우 성과 평가 → 3-Signal 기반 Automation Level(10/20/30) 판단 → 최적화 리포트 + goal 생성 |
+| **CC-07/08/09 계약 추가** | observability → optimizer(CC-07), optimizer → audit-log(CC-08), optimizer → task-context(CC-09) |
+| **work_type 확장** | `audit_logs.work_type`에 `workflow_optimization` 값 추가 |
+| **user_feedback 매핑 규칙** | optimizer HITL 피드백을 기존 user_feedback 스키마에 매핑하는 규칙 정의 (feedback_text JSON 직렬화) |
+
+### 수정 파일
+
+**스킬 (신규)**
+- `skills/mso-workflow-optimizer/SKILL.md` — 5-Phase 실행 프로세스, Pack 내 관계
+- `skills/mso-workflow-optimizer/core.md` — Input/Output 인터페이스, 처리 규칙, 에러 핸들링
+- `skills/mso-workflow-optimizer/modules/module.agent-decision.md` — 3-Signal(A/B/C) 판단 상세
+- `skills/mso-workflow-optimizer/modules/module.automation-level.md` — Level 10/20/30 실행 흐름 + 강등 정책
+- `skills/mso-workflow-optimizer/modules/module.hitl-feedback.md` — HITL 수렴 + goal 산출 + 타임아웃 처리
+- `skills/mso-workflow-optimizer/schemas/optimizer_result.schema.json` — decision_output + goal JSON 스키마
+
+**기존 파일 수정**
+- `skills/mso-agent-audit-log/core.md` — work_type enum에 `workflow_optimization` 추가
+- `skills/mso-observability/SKILL.md` — Pack 내 관계에 CC-07 (→ optimizer) 추가
+- `docs/pipelines.md` — CC-07/08/09 계약 정의 + Mermaid 다이어그램 업데이트
+- `docs/usage_matrix.md` — 실행 방식/Phase/Swarm/운영 순서 매트릭스 + Sequence Diagram에 optimizer 반영
+- `README.md` — Mermaid 아키텍처 다이어그램에 S10[Workflow Optimizer] 노드 추가
+
+### 하위 호환 (v0.0.5 → v0.0.6)
+
+- **스키마**: 변경 없음. DB 스키마 v1.5.0 유지. `work_type`은 nullable TEXT 컬럼이므로 신규 값 추가는 하위 호환
+- **CC Contracts**: CC-01~CC-06 변경 없음. CC-07/08/09 순수 추가
+- **스크립트**: 실행 스크립트 변경 없음
+- **신규 추가만**: 기존 동작에 영향 없음
+
+---
+
 ## v0.0.5
 
 ### 핵심 변경

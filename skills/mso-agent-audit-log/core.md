@@ -27,7 +27,7 @@ status_model: "success | fail | in_progress"
     - `merge_policy` (merge 노드 전용, JSON)
     - `fallback_target` (절대 SHA 참조)
   - v0.0.4 확장 필드 (선택적)
-    - `work_type` (execution|modification|structure|document|skill|error|review)
+    - `work_type` (execution|modification|structure|document|skill|error|review|workflow_optimization)
     - `triggered_by` (user_request|auto|hook)
     - `duration_sec` (REAL)
     - `files_affected` (JSON array)

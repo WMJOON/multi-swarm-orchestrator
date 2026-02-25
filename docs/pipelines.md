@@ -45,9 +45,9 @@ stateDiagram-v2
 
 ---
 
-## 스킬 간 계약 (CC-01~06)
+## 스킬 간 계약 (CC-01~09)
 
-스킬 간 데이터 교환은 6가지 핵심 계약(CC-01~CC-06)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
+스킬 간 데이터 교환은 9가지 핵심 계약(CC-01~CC-09)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
 
 ```mermaid
 flowchart LR
@@ -58,9 +58,43 @@ flowchart LR
     TaskContext["Task Context"] -- CC-03 --> Collaboration
     Collaboration -- CC-04 --> AuditLog
     AuditLog -- CC-05 --> Observability
+
+    Observability -- CC-07 --> Optimizer["Workflow Optimizer"]
+    Optimizer -- CC-08 --> AuditLog
+    Optimizer -- CC-09 --> TaskContext
 ```
 
 `Governance`가 이 계약을 자동으로 검증한다. 필수 필드가 누락되거나 스키마가 일치하지 않으면 파이프라인 진입 전에 즉시 차단한다.
+
+### CC-07: mso-observability → mso-workflow-optimizer
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-observability` |
+| **소비자** | `mso-workflow-optimizer` (Phase 1, Signal C) |
+| **전달 데이터** | `audit_global.db`의 `user_feedback` 테이블(workflow_name 기준 최근 3건) + `60_observability/callback-*.json`의 `improvement_proposal` 이벤트 |
+| **필수 키** | `user_feedback.feedback_text` (JSON), `callback.event_type`, `callback.payload.severity` |
+| **전달 방식** | DB 읽기(user_feedback) + 파일시스템 읽기(callback JSON) |
+
+### CC-08: mso-workflow-optimizer → mso-agent-audit-log
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-workflow-optimizer` (Phase 4: decision-reporting-logging, Phase 5: human-feedback-logging) |
+| **소비자** | `mso-agent-audit-log` |
+| **전달 데이터** | Phase 4: decision_output + 실행 요약 (`audit_logs` 행). Phase 5: HITL 피드백 (`user_feedback` 행) |
+| **필수 키** | Phase 4: `run_id`, `artifact_uri`, `status`, `work_type="workflow_optimization"`. Phase 5: `feedback_text`(JSON), `impact_domain="workflow_optimization"`, `related_audit_id` |
+| **전달 방식** | `append_from_payload.py` 스크립트 호출 |
+
+### CC-09: mso-workflow-optimizer → mso-task-context-management
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-workflow-optimizer` (Phase 5: goal 산출 후) |
+| **소비자** | `mso-task-context-management` |
+| **전달 데이터** | `goal.json`의 `optimization_directives[]` → 개별 TKT 티켓으로 등록 |
+| **필수 키** | 티켓: `id`(TKT-xxxx), `status`(todo), `priority`, `owner`, `tags`(workflow_optimization 포함) |
+| **전달 방식** | `create_ticket.py` CLI 호출 또는 티켓 Markdown frontmatter 직접 생성 |
 
 ---
 
