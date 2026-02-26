@@ -18,7 +18,7 @@ disable-model-invocation: true
 
 | 개념 | 정의 |
 |------|------|
-| **SoT** | `workspace/.mso-context/audit_global.db` (SQLite). 모든 감사 데이터의 단일 진실 원천 |
+| **SoT** | `{workspace}/.mso-context/audit_global.db` (SQLite). 모든 감사 데이터의 단일 진실 원천 |
 | **audit payload** | `run_id`, `artifact_uri`, `status`, `errors`, `warnings`, `next_actions`, `metadata` |
 | **schema_version** | 현재 `1.5.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references`, `user_feedback`, `node_snapshots`, `suggestion_history` |
 
@@ -36,8 +36,8 @@ disable-model-invocation: true
 
 ### Phase 2a: SoT 기록
 
-1. `workspace/.mso-context/audit_global.db`에 연결 (global DB 기본 경로)
-2. DB 미존재 시 → `scripts/init_db.py`로 스키마 초기화
+1. `{workspace}/.mso-context/audit_global.db`에 연결 (global DB 기본 경로)
+2. DB 미존재 시 → `{mso-agent-audit-log}/scripts/init_db.py`로 스키마 초기화
 3. `audit_logs` 테이블에 INSERT
 4. `decisions`, `evidence` 등 보조 테이블은 payload에 해당 필드 존재 시에만 기록
 
@@ -79,7 +79,7 @@ disable-model-invocation: true
 
 | 상황 | 파일 |
 |------|------|
-| DB 스키마 초기화 | `python3 scripts/init_db.py` |
-| payload로 행 추가 | `python3 scripts/append_from_payload.py --payload <json>` |
+| DB 스키마 초기화 | `python3 {mso-agent-audit-log}/scripts/init_db.py` |
+| payload로 행 추가 | `python3 {mso-agent-audit-log}/scripts/append_from_payload.py --payload <json>` |
 | 상세 규칙 | [core.md](core.md) |
 | 모듈 목록 | [modules/modules_index.md](modules/modules_index.md) |

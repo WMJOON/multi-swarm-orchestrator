@@ -24,6 +24,7 @@ ORCHESTRATOR.md의 Role-Skill 바인딩 정책을 테이블 형식으로 재표�
 
 - `single`: 단일 산출물이 명확한 태스크. Run 1개 기준.
 - `parallel`: 복수 Branch · 복수 경쟁사 · 복수 Run을 동시에 처리하는 팬-아웃 패턴.
+- `loop`: HITL 피드백을 포함하는 반복 실행 패턴. human-decision에 의해 종료/재진입이 결정되며, samplingRatio 조정 등 파라미터 변경을 수반한다.
 - `cross-swarm`: 특정 Swarm에 귀속되지 않고 모든 Swarm에 걸쳐 적용되는 기준 역할.
 
 ---

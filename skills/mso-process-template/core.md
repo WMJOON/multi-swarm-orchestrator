@@ -6,7 +6,24 @@
 
 - 기본 모드: 문서 가이드 기반 수동 오케스트레이션
 - 스킬 간 데이터 전달: Runtime Workspace 파일 아티팩트
-- 감사/추적: `workspace/.mso-context/active/<Run ID>/`의 `manifest.json` + phase 산출물
+- 감사/추적: `{workspace}/.mso-context/active/<run_id>/`의 `manifest.json` + phase 산출물
+
+### 1.1) MSO 경로 표기 규칙 (공통)
+
+MSO 스킬 문서에서 경로를 표기할 때는 아래 패턴을 기본 규칙으로 사용한다.
+
+1. 워크스페이스 기준 경로
+- 패턴: `{workspace}/.mso-context/...`
+- 예시: `{workspace}/.mso-context/active/<run_id>/optimizer/level10_report.md`
+
+2. 스킬 내부 경로
+- 패턴: `{스킬명}/*`
+- 예시: `{mso-workflow-optimizer}/configs/llm-model-catalog.yaml`
+- 예시: `python3 {mso-workflow-optimizer}/scripts/select_llm_model.py --provider openai`
+
+3. 금지/지양 표기
+- `workspace/.mso-context/...` (placeholder 없는 하드코딩 표기)
+- `skills/<skill-name>/...` 또는 `./...` (문서 표기 기준)
 
 ### Git-Metaphor 상태 모델 (v0.0.5)
 
@@ -141,7 +158,7 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 - `mso-workflow-topology-design` → `mso-mental-model-design` → `mso-execution-design`
 
 경로:
-`workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json`
+`{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json`
 `→ 20_mental-model/mental_model_bundle.json`
 `→ 30_execution/execution_plan.json`
 
@@ -149,18 +166,18 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 - `mso-task-context-management` → `mso-agent-collaboration`
 
 경로:
-`workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/tickets/TKT-0001.md`
+`{workspace}/.mso-context/active/<run_id>/40_collaboration/task-context/tickets/TKT-0001.md`
 `→ *.agent-collaboration.json`
 
 ### 5.3 Infra pipeline
 - `mso-agent-audit-log` → `mso-observability`
 
 경로:
-`workspace/.mso-context/audit_global.db` (v0.0.5 global DB)
-`→ active/<Run ID>/60_observability/callback-*.json`
+`{workspace}/.mso-context/audit_global.db` (v0.0.5 global DB)
+`→ active/<run_id>/60_observability/callback-*.json`
 
 ### 5.4 Governance pipeline
-- `mso-skill-governance` → `workspace/.mso-context/active/<Run ID>/70_governance/`
+- `mso-skill-governance` → `{workspace}/.mso-context/active/<run_id>/70_governance/`
 
 ### 5.5 런타임 Phase (v0.0.5)
 
@@ -180,7 +197,7 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 - 필드: `event_type`, `checkpoint_id`, `payload`, `retry_policy`, `correlation`, `timestamp`
 - 필수 이벤트 유형: `improvement_proposal`, `anomaly_detected`, `periodic_report`, `hitl_request`
 - v0.0.5 추가 이벤트: `branch_created`, `merge_completed`, `checkout_executed`, `snapshot_committed`
-- 출력 위치: `workspace/.mso-context/active/<Run ID>/60_observability/*.json`
+- 출력 위치: `{workspace}/.mso-context/active/<run_id>/60_observability/*.json`
 - 수신자: `mso-observability`
 
 ---
@@ -204,11 +221,11 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 
 ## 8) 실행/검증 권장 절차
 
-1. `python3 skills/mso-skill-governance/scripts/run_sample_pipeline.py --goal "..." --task-title "..." --skill-key msowd --case-slug "..."`
-2. `python3 skills/mso-skill-governance/scripts/validate_schemas.py --skill-key msogov --case-slug "..." --json`
-3. `python3 skills/mso-skill-governance/scripts/validate_cc_contracts.py --skill-key msogov --case-slug "..." --json`
-4. `python3 skills/mso-skill-governance/scripts/validate_gov.py --skill-key msogov --case-slug "..." --json`
-5. `python3 skills/mso-skill-governance/scripts/validate_all.py --case-slug "..."`
+1. `python3 {mso-skill-governance}/scripts/run_sample_pipeline.py --goal "..." --task-title "..." --skill-key msowd --case-slug "..."`
+2. `python3 {mso-skill-governance}/scripts/validate_schemas.py --skill-key msogov --case-slug "..." --json`
+3. `python3 {mso-skill-governance}/scripts/validate_cc_contracts.py --skill-key msogov --case-slug "..." --json`
+4. `python3 {mso-skill-governance}/scripts/validate_gov.py --skill-key msogov --case-slug "..." --json`
+5. `python3 {mso-skill-governance}/scripts/validate_all.py --case-slug "..."`
 
 ---
 
@@ -221,7 +238,7 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 | `archive_on_merge` | true | 보존 기간 만료 후 압축 보존(Archive) 전환 |
 | `cleanup_job_interval_days` | 1 | 주기적(1일) 잔류 워크트리 캐시 정리 |
 
-정책은 `workspace/.mso-context/config/policy.yaml`의 `lifecycle_policy` 블록에서 오버라이드 가능.
+정책은 `{workspace}/.mso-context/config/policy.yaml`의 `lifecycle_policy` 블록에서 오버라이드 가능.
 
 ---
 
@@ -230,7 +247,7 @@ discussion process는 "결론 도출"이 아니라, 판단 품질을 높이기 �
 - **Git CLI 미사용**: 실제 `git` 명령어에 의존하지 않음. 파일시스템 에뮬레이션 + SQLite DB 방식
 - **SQLite SoT**: `audit_global.db`가 전체 감사 데이터의 단일 진실 원천. 스키마 v1.5.0
 - **WAL 모드**: `PRAGMA journal_mode=WAL` 적용으로 동시 읽기 성능 향상
-- **Global DB**: v0.0.5부터 `workspace/.mso-context/audit_global.db`를 기본 경로로 사용. Run-local DB(`50_audit/agent_log.db`)는 레거시 호환
+- **Global DB**: v0.0.5부터 `{workspace}/.mso-context/audit_global.db`를 기본 경로로 사용. Run-local DB(`50_audit/agent_log.db`)는 레거시 호환
 - **SHA-256 해싱**: `tree_hash_ref`는 산출물의 SHA-256 해시로, 실행 시점에 Execution Agent가 생성
 - **Worktree 격리**: 각 Run은 `run_root/worktree/` 디렉토리에서 독립적 실행 컨텍스트 유지
 - **스냅샷 저장**: `run_root/50_audit/snapshots/`에 스냅샷 관련 아티팩트 보관

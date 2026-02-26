@@ -3,3 +3,22 @@ __pycache__/
 .DS_Store
 * 2.*
 * 2
+
+# Local environment / secrets (LLM API keys)
+.env
+.env.local
+.env.*
+!.env.example
+*.secrets.env
+
+# Skill-local env files
+skills/**/.env
+skills/**/.env.local
+skills/**/.env.*
+!skills/**/.env.example
+
+# mso-workflow-optimizer skill-local LLM API env
+skills/mso-workflow-optimizer/.env
+skills/mso-workflow-optimizer/.env.local
+skills/mso-workflow-optimizer/.env.*
+!skills/mso-workflow-optimizer/.env.example

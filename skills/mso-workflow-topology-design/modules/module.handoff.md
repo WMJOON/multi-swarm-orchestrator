@@ -1,7 +1,7 @@
 # module.handoff
 
 ## Purpose
-`workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json`을 다음 스킬들이 바로 소비할 수 있게 포맷 정합성 체크를 수행한다.
+`{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json`을 다음 스킬들이 바로 소비할 수 있게 포맷 정합성 체크를 수행한다.
 
 ## Required keys
 - `run_id`

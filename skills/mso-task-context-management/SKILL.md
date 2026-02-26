@@ -11,7 +11,7 @@ disable-model-invocation: true
 ## 실행 프로세스
 
 ### Phase 1) 노드 부트스트랩
-- `workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/`가 없으면 생성
+- `{workspace}/.mso-context/active/<run_id>/40_collaboration/task-context/`가 없으면 생성
 - `tickets/` 폴더와 `rules.md` 생성
 
 ### Phase 2) 티켓 작성
@@ -25,7 +25,7 @@ disable-model-invocation: true
 ### Phase 4) 검증/아카이브
 - 의존성 해상도 확인
 - `done`/`cancelled` 티켓 종료: frontmatter 파싱 → `ticket_closure_log.md` append → 티켓+companion json 삭제
-- `python3 scripts/archive_tasks.py --path <task-context-root>`
+- `python3 {mso-task-context-management}/scripts/archive_tasks.py --path <task-context-root>`
 
 ### when_unsure
 - 의존성이 불명하면 사용자가 확인하도록 warning + `blocked`로 남긴다.
@@ -42,8 +42,8 @@ disable-model-invocation: true
 
 ## Scripts
 
-- `python3 scripts/bootstrap_node.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
-- `python3 scripts/create_ticket.py "..." --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
-- `python3 scripts/update_status.py --ticket ... --status in_progress`
-- `python3 scripts/validate_task_node.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
-- `python3 scripts/archive_tasks.py --path workspace/.mso-context/active/<Run ID>/40_collaboration/task-context`
+- `python3 {mso-task-context-management}/scripts/bootstrap_node.py --path {workspace}/.mso-context/active/<run_id>/40_collaboration/task-context`
+- `python3 {mso-task-context-management}/scripts/create_ticket.py "..." --path {workspace}/.mso-context/active/<run_id>/40_collaboration/task-context`
+- `python3 {mso-task-context-management}/scripts/update_status.py --ticket ... --status in_progress`
+- `python3 {mso-task-context-management}/scripts/validate_task_node.py --path {workspace}/.mso-context/active/<run_id>/40_collaboration/task-context`
+- `python3 {mso-task-context-management}/scripts/archive_tasks.py --path {workspace}/.mso-context/active/<run_id>/40_collaboration/task-context`

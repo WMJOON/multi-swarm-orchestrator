@@ -45,7 +45,7 @@ disable-model-invocation: true
 ### when_unsure
 - 모델 선택이 불명하면 `default`로 기록하고 근거를 note에 남긴다.
 
-**산출물**: `workspace/.mso-context/active/<Run ID>/30_execution/execution_plan.json`
+**산출물**: `{workspace}/.mso-context/active/<run_id>/30_execution/execution_plan.json`
 
 ---
 
@@ -73,7 +73,7 @@ disable-model-invocation: true
 
 | 상황 | 파일 |
 |------|------|
-| 실행계획 생성 | `python3 scripts/build_plan.py --topology <topology.json> --bundle <bundle.json>` |
+| 실행계획 생성 | `python3 {mso-execution-design}/scripts/build_plan.py --topology <topology.json> --bundle <bundle.json>` |
 | 출력 스키마 검증 | [schemas/execution_plan.schema.json](schemas/execution_plan.schema.json) |
 | 상세 규칙 | [core.md](core.md) |
 | 모듈 목록 | [modules/modules_index.md](modules/modules_index.md) |

@@ -47,7 +47,7 @@ status_model: "success | fail | in_progress"
 ```json
 {
   "run_id": "20260220-msoal-audit-sample",
-  "artifact_uri": "workspace/.mso-context/active/<Run ID>/30_execution/execution_plan.json",
+  "artifact_uri": "{workspace}/.mso-context/active/<run_id>/30_execution/execution_plan.json",
   "status": "success | fail | in_progress",
   "errors": ["..."] ,
   "warnings": ["..."],

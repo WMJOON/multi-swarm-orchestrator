@@ -6,8 +6,9 @@
 
 ## Level 10 — 단순 데이터 리포팅
 
-```
-data → reporting → report.md
+```mermaid
+flowchart LR
+    data[("data")] --> reporting{{"reporting"}} --> report["report.md"]
 ```
 
 ### 적합 상황
@@ -20,7 +21,7 @@ data → reporting → report.md
 1. **data 로드**: `analysis.db` 또는 지정 소스에서 집계 데이터를 읽는다
 2. **reporting**: 데이터를 구조화하여 Markdown 리포트로 변환한다
    - 포함 항목: 실행 요약, 주요 지표 테이블, 이상 감지 항목 (있을 경우)
-3. **report.md 저장**: `workspace/.mso-context/active/<run_id>/optimizer/level10_report.md`
+3. **report.md 저장**: `{workspace}/.mso-context/active/<run_id>/optimizer/level10_report.md`
 
 ### 산출물 구조
 
@@ -36,8 +37,9 @@ data → reporting → report.md
 
 ## Level 20 — 스크립트 기반 분석 리포팅
 
-```
-analysis.script → retrieved.jsonl → reporting → report.md
+```mermaid
+flowchart LR
+    script["analysis.script"] --> jsonl["retrieved.jsonl"] --> reporting{{"reporting"}} --> report["report.md"]
 ```
 
 ### 적합 상황
@@ -52,7 +54,7 @@ analysis.script → retrieved.jsonl → reporting → report.md
    - 출력: `retrieved.jsonl` (레코드별 분석 결과)
 2. **retrieved.jsonl 파싱**: 분석 결과를 집계·해석한다
 3. **reporting**: 트렌드, 패턴, 이상치를 포함한 Markdown 리포트를 생성한다
-4. **report.md 저장**: `workspace/.mso-context/active/<run_id>/optimizer/level20_report.md`
+4. **report.md 저장**: `{workspace}/.mso-context/active/<run_id>/optimizer/level20_report.md`
 
 ### retrieved.jsonl 형식
 
@@ -76,8 +78,11 @@ analysis.script → retrieved.jsonl → reporting → report.md
 
 ## Level 30 — 자동화 평가 리포팅
 
-```
-evaluation.py → retrieved.jsonl → reporting + reporting.py → report.md
+```mermaid
+flowchart LR
+    eval["evaluation.py"] --> jsonl["retrieved.jsonl"]
+    jsonl --> reporting{{"reporting"}} --> report["report.md"]
+    jsonl --> reportingPy["reporting.py"] --> report
 ```
 
 ### 적합 상황
@@ -93,7 +98,7 @@ evaluation.py → retrieved.jsonl → reporting + reporting.py → report.md
    - 3a. **reporting (LLM 기반)**: retrieved.jsonl의 의미 해석, 개선 방향 제안
    - 3b. **reporting.py (자동화 집계)**: 수치 집계, 비교 테이블, KPI 달성 여부 판정
 3. **합성**: 3a + 3b 결과를 통합하여 최종 report.md 생성
-4. **report.md 저장**: `workspace/.mso-context/active/<run_id>/optimizer/level30_report.md`
+4. **report.md 저장**: `{workspace}/.mso-context/active/<run_id>/optimizer/level30_report.md`
 
 ### 산출물 구조
 
@@ -115,11 +120,13 @@ evaluation.py → retrieved.jsonl → reporting + reporting.py → report.md
 
 Level 30 실행 실패 시 자동으로 Level 20으로 강등하여 재시도한다:
 
-```
-try: Level 30
-except ExecutionError:
-    log carry_over_issue("Level 30 실패: <error>")
-    retry: Level 20
+```mermaid
+flowchart TD
+    L30["Level 30 실행"] -->|"성공"| done(["완료"])
+    L30 -->|"ExecutionError"| log["carry_over_issue 기록"]
+    log --> L20["Level 20 재시도"]
+    L20 -->|"성공"| done
+    L20 -->|"실패"| L10["Level 10 강등 + escalation_needed"]
 ```
 
 Level 20도 실패하면 Level 10으로 강등하고 `escalation_needed: true`를 유지한다.

@@ -14,16 +14,24 @@
 ### 수정 파일
 
 **스킬 (신규)**
-- `skills/mso-workflow-optimizer/SKILL.md` — 5-Phase 실행 프로세스, Pack 내 관계
-- `skills/mso-workflow-optimizer/core.md` — Input/Output 인터페이스, 처리 규칙, 에러 핸들링
-- `skills/mso-workflow-optimizer/modules/module.agent-decision.md` — 3-Signal(A/B/C) 판단 상세
-- `skills/mso-workflow-optimizer/modules/module.automation-level.md` — Level 10/20/30 실행 흐름 + 강등 정책
-- `skills/mso-workflow-optimizer/modules/module.hitl-feedback.md` — HITL 수렴 + goal 산출 + 타임아웃 처리
-- `skills/mso-workflow-optimizer/schemas/optimizer_result.schema.json` — decision_output + goal JSON 스키마
+- `{mso-workflow-optimizer}/SKILL.md` — 5-Phase 실행 프로세스, Pack 내 관계
+- `{mso-workflow-optimizer}/DIRECTORY.md` — 디렉토리 구성 명세, 모듈 추가 규약
+- `{mso-workflow-optimizer}/core.md` — Input/Output 인터페이스, 처리 규칙, 에러 핸들링
+- `{mso-workflow-optimizer}/.env.example` — llm-as-a-judge API 키 템플릿
+- `{mso-workflow-optimizer}/configs/llm-model-catalog.yaml` — Provider별 분석 중심 모델 카탈로그
+- `{mso-workflow-optimizer}/modules/modules_index.md` — Core/Operational 모듈 인덱스
+- `{mso-workflow-optimizer}/modules/module.analysis-optimizing.md` — Phase 1–5 전체 오케스트레이션
+- `{mso-workflow-optimizer}/modules/module.agent-decision.md` — 3-Signal(A/B/C) 판단 상세
+- `{mso-workflow-optimizer}/modules/module.automation-level.md` — Level 10/20/30 실행 흐름 + 강등 정책
+- `{mso-workflow-optimizer}/modules/module.hitl-feedback.md` — HITL 수렴 + goal 산출 + 타임아웃 처리
+- `{mso-workflow-optimizer}/modules/module.process-optimizing.md` — 프로세스 실행·분석·평가 반복 워크플로우
+- `{mso-workflow-optimizer}/modules/module.llm-as-a-judge.md` — LLM 라벨링 + TF-PN 정량 검증 + HITL 루프
+- `{mso-workflow-optimizer}/schemas/optimizer_result.schema.json` — decision_output + goal JSON 스키마
+- `{mso-workflow-optimizer}/scripts/select_llm_model.py` — 카탈로그 조회/검증 + env export 헬퍼
 
 **기존 파일 수정**
-- `skills/mso-agent-audit-log/core.md` — work_type enum에 `workflow_optimization` 추가
-- `skills/mso-observability/SKILL.md` — Pack 내 관계에 CC-07 (→ optimizer) 추가
+- `{mso-agent-audit-log}/core.md` — work_type enum에 `workflow_optimization` 추가
+- `{mso-observability}/SKILL.md` — Pack 내 관계에 CC-07 (→ optimizer) 추가
 - `docs/pipelines.md` — CC-07/08/09 계약 정의 + Mermaid 다이어그램 업데이트
 - `docs/usage_matrix.md` — 실행 방식/Phase/Swarm/운영 순서 매트릭스 + Sequence Diagram에 optimizer 반영
 - `README.md` — Mermaid 아키텍처 다이어그램에 S10[Workflow Optimizer] 노드 추가
@@ -48,21 +56,21 @@
 | **Worktree Branch Process** | "생각 → 미리보기 → 실행" 단계 분리. Mermaid 기반 topology preview를 실행 전 필수 생성 |
 | **Work Process 정의** | Planning Process(2-depth Planning)와 Discussion Process(Critique Discussion) 표준화 |
 | **Hand-off Templates 확장** | PRD, SPEC, ADR, HITL Escalation Brief, Run Retrospective, Design Handoff Summary 6종 |
-| **mso-process-template 스킬 분리** | `rules/ORCHESTRATOR.md`를 불변 정책만 남기고, 운영 상세를 `skills/mso-process-template/SKILL.md`로 분리 |
+| **mso-process-template 스킬 분리** | `rules/ORCHESTRATOR.md`를 불변 정책만 남기고, 운영 상세를 `{mso-process-template}/SKILL.md`로 분리 |
 
 ### 수정 파일
 
 **스킬 (신규)**
-- `skills/mso-process-template/SKILL.md` — 프로세스 규약, Hand-off 템플릿 레퍼런스
-- `skills/mso-process-template/core.md` — 실행 모델, 라우팅, Work Process, 에러 분류, 인프라 노트
+- `{mso-process-template}/SKILL.md` — 프로세스 규약, Hand-off 템플릿 레퍼런스
+- `{mso-process-template}/core.md` — 실행 모델, 라우팅, Work Process, 에러 분류, 인프라 노트
 
 **템플릿 (SoT: mso-process-template/templates/)**
-- `skills/mso-process-template/templates/PRD.md`
-- `skills/mso-process-template/templates/SPEC.md`
-- `skills/mso-process-template/templates/ADR.md`
-- `skills/mso-process-template/templates/HITL_ESCALATION_BRIEF.md`
-- `skills/mso-process-template/templates/RUN_RETROSPECTIVE.md`
-- `skills/mso-process-template/templates/DESIGN_HANDOFF_SUMMARY.md`
+- `{mso-process-template}/templates/PRD.md`
+- `{mso-process-template}/templates/SPEC.md`
+- `{mso-process-template}/templates/ADR.md`
+- `{mso-process-template}/templates/HITL_ESCALATION_BRIEF.md`
+- `{mso-process-template}/templates/RUN_RETROSPECTIVE.md`
+- `{mso-process-template}/templates/DESIGN_HANDOFF_SUMMARY.md`
 
 ### 하위 호환 (v0.0.4 → v0.0.5)
 

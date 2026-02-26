@@ -11,7 +11,7 @@
 
 ## Input Interface
 - `workflow_topology_spec` 또는 goal 기반 입력을 받는다.
-- 출력: `workspace/.mso-context/active/<Run ID>/20_mental-model/mental_model_bundle.json`
+- 출력: `{workspace}/.mso-context/active/<run_id>/20_mental-model/mental_model_bundle.json`
 
 ## Output Interface
 필수 키:
