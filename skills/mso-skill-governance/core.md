@@ -10,7 +10,7 @@ layer: operational
 00~07 스킬의 구조, 계약(CC), 레지스트리 정합을 검증해 파이프라인 안정성을 확보한다.
 
 ## 검사 범위
-- 필수 파일 존재 (`core.md`, `modules/modules_index.md`, `references/source_map.md`, `scripts/...`)
+- 필수 파일 존재 (`core.md`, `modules/modules_index.md`, `references/source_map.md`, `{mso-skill-governance}/scripts/...`)
 - 스킬 간 CC 계약 정의(`schemas/cc_contracts.schema.json`) 정합
 - 레거시 고정 경로 사용 여부
 - profile 기반 스킬 집합 과부하 경고

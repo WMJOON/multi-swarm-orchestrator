@@ -6,7 +6,7 @@
 
 | 유형 | 의미 | 예시 위치 |
 |------|------|-----------|
-| **에이전트 로그** | 에이전트 작업/의사결정 기록 | `workspace/.mso-context/audit_global.db` |
+| **에이전트 로그** | 에이전트 작업/의사결정 기록 | `{workspace}/.mso-context/audit_global.db` |
 | **도메인 로그** | 서비스/상담/이벤트 원천 데이터 | 프로젝트별 DB 또는 파일 |
 
 모호하면 대상 로그를 먼저 확인한 뒤 진행한다.
@@ -17,7 +17,7 @@
 
 **에이전트 로그는 SQLite DB 단일 저장소로 운영한다.**
 
-- 권장 DB: `workspace/.mso-context/audit_global.db`
+- 권장 DB: `{workspace}/.mso-context/audit_global.db`
 - 마크다운 로그 파일 수동 중복 기록 금지
 
 ---

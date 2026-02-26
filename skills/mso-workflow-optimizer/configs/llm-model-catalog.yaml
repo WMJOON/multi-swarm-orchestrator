@@ -1,0 +1,113 @@
+schema_version: 1
+catalog_name: llm-model-catalog
+catalog_version: 0.1.0
+last_verified_utc: "2026-02-26T00:00:00Z"
+purpose: "Provider별 분석 중심 LLM 모델 선택 카탈로그 (mso-workflow-optimizer / llm-as-a-judge)"
+
+selection_env:
+  provider_env: LLM_API_PROVIDER
+  model_env: LLM_MODEL
+  key_env_priority:
+    - LLM_API_KEY
+    - OPENAI_API_KEY
+    - ANTHROPIC_API_KEY
+    - GOOGLE_API_KEY
+
+providers:
+  openai:
+    recommended_default_model: gpt-5.2
+    recommended_for_analysis:
+      - id: gpt-5.2
+        label: "GPT-5.2"
+        analysis_fit: "high"
+        why: "Most capable model for coding and agentic tasks across domains."
+        source_url: "https://developers.openai.com/api/docs/models/gpt-5.2"
+      - id: gpt-5.2-pro
+        label: "GPT-5.2 Pro"
+        analysis_fit: "very_high"
+        why: "Designed to think longer for the most difficult questions."
+        source_url: "https://developers.openai.com/api/docs/models/gpt-5.2"
+      - id: gpt-5.2-mini
+        label: "GPT-5.2 Mini"
+        analysis_fit: "medium_high"
+        why: "Faster, more cost-efficient model for well-defined tasks."
+        source_url: "https://developers.openai.com/api/docs/models/gpt-5.2"
+    budget_models:
+      - id: gpt-5-nano
+        label: "GPT-5 Nano"
+        analysis_fit: "medium"
+        why: "Fastest, most cost-efficient version of GPT-5. Suitable for high-volume labeling and simple evaluation."
+        source_url: "https://developers.openai.com/api/docs/models"
+      - id: gpt-4.1-nano
+        label: "GPT-4.1 Nano"
+        analysis_fit: "low_medium"
+        why: "Fastest, most cost-efficient GPT-4.1. Legacy budget option."
+        source_url: "https://developers.openai.com/api/docs/models"
+      - id: o4-mini
+        label: "o4-mini"
+        analysis_fit: "medium"
+        why: "Fast, cost-efficient reasoning model. Good for structured evaluation tasks."
+        source_url: "https://developers.openai.com/api/docs/models"
+    sources:
+      - "https://developers.openai.com/api/docs/models"
+      - "https://developers.openai.com/api/docs/models/gpt-5.2"
+
+  anthropic:
+    recommended_default_model: claude-sonnet-4-5
+    recommended_for_analysis:
+      - id: claude-sonnet-4-5
+        snapshot_id: claude-sonnet-4-5-20250929
+        label: "Claude Sonnet 4.5"
+        analysis_fit: "high"
+        why: "Most intelligent model for enterprise workloads and best combination of speed/performance for most use cases."
+        source_url: "https://platform.claude.com/docs/ko/about-claude/models/overview"
+      - id: claude-opus-4-6
+        snapshot_id: claude-opus-4-6-20260219
+        label: "Claude Opus 4.6"
+        analysis_fit: "very_high"
+        why: "Highest level of intelligence and capability among Claude models."
+        source_url: "https://platform.claude.com/docs/ko/about-claude/models/overview"
+      - id: claude-haiku-4-5
+        snapshot_id: claude-haiku-4-5-20251001
+        label: "Claude Haiku 4.5"
+        analysis_fit: "medium"
+        why: "Fastest Claude model; suitable when latency and throughput are priorities."
+        source_url: "https://platform.claude.com/docs/ko/about-claude/models/overview"
+    sources:
+      - "https://platform.claude.com/docs/ko/about-claude/models/overview"
+      - "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model"
+
+  google:
+    recommended_default_model: gemini-2.5-pro
+    recommended_for_analysis:
+      - id: gemini-2.5-pro
+        label: "Gemini 2.5 Pro"
+        analysis_fit: "very_high"
+        why: "State-of-the-art model for complex reasoning, coding, and multimodal understanding."
+        source_url: "https://ai.google.dev/gemini-api/docs/models"
+      - id: gemini-2.5-flash
+        label: "Gemini 2.5 Flash"
+        analysis_fit: "high"
+        why: "Best price-performance model with thinking for high-volume analysis."
+        source_url: "https://ai.google.dev/gemini-api/docs/models"
+      - id: gemini-2.5-flash-lite
+        label: "Gemini 2.5 Flash-Lite"
+        analysis_fit: "medium_high"
+        why: "Fastest and most cost-efficient Gemini 2.5 model for high-frequency tasks."
+        source_url: "https://ai.google.dev/gemini-api/docs/models"
+    sources:
+      - "https://ai.google.dev/gemini-api/docs/models"
+
+usage:
+  selection_rule:
+    - "1) LLM_API_PROVIDER를 먼저 선택한다."
+    - "2) 해당 provider의 recommended_for_analysis 또는 budget_models 목록에서 id를 고른다."
+    - "3) 선택한 id를 LLM_MODEL에 설정한다."
+  quick_defaults:
+    openai: gpt-5.2
+    anthropic: claude-sonnet-4-5
+    google: gemini-2.5-pro
+  budget_defaults:
+    openai: gpt-5-nano
+    anthropic: claude-haiku-4-5
+    google: gemini-2.5-flash-lite

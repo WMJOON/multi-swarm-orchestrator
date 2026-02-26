@@ -9,7 +9,7 @@ disable-model-invocation: true
 # mso-workflow-topology-design
 
 > 이 스킬은 리포트를 생성하지 않는다.
-> 리포트를 생성할 **"그래프 구조(Topology) + 노드 명세"**를 설계해 `workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json`으로 반환한다.
+> 리포트를 생성할 **"그래프 구조(Topology) + 노드 명세"**를 설계해 `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json`으로 반환한다.
 
 ---
 
@@ -117,7 +117,7 @@ disable-model-invocation: true
 
 ### Phase 5: Workflow Spec JSON 산출
 
-Phase 1~4를 통합하여 `workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json` 생성.
+Phase 1~4를 통합하여 `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` 생성.
 
 **필수 키** (스키마 준수):
 ```json
@@ -146,7 +146,7 @@ Phase 1~4를 통합하여 `workspace/.mso-context/active/<Run ID>/10_topology/wo
 }
 ```
 
-**산출물 경로**: `workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json`
+**산출물 경로**: `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json`
 
 ---
 
@@ -172,8 +172,8 @@ Phase 1~4를 통합하여 `workspace/.mso-context/active/<Run ID>/10_topology/wo
 | 루프 위험 분석 상세 | [modules/module.loop_risk.md](modules/module.loop_risk.md) |
 | Hand-off 포맷/패턴 | [modules/module.handoff.md](modules/module.handoff.md) |
 | 출력 스키마 검증 | [schemas/workflow_topology_spec.schema.json](schemas/workflow_topology_spec.schema.json) |
-| Topology 자동 생성 | `python3 scripts/generate_topology.py --goal "..." --output workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json` |
-| 런타임 수렴 측정 | `python3 scripts/estimator.py --prev prev.json --curr curr.json` → `theta_gt_actual`, `delta_entropy`, `delta_rsv`, `redundancy` |
+| Topology 자동 생성 | `python3 {mso-workflow-topology-design}/scripts/generate_topology.py --goal "..." --output {workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` |
+| 런타임 수렴 측정 | `python3 {mso-workflow-topology-design}/scripts/estimator.py --prev prev.json --curr curr.json` → `theta_gt_actual`, `delta_entropy`, `delta_rsv`, `redundancy` |
 
 ---
 

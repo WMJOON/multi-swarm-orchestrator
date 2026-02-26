@@ -36,7 +36,7 @@ disable-model-invocation: true
 - output_contract, execution_checkpoints를 채운다.
 
 ### Phase 4) 산출물 저장
-- `workspace/.mso-context/active/<Run ID>/20_mental-model/mental_model_bundle.json`에 기록.
+- `{workspace}/.mso-context/active/<run_id>/20_mental-model/mental_model_bundle.json`에 기록.
 
 ### when_unsure
 - 입력 도메인이 추상적인 경우 `General` 도메인으로 fallback하고 assumptions 필드에 근거 기재.
@@ -55,8 +55,8 @@ disable-model-invocation: true
 ## Scripts
 
 - 기본 (topology θ_GT 상속):
-  `python3 scripts/build_bundle.py --topology <topology_path> --output <output_path>`
+  `python3 {mso-mental-model-design}/scripts/build_bundle.py --topology <topology_path> --output <output_path>`
 - GT Angle 확대 (불확실 도메인):
-  `python3 scripts/build_bundle.py --topology <topology_path> --gt-policy widen`
+  `python3 {mso-mental-model-design}/scripts/build_bundle.py --topology <topology_path> --gt-policy widen`
 - GT Angle 수동 지정:
-  `python3 scripts/build_bundle.py --topology <topology_path> --gt-policy override`
+  `python3 {mso-mental-model-design}/scripts/build_bundle.py --topology <topology_path> --gt-policy override`

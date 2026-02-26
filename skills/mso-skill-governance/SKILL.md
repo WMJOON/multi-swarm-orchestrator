@@ -74,10 +74,10 @@ disable-model-invocation: true
 
 | 상황 | 파일 |
 |------|------|
-| 전체 검증 실행 | `python3 scripts/validate_all.py` |
-| CC 계약만 검증 | `python3 scripts/validate_cc_contracts.py --json` |
-| 스키마 검증 | `python3 scripts/validate_schemas.py --json` |
-| 외부 의존성 확인 | `python3 scripts/check_deps.py` |
-| 거버넌스 규칙 상세 | `python3 scripts/validate_gov.py` |
+| 전체 검증 실행 | `python3 {mso-skill-governance}/scripts/validate_all.py` |
+| CC 계약만 검증 | `python3 {mso-skill-governance}/scripts/validate_cc_contracts.py --json` |
+| 스키마 검증 | `python3 {mso-skill-governance}/scripts/validate_schemas.py --json` |
+| 외부 의존성 확인 | `python3 {mso-skill-governance}/scripts/check_deps.py` |
+| 거버넌스 규칙 상세 | `python3 {mso-skill-governance}/scripts/validate_gov.py` |
 | 상세 규칙 | [core.md](core.md) |
 | 모듈 목록 | [modules/modules_index.md](modules/modules_index.md) |

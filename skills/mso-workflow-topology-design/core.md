@@ -15,7 +15,7 @@
 - 선택: `constraints`, `context`, `mode`(
 `manual`, `semi_auto`, `auto`)
 
-출력 경로 기본값: `workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json`
+출력 경로 기본값: `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json`
 
 ## Output Interface
 다음 필수 키를 가진 JSON:
@@ -38,7 +38,7 @@ Optional 키 (스키마에서 허용, 생성 시 권장):
 2. 목표 성격에 따라 topology 유형 선택( `linear` / `fan_out` / `fan_in` / `dag` / `loop`).
 3. 각 Node의 `theta_gt_band`를 `wide`/`moderate`/`narrow`로 할당.
 4. 노드에 `assigned_dqs`, `rsv_target`, `explicit_output` 성격 부여.
-5. `workspace/.mso-context/active/<Run ID>/10_topology/workflow_topology_spec.json` 생성.
+5. `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` 생성.
 
 ## Error Handling
 - `goal` 미제공: fail-fast.

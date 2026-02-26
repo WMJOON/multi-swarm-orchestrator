@@ -76,6 +76,41 @@
         "level_after": { "type": "integer", "enum": [10, 20, 30] },
         "hitl_responded": { "type": "boolean" }
       }
+    },
+    "process_optimizing": {
+      "type": "object",
+      "description": "process-optimizing 모듈 실행 결과 (사용 시에만)",
+      "properties": {
+        "selected_paths": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["data-analysis-workflow", "process", "process-improvement"] }
+        },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "analysis_report_path": { "type": "string" },
+        "evaluation_report_path": { "type": "string" },
+        "exit_reason": { "type": "string", "enum": ["exit", "loop-entry"] }
+      }
+    },
+    "llm_as_a_judge": {
+      "type": "object",
+      "description": "llm-as-a-judge 모듈 실행 결과 (사용 시에만)",
+      "properties": {
+        "status": { "type": "string", "enum": ["converged", "iterating", "escalated"] },
+        "final_metrics": {
+          "type": "object",
+          "properties": {
+            "precision": { "type": "number", "minimum": 0, "maximum": 1 },
+            "recall": { "type": "number", "minimum": 0, "maximum": 1 },
+            "f1_score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "cohen_kappa": { "type": "number", "minimum": -1, "maximum": 1 }
+          }
+        },
+        "labeled_data_path": { "type": "string" },
+        "llm_as_a_judge_report_path": { "type": "string" },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "labeling_rule_version": { "type": "string", "pattern": "^v\\d+\\.\\d+$" },
+        "sampling_ratio_final": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
     }
   }
 }

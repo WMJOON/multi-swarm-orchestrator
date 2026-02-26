@@ -15,6 +15,11 @@ skills/
 │   └── history/                     ← 스키마 버전 스냅샷
 ├── mso-observability/               ← 관찰, 환류 (패턴 분석)
 │   └── templates/                   ← HITL_ESCALATION_BRIEF.md, RUN_RETROSPECTIVE.md
+├── mso-workflow-optimizer/          ← 워크플로우 성과 평가, Automation Level 판단
+│   ├── modules/                     ← process-optimizing, llm-as-a-judge 등
+│   ├── configs/                     ← llm-model-catalog.yaml
+│   ├── schemas/                     ← optimizer_result.schema.json
+│   └── scripts/                     ← select_llm_model.py
 ├── mso-process-template/            ← 프로세스 규약, Hand-off 템플릿 SoT
 └── _shared/                         ← 공통 유틸 (runtime_workspace.py)
 rules/
@@ -33,26 +38,84 @@ v0.0.3부터는 별도 `config.yaml` 없이 동작한다. 환경별 오버라이
 
 ---
 
+## {workspace} 디렉토리 구조 (최종 표준)
+
+MSO 런타임 산출물은 기본적으로 `{workspace}/.mso-context` 하위에 기록된다.
+
+```text
+{workspace}/
+└── .mso-context/
+    ├── config/
+    │   └── policy.yaml
+    ├── audit_global.db
+    ├── active/
+    │   └── <run_id>/
+    │       ├── manifest.json
+    │       ├── 00_collect/
+    │       ├── 10_topology/
+    │       │   └── workflow_topology_spec.json
+    │       ├── 20_mental-model/
+    │       │   └── mental_model_bundle.json
+    │       ├── 30_execution/
+    │       │   └── execution_plan.json
+    │       ├── 40_collaboration/
+    │       │   └── task-context/
+    │       │       ├── tickets/
+    │       │       ├── archive/
+    │       │       └── rules.md
+    │       ├── 50_audit/
+    │       │   ├── agent_log.db
+    │       │   └── snapshots/
+    │       ├── 60_observability/
+    │       │   ├── callback-*.json
+    │       │   └── callbacks-*.json
+    │       ├── 70_governance/
+    │       ├── 80_delivery/
+    │       ├── 90_meta/
+    │       └── optimizer/
+    │           ├── level10_report.md
+    │           ├── level20_report.md
+    │           ├── level30_report.md
+    │           ├── goal.json
+    │           ├── process/
+    │           │   ├── analysis-report.md
+    │           │   ├── evaluation-report.md
+    │           │   └── improvement-evaluation-report.md
+    │           └── llm-as-a-judge/
+    │               ├── sample.csv
+    │               ├── labeled-data.csv
+    │               ├── TF-PN.csv
+    │               └── report.md
+    └── archive/
+        └── <YYYY-MM>/
+```
+
+표기 규칙:
+- 워크스페이스 경로: `{workspace}/.mso-context/...`
+- 스킬 내부 경로: `{스킬명}/*` (예: `{mso-workflow-optimizer}/scripts/select_llm_model.py`)
+
+---
+
 ## 1. 워크플로우 설계 (Design)
 
 ```bash
 RUN_ID="YYYYMMDD-msowd-onboarding"
 
 # 목표(Goal)를 입력하면 노드 구조(Topology)가 생성된다.
-python3 skills/mso-workflow-topology-design/scripts/generate_topology.py \
+python3 {mso-workflow-topology-design}/scripts/generate_topology.py \
   --run-id "$RUN_ID" \
   --skill-key msowd \
   --case-slug onboarding \
   --goal "사용자 온보딩 프로세스 설계"
 
 # 각 노드에 사고 모델(Mental Model)을 매핑한다.
-python3 skills/mso-mental-model-design/scripts/build_bundle.py \
+python3 {mso-mental-model-design}/scripts/build_bundle.py \
   --run-id "$RUN_ID" \
   --skill-key msowd \
   --case-slug onboarding
 
 # 두 결과를 통합하여 execution_graph를 생성한다.
-python3 skills/mso-execution-design/scripts/build_plan.py \
+python3 {mso-execution-design}/scripts/build_plan.py \
   --run-id "$RUN_ID" \
   --skill-key msowd \
   --case-slug onboarding
@@ -63,13 +126,13 @@ python3 skills/mso-execution-design/scripts/build_plan.py \
 ## 2. 티켓 운영 (Ops)
 
 ```bash
-TASK_ROOT="workspace/.mso-context/active/$RUN_ID/40_collaboration/task-context"
+TASK_ROOT="{workspace}/.mso-context/active/$RUN_ID/40_collaboration/task-context"
 
-python3 skills/mso-task-context-management/scripts/create_ticket.py \
+python3 {mso-task-context-management}/scripts/create_ticket.py \
   "온보딩 플로우 구현" \
   --path "$TASK_ROOT"
 
-python3 skills/mso-task-context-management/scripts/archive_tasks.py \
+python3 {mso-task-context-management}/scripts/archive_tasks.py \
   --path "$TASK_ROOT"
 ```
 
@@ -79,20 +142,20 @@ python3 skills/mso-task-context-management/scripts/archive_tasks.py \
 
 ```bash
 # 스키마 정합성 확인
-python3 skills/mso-skill-governance/scripts/validate_schemas.py \
+python3 {mso-skill-governance}/scripts/validate_schemas.py \
   --run-id "$RUN_ID" \
   --skill-key msogov \
   --case-slug onboarding \
   --json
 
 # 전체 거버넌스 점검
-python3 skills/mso-skill-governance/scripts/validate_all.py \
+python3 {mso-skill-governance}/scripts/validate_all.py \
   --run-id "$RUN_ID" \
   --skill-key msogov \
   --case-slug onboarding
 
 # 설계 → 운영 → 인프라 통합 테스트
-python3 skills/mso-skill-governance/scripts/run_sample_pipeline.py \
+python3 {mso-skill-governance}/scripts/run_sample_pipeline.py \
   --goal "테스트 파이프라인" \
   --task-title "샘플 티켓" \
   --skill-key msowd \

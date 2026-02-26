@@ -52,7 +52,7 @@ disable-model-invocation: true
 
 ## Scripts
 
-- `python3 scripts/dispatch.py --ticket workspace/.mso-context/active/<Run ID>/40_collaboration/task-context/tickets/TKT-0001-xxx.md`
+- `python3 {mso-agent-collaboration}/scripts/dispatch.py --ticket {workspace}/.mso-context/active/<run_id>/40_collaboration/task-context/tickets/TKT-0001-xxx.md`
 
 ### when_unsure
 - dispatch_mode 판별이 불명확하면 `run`(단일 실행)을 기본값으로 사용하고, 판단 근거를 audit payload에 기록한다.
@@ -63,6 +63,6 @@ disable-model-invocation: true
 
 | 상황 | 파일 |
 |------|------|
-| dispatch 실행 | `python3 scripts/dispatch.py --ticket <ticket.md>` |
+| dispatch 실행 | `python3 {mso-agent-collaboration}/scripts/dispatch.py --ticket <ticket.md>` |
 | 상세 규칙 | [core.md](core.md) |
 | 모듈 목록 | [modules/modules_index.md](modules/modules_index.md) |

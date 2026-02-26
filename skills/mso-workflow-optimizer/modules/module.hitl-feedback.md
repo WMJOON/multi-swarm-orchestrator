@@ -50,7 +50,7 @@ optimizer 전용 필드는 `feedback_text`에 JSON 직렬화하여 저장한다.
 | `date` | 현재 날짜 |
 | `user_id` | HITL 응답자 식별자 (없으면 null) |
 | `feedback_text` | 아래 JSON 직렬화 |
-| `source_ref_path` | `workspace/.mso-context/active/<run_id>/optimizer/levelXX_report.md` |
+| `source_ref_path` | `{workspace}/.mso-context/active/<run_id>/optimizer/levelXX_report.md` |
 | `impact_domain` | `"workflow_optimization"` |
 | `impact_summary` | `"Level {before} → {after}, {n}건 제안 수렴"` (사람 읽기용 요약) |
 | `reversibility` | `"High"` (다음 주기에 재조정 가능) |
@@ -91,9 +91,9 @@ optimizer 전용 필드는 `feedback_text`에 JSON 직렬화하여 저장한다.
 
 HITL 응답 대기 시간 초과 시:
 
-```json
+```jsonc
 {
-  "next_automation_level": "{현재 automation_level 유지}",
+  "next_automation_level": 20,  // 현재 automation_level 유지
   "optimization_directives": [],
   "carry_over_issues": ["HITL 미응답 — 다음 주기에 재검토 필요"],
   "approved_by": "timeout_fallback"

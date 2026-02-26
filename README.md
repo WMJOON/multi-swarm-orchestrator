@@ -48,6 +48,23 @@ graph LR
 
 ---
 
+## Roadmap
+
+### v0.0.7 — mso-model-optimizer
+
+프로세스 모듈에 필요한 pre-trained model의 fine-tuning 워크플로우를 제공하는 스킬.
+
+`mso-workflow-optimizer`가 **프로세스 수준**의 automation-level 측정과 escalation을 담당한다면, `mso-model-optimizer`는 **모델 수준**의 성능 평가와 fine-tuning lifecycle을 담당한다.
+
+| 스킬 | 평가 대상 | 핵심 역할 |
+|------|-----------|-----------|
+| `mso-workflow-optimizer` (v0.0.6) | 프로세스 구조 | Automation Level 측정 + escalation 환경 제공 |
+| `mso-model-optimizer` (v0.0.7) | 프로세스 내부 모델 | Pre-trained model fine-tuning 워크플로우 제공 |
+
+> **배경**: AI Model·AI Agent·Physical AI를 관통하는 평가 관점으로, 복잡도가 인지 수준을 초과한 AI System은 **멱등성**(동일 입력 → 동일 결과)과 **설명력**(왜 그 결과인가)으로 측정해야 하는 블랙박스에 수렴한다. 두 optimizer 스킬은 이 평가 축의 프로세스 레이어와 모델 레이어를 각각 커버한다.
+
+---
+
 ## 의존성
 
 - Python 3.10+
