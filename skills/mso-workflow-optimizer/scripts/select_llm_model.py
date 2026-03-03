@@ -41,29 +41,40 @@ def _providers(catalog: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _model_ids(provider_data: Dict[str, Any]) -> List[str]:
-    items = provider_data.get("recommended_for_analysis", [])
     out: List[str] = []
-    if not isinstance(items, list):
-        return out
-    for item in items:
-        if isinstance(item, dict):
-            mid = item.get("id")
-            if isinstance(mid, str) and mid.strip():
-                out.append(mid.strip())
+    for section in ("recommended_for_analysis", "budget_models"):
+        items = provider_data.get(section, [])
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict):
+                mid = item.get("id")
+                if isinstance(mid, str):
+                    mid = mid.strip()
+                    if mid:
+                        out.append(mid)
     return out
 
 
 def _print_provider(name: str, pdata: Dict[str, Any]) -> None:
     default_model = pdata.get("recommended_default_model", "")
     print(f"[{name}] default={default_model}")
-    for item in pdata.get("recommended_for_analysis", []):
-        if not isinstance(item, dict):
+    for section_key, section_label in (
+        ("recommended_for_analysis", "analysis"),
+        ("budget_models", "budget"),
+    ):
+        items = pdata.get(section_key, [])
+        if not items:
             continue
-        model_id = item.get("id", "")
-        fit = item.get("analysis_fit", "")
-        why = item.get("why", "")
-        print(f"  - {model_id} ({fit})")
-        print(f"    {why}")
+        print(f"  [{section_label}]")
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            model_id = item.get("id", "")
+            fit = item.get("analysis_fit", "")
+            why = item.get("why", "")
+            print(f"    - {model_id} ({fit})")
+            print(f"      {why}")
 
 
 def main() -> int:
@@ -88,7 +99,7 @@ def main() -> int:
             print("[error] --model requires a concrete --provider", file=sys.stderr)
             return 1
         ids = _model_ids(providers[args.provider])
-        if args.model not in ids:
+        if args.model not in set(ids):
             print(f"[error] model '{args.model}' not found for provider '{args.provider}'", file=sys.stderr)
             print(f"[hint] available: {', '.join(ids)}", file=sys.stderr)
             return 1
