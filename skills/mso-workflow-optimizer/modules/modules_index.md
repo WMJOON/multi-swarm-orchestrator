@@ -15,3 +15,9 @@
 |---|---|---|
 | module.process-optimizing.md | 프로세스 실행·분석·평가 반복을 통한 워크플로우 구조 개선 | → llm-as-a-judge를 서브프로세스로 호출 |
 | module.llm-as-a-judge.md | LLM 기반 데이터 라벨링 + 정량 품질 검증 + HITL 규칙 개선 루프 | ← process-optimizing 또는 독립 실행 |
+
+## Agent Teams Module
+
+| module | purpose | 비고 |
+|---|---|---|
+| module.agent-team.md | Proactive Async + Jewels 패턴의 Agent Teams 아키텍처 | jewel-producer(background) + decision/executor/hitl(on-demand) |

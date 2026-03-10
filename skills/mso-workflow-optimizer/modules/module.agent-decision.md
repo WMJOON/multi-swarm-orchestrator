@@ -32,7 +32,7 @@
 
 ---
 
-## Signal C — HITL 피드백 이력
+## Signal C — HITL 피드백 이력 + Jewels
 
 | 피드백 패턴 | 레벨 보정 |
 |-------------|-----------|
@@ -43,14 +43,37 @@
 
 **데이터 출처**: `audit_global.db`의 `user_feedback` 테이블, `workflow_name` 기준 최근 3건 평균
 
+### Signal C 추가 입력: Jewels (jewel-producer 생성분)
+
+lead가 decision-agent 소환 시 미소비 jewels를 함께 전달한다.
+jewels는 HITL 피드백 보정값 계산 **이후** 추가 반영된다.
+
+| 수신 Jewel type | severity | Signal C 추가 보정 |
+|----------------|----------|--------------------|
+| `kpi_drift` | high | +10 |
+| `level_escalation` | medium | +10 |
+| `pattern_alert` | medium | escalation_needed=true 강제 |
+| `sampling_adjust` | low | 보정 없음 (Phase 3 메타로만 전달) |
+
+**적용 순서**: `base_level(Signal A)` → `HITL delta(Signal C)` → `jewel delta` → `KPI 검증(Signal B)` → `final_level`
+
 ---
 
 ## 3-Signal 종합 규칙
 
 ```
-base_level = Signal_A
-adjusted_level = base_level + Signal_C_delta
-final_level = clip(adjusted_level, 10, 30)
+base_level    = Signal_A
+hitl_delta    = Signal_C (HITL 피드백 보정)
+jewel_delta   = jewels 보정 합산 (kpi_drift +10, level_escalation +10)
+
+# Signal C 총 기여는 ±10으로 캡 (과잉 에스컬레이션 방지)
+total_C_delta = clip(hitl_delta + jewel_delta, -10, +10)
+
+adjusted_level = base_level + total_C_delta
+final_level    = clip(adjusted_level, 10, 30)
+
+if any(jewel.type == "pattern_alert" for jewel in jewels):
+    escalation_needed = true
 
 if Signal_B == "KPI 미달" and final_level < 30:
     escalation_needed = true
