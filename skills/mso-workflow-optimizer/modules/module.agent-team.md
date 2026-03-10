@@ -97,6 +97,7 @@ optimizer-lead (delegate mode)
 | 동일 workflow Level 30 실행 후 KPI 미개선 2회 | `level_escalation` | medium |
 | 동일 에러 패턴 3회 이상 반복 | `pattern_alert` | medium |
 | llm-as-a-judge samplingRatio < 0.05 누적 | `sampling_adjust` | low |
+| Level 30→10 Tier 하강 조건 충족 감지 (v0.1.0 예정) | `tier_downgrade` | medium |
 
 **조건 미달 시 Jewel 생성 금지** (노이즈 방지).
 
@@ -105,7 +106,7 @@ optimizer-lead (delegate mode)
 {
   "jewel_id": "JWL-opt-{YYYYMMDD-HHmmss}",
   "workflow_name": "<name>",
-  "type": "kpi_drift | level_escalation | pattern_alert | sampling_adjust",
+  "type": "kpi_drift | level_escalation | pattern_alert | sampling_adjust | tier_downgrade",
   "severity": "high | medium | low",
   "content": "<감지 내용 1줄 요약>",
   "recommended_action": "<권고 행동>",
@@ -115,6 +116,8 @@ optimizer-lead (delegate mode)
 ```
 
 **저장 경로:** `{workspace}/.mso-context/jewels/opt/{jewel_id}.json`
+
+> `tier_downgrade`는 v0.1.0 Processing Tier 최적화와 연계 예정. v0.0.7에서는 조건 정의만 등록, 실제 감지 로직은 비활성.
 
 **lead에게 메시지 (Jewel 생성 시):**
 ```
@@ -278,9 +281,15 @@ Lead stays in delegate mode. Do not implement tasks yourself.
 
 ---
 
-## Hook 설정 (TeammateIdle)
+## Hook 설정 (Claude Code)
 
-`TeammateIdle` 훅: jewel-producer가 idle 전환 직전에 실행. `exit 2`로 종료하면 피드백 메시지를 teammate에게 전달하며 계속 실행시킨다.
+> Claude Code 환경의 `.claude/settings.json` 또는 프로젝트 설정 파일에 적용.
+> - **TeammateIdle**: jewel-producer idle 전환 차단 (exit 2로 재활성화)
+> - **PostToolUse[jewels/opt]**: Jewel 파일 생성 시 lead에게 자동 알림 (수동 메시지 의존도 제거)
+> - **PostToolUse[report]**: level-executor report 생성 시 audit 체인 보강 알림
+> - **SubagentStop[jewel-producer]**: 비정상 종료 감지 → lead 경고
+>
+> 환경변수 `CLAUDE_TOOL_INPUT`: Claude Code가 PostToolUse 시 JSON 문자열로 tool input을 주입.
 
 ```json
 {
@@ -292,6 +301,39 @@ Lead stays in delegate mode. Do not implement tasks yourself.
           {
             "type": "command",
             "command": "echo 'Continue monitoring audit_global.db. Run another monitoring cycle and check for new jewel conditions.' >&2 && exit 2"
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,os,json; inp=json.loads(os.environ.get('CLAUDE_TOOL_INPUT','{}')); path=inp.get('file_path',''); \nimport re; m=re.search(r'jewels/opt/(JWL-opt-[^.]+)\\.json', path);\nif m:\n  try: d=json.load(open(path))\n  except Exception: d={};\n  print(f'[jewel-producer→lead] Jewel created: {m.group(1)} | type={d.get(\\\"type\\\",\\\"?\\\")}, severity={d.get(\\\"severity\\\",\\\"?\\\")}', file=sys.stderr)\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,os,json,re; inp=json.loads(os.environ.get('CLAUDE_TOOL_INPUT','{}')); path=inp.get('file_path','');\nif re.search(r'/optimizer/level\\d+_report\\.md', path):\n  run_id=path.split('/active/')[-1].split('/')[0] if '/active/' in path else 'unknown';\n  level=re.search(r'level(\\d+)_report',path); lv=level.group(1) if level else '?';\n  print(f'[level-executor→lead] report written: level{lv}_report.md (run={run_id}) — audit logging 확인 필요', file=sys.stderr)\""
+          }
+        ]
+      }
+    ],
+
+    "SubagentStop": [
+      {
+        "matcher": "jewel-producer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[WARN][jewel-producer] 비정상 종료 감지. audit_global.db 모니터링 중단. WATCH 태스크 재할당 또는 단일 세션 모드 전환 필요.' >&2"
           }
         ]
       }

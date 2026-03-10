@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate CC-01~CC-06 contract definitions and runtime wiring."""
+"""Validate CC-01~CC-10 contract definitions and runtime wiring."""
 
 from __future__ import annotations
 
@@ -36,6 +36,13 @@ def resolve_contract_output(paths: Dict[str, Any], contract_id: str) -> Path:
         "CC-04": Path(paths["task_context_dir"]) / "tickets",
         "CC-05": Path(paths["audit_db_path"]),
         "CC-06": Path(paths["execution_plan_path"]),
+        "CC-07": Path(paths.get("observability_dir",
+            str(Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / "60_observability"))),
+        "CC-08": Path(paths.get("optimizer_dir",
+            str(Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / "optimizer"))),
+        "CC-09": Path(paths.get("optimizer_dir",
+            str(Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / "optimizer"))) / "goal.json",
+        "CC-10": Path(paths["task_context_dir"]) / "tickets",
     }
     return mapping[contract_id]
 
@@ -88,7 +95,7 @@ def load_json(path: Path) -> Dict[str, Any]:
     raw = path.read_text(encoding="utf-8")
     if not raw.strip():
         return {}
-    return json.loads(raw) if raw else {}
+    return json.loads(raw)
 
 
 def check_file_json_fields(path: Path, required_fields: List[str]) -> tuple[bool, List[str]]:
@@ -318,6 +325,51 @@ def check_runtime_wiring(
                         }
                     )
                     break
+
+        elif cid in ("CC-07", "CC-08"):
+            # CC-07/08 producer_output은 디렉토리. 존재 여부만 경고로 확인.
+            if not producer_output.exists():
+                warnings.append({
+                    "contract": cid,
+                    "level": "warn",
+                    "finding": f"{cid} output directory missing",
+                    "evidence": str(producer_output),
+                })
+
+        elif cid == "CC-10":
+            # CC-10은 mso-agent-collaboration 모드 활성화 시에만 의미 있음.
+            # 파일 부재 또는 workflow_optimization 태그 티켓 없으면 warn (fail 아님).
+            if not producer_output.exists():
+                warnings.append({
+                    "contract": cid,
+                    "level": "warn",
+                    "finding": "CC-10 ticket directory missing (mso-agent-collaboration mode may not be active)",
+                    "evidence": str(producer_output),
+                })
+                continue
+            opt_ticket = next(
+                (t for t in sorted(producer_output.glob("*.md"))
+                 if "workflow_optimization" in t.read_text(encoding="utf-8", errors="ignore")),
+                None,
+            )
+            if opt_ticket is None:
+                warnings.append({
+                    "contract": cid,
+                    "level": "warn",
+                    "finding": "no workflow_optimization tagged tickets found for CC-10",
+                    "evidence": str(producer_output),
+                })
+                continue
+            ok, problems = check_frontmatter_fields(
+                opt_ticket, ["id", "status", "owner_agent", "dispatch_mode", "task_id"]
+            )
+            if not ok:
+                fails.append({
+                    "contract": cid,
+                    "level": "fail",
+                    "finding": "; ".join(problems),
+                    "evidence": str(opt_ticket),
+                })
 
         elif producer_output.exists() and producer_output.suffix == ".json":
             ok, problems = check_file_json_fields(producer_output, list(expected["required_output_keys"]))

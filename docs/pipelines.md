@@ -45,9 +45,9 @@ stateDiagram-v2
 
 ---
 
-## 스킬 간 계약 (CC-01~09)
+## 스킬 간 계약 (CC-01~10)
 
-스킬 간 데이터 교환은 9가지 핵심 계약(CC-01~CC-09)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
+스킬 간 데이터 교환은 10가지 핵심 계약(CC-01~CC-10)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
 
 ```mermaid
 flowchart LR
@@ -62,6 +62,7 @@ flowchart LR
     Observability -- CC-07 --> Optimizer["Workflow Optimizer"]
     Optimizer -- CC-08 --> AuditLog
     Optimizer -- CC-09 --> TaskContext
+    Optimizer -- CC-10 --> Collaboration
 ```
 
 `Governance`가 이 계약을 자동으로 검증한다. 필수 필드가 누락되거나 스키마가 일치하지 않으면 파이프라인 진입 전에 즉시 차단한다.
@@ -95,6 +96,17 @@ flowchart LR
 | **전달 데이터** | `goal.json`의 `optimization_directives[]` → 개별 TKT 티켓으로 등록 |
 | **필수 키** | 티켓: `id`(TKT-xxxx), `status`(todo), `priority`, `owner`, `tags`(workflow_optimization 포함) |
 | **전달 방식** | `create_ticket.py` CLI 호출 또는 티켓 Markdown frontmatter 직접 생성 |
+
+### CC-10: mso-workflow-optimizer → mso-agent-collaboration
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-workflow-optimizer` (Phase 0: 멀티 에이전트 초기화) |
+| **소비자** | `mso-agent-collaboration` (Ticket ingestion → dispatch) |
+| **전달 데이터** | teammate 티켓 4종 (jewel-producer/decision-agent/level-executor/hitl-coordinator) + handoff_payload |
+| **필수 키** | 티켓: `id`, `status`(todo), `owner_agent`, `dispatch_mode`, `tags`(workflow_optimization), `task_id`. payload: `run_id`, `task_id`, `owner_agent`, `role`, `objective`, `workflow_name` |
+| **전달 방식** | 티켓 Markdown 생성 → `dispatch.py --ticket <ticket.md>` 호출 |
+| **적용 조건** | mso-agent-collaboration 모드 활성화 시에만. 단일 세션 모드에서는 해당 없음 (governance: warn) |
 
 ---
 

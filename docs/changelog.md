@@ -1,5 +1,42 @@
 # 변경 이력
 
+## v0.0.7
+
+### 핵심 변경
+
+| 변경 | 내용 |
+|------|------|
+| **Agent Teams + Jewels 패턴** | mso-workflow-optimizer에 4-teammate 아키텍처 도입. Proactive Async 패턴으로 audit_global.db 상시 모니터링 |
+| **provider-free mso-agent-collaboration 연계** | 단일 세션 외에 티켓 dispatch 방식으로 Jewels 패턴 구현 가능 (CC-10) |
+| **CC-10 계약 추가** | optimizer(Phase 0) → mso-agent-collaboration teammate dispatch 계약 |
+| **CC-07~09 governance 등록** | _cc_defaults.py에 CC-07~09 계약 추가, CC_VERSION 0.0.7 갱신 |
+| **tier_downgrade Jewel 타입** | module.agent-team.md에 v0.1.0 예정 tier_downgrade 타입 명세 추가 |
+| **Claude Code Hook 3종** | PostToolUse(jewels 경로) + PostToolUse(report 경로) + SubagentStop(jewel-producer) |
+| **레거시 제거** | mso-agent-collaboration core.md의 provider mapping 참조 제거 |
+
+### 수정 파일
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-workflow-optimizer/modules/module.agent-team.md` | tier_downgrade 추가, Hook 3종 추가 |
+| `skills/mso-agent-collaboration/core.md` | when_unsure 레거시 텍스트 교체 |
+| `skills/mso-skill-governance/SKILL.md` | CC 검증 범위 CC-10으로 확장 |
+| `skills/mso-skill-governance/scripts/_cc_defaults.py` | CC-07~10 등록, CC_VERSION 0.0.7 갱신 |
+| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | CC-07~10 매핑, CC-10 warn 분기 추가 |
+| `docs/pipelines.md` | CC-10 계약 + Mermaid 업데이트 |
+| `docs/changelog.md` | v0.0.7 항목 추가 |
+| `README.md` | CC-01~10 텍스트 반영 |
+
+### 하위 호환 (v0.0.6 → v0.0.7)
+
+- **스키마**: 변경 없음. DB 스키마 v1.5.0 유지
+- **CC Contracts**: CC-01~09 변경 없음. CC-10 순수 추가
+- **단일 세션 모드**: 변경 없음. Phase 0는 선택적
+- **Hook**: Claude Code 환경에서만 활성화. 미지원 환경에서는 무시됨
+- **CC-10 governance**: 단일 세션 모드 사용자는 warn 처리 (파이프라인 차단 없음)
+
+---
+
 ## v0.0.6
 
 ### 핵심 변경

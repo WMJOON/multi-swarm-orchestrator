@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Embedded CC contract defaults for runtime workspace v0.0.3."""
+"""Embedded CC contract defaults for runtime workspace v0.0.7."""
 
 from __future__ import annotations
 
 import copy
 from typing import Any, Dict, List
 
-CC_VERSION = "0.0.3"
+CC_VERSION = "0.0.7"
 
 DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
     {
@@ -79,6 +79,51 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "status": "ok",
         "validation_rule": "execution_graph 노드가 node_snapshots 테이블에 스냅샷으로 기록 가능해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/30_execution/execution_plan.json",
+    },
+    {
+        "id": "CC-07",
+        "producer": "mso-observability",
+        "consumer": "mso-workflow-optimizer",
+        "required_output_keys": ["event_type", "payload", "correlation"],
+        "required_input_keys": ["user_feedback.feedback_text", "callback.event_type", "callback.payload.severity"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "observability callback JSON과 user_feedback 테이블이 optimizer Phase 1에 소비 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/60_observability",
+    },
+    {
+        "id": "CC-08",
+        "producer": "mso-workflow-optimizer",
+        "consumer": "mso-agent-audit-log",
+        "required_output_keys": ["run_id", "artifact_uri", "status", "work_type"],
+        "required_input_keys": ["run_id", "artifact_uri", "status", "work_type"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "optimizer decision_output이 audit_global.db audit_logs 행으로 직렬화 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/optimizer",
+    },
+    {
+        "id": "CC-09",
+        "producer": "mso-workflow-optimizer",
+        "consumer": "mso-task-context-management",
+        "required_output_keys": ["next_automation_level", "optimization_directives", "carry_over_issues", "approved_by"],
+        "required_input_keys": ["id", "status", "priority", "owner", "tags"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "goal.json의 optimization_directives가 TKT 티켓으로 등록 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/optimizer/goal.json",
+    },
+    {
+        "id": "CC-10",
+        "producer": "mso-workflow-optimizer",
+        "consumer": "mso-agent-collaboration",
+        "required_output_keys": ["id", "status", "owner_agent", "dispatch_mode", "tags", "task_id"],
+        "required_input_keys": ["run_id", "task_id", "owner_agent", "role", "objective", "workflow_name"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "optimizer Phase 0에서 생성한 teammate 티켓이 mso-agent-collaboration dispatch 요건을 충족해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/40_collaboration/task-context/tickets",
+        "activation_condition": "mso-agent-collaboration 모드 활성화 시에만 적용. 단일 세션 모드에서는 warn 처리",
     },
 ]
 
