@@ -31,6 +31,27 @@ optimizer-lead (delegate mode)
 - Phase 4 audit logging → `level-executor` 담당 (delegate lead 대신)
 - 상세: [`modules/module.agent-team.md`](modules/module.agent-team.md)
 
+### v0.0.7 변경 파일
+
+| 파일 | 변경 유형 | 내용 |
+|------|----------|------|
+| `modules/module.agent-team.md` | 신규 | Agent Teams 전체 아키텍처 정의 |
+| `modules/module.agent-decision.md` | 수정 | Signal C에 Jewels 입력 추가, `total_C_delta clip` 공식 추가 |
+| `modules/modules_index.md` | 수정 | Agent Teams Module 항목 추가 |
+| `SKILL.md` | 수정 | `version: 0.0.7`, 실행 모드 테이블, Phase 0 추가 |
+| `README.md` | 신규 | 버전 이력 + v0.1.0 로드맵 |
+
+### v0.0.7 검증 수정 (4건)
+
+설계 후 내부 검증에서 발견된 결함을 수정함.
+
+| # | 심각도 | 내용 | 수정 |
+|---|--------|------|------|
+| 1 | Critical | 3-Signal 종합 규칙 코드에 `jewel_delta` 누락 | `hitl_delta + jewel_delta`를 `clip(-10, +10)` 캡과 함께 공식에 추가 |
+| 2 | Critical | TeammateIdle hook `exit 0` → jewel-producer 실제로 idle 전환됨 | `exit 2` + stderr 피드백으로 수정 |
+| 3 | Medium | `WATCH` 태스크 "완료 후 재클레임" 불가 — completed 태스크는 재클레임 안 됨 | 태스크를 완료하지 않고 루프 실행, TeammateIdle hook으로 유지하는 방식으로 수정 |
+| 4 | Medium | Phase 4 audit logging 담당 teammate 미지정 — delegate lead는 직접 기록 불가 | `level-executor`가 report 생성 후 audit 기록까지 담당하도록 명시 |
+
 ---
 
 ## v0.1.0 로드맵
