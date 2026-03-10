@@ -1,7 +1,7 @@
 # Multi-Swarm Orchestrator (v0.0.7)
 
 복잡한 AI 에이전트 작업의 **비재현성·비가시성·반복 실패**를 해결하기 위해 설계된 오케스트레이션 시스템.
-워크플로우를 JSON 스키마로 정의하고, 실행을 티켓·감사 로그로 추적하며, 스킬 간 데이터 흐름을 계약(CC-01~09)으로 검증한다.
+워크플로우를 JSON 스키마로 정의하고, 실행을 티켓·감사 로그로 추적하며, 스킬 간 데이터 흐름을 계약(CC-01~10)으로 검증한다.
 
 ```mermaid
 graph LR
@@ -41,7 +41,7 @@ graph LR
 | 문서 | 설명 |
 |------|------|
 | [아키텍처](docs/architecture.md) | Git-Metaphor 상태 모델, 전체 아키텍처, 업무/관제 공간, 버전별 주요 변경 |
-| [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~09, 티켓 생명주기, Hand-off Templates |
+| [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~10, 티켓 생명주기, Hand-off Templates |
 | [시작하기](docs/getting-started.md) | 디렉토리 구조, 설계·운영·검증 명령어 |
 | [스킬 사용 매트릭스](docs/usage_matrix.md) | Phase × Swarm × Role 매트릭스, 실행 흐름 시퀀스 |
 | [변경 이력](docs/changelog.md) | v0.0.3~v0.0.6 변경 이력 및 하위 호환 노트 |
@@ -79,10 +79,16 @@ total_C_delta = clip(hitl_delta + jewel_delta, -10, +10)
 
 | 파일 | 변경 유형 |
 |------|----------|
-| `skills/mso-workflow-optimizer/modules/module.agent-team.md` | 신규 — Agent Teams 전체 아키텍처 |
+| `skills/mso-workflow-optimizer/modules/module.agent-team.md` | 신규/수정 — Agent Teams 전체 아키텍처, tier_downgrade 추가, Hook 3종 추가 |
 | `skills/mso-workflow-optimizer/modules/module.agent-decision.md` | 수정 — Signal C에 Jewels 입력 추가 |
 | `skills/mso-workflow-optimizer/modules/modules_index.md` | 수정 — Agent Teams Module 항목 추가 |
 | `skills/mso-workflow-optimizer/SKILL.md` | 수정 — v0.0.7, 실행 모드 테이블, Phase 0 추가 |
+| `skills/mso-agent-collaboration/core.md` | 수정 — when_unsure 레거시 텍스트 교체 |
+| `skills/mso-skill-governance/SKILL.md` | 수정 — CC 검증 범위 CC-10으로 확장 |
+| `skills/mso-skill-governance/scripts/_cc_defaults.py` | 수정 — CC-07~10 등록, CC_VERSION 0.0.7 갱신 |
+| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | 수정 — CC-07~10 매핑, CC-10 warn 분기 추가 |
+| `docs/pipelines.md` | 수정 — CC-10 계약 + Mermaid 업데이트 |
+| `docs/changelog.md` | 수정 — v0.0.7 항목 추가 |
 
 #### 의존성 영향
 
