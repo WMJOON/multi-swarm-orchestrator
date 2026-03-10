@@ -56,7 +56,9 @@ graph LR
 
 #### 핵심 변경
 
-**Proactive Async + Jewels 패턴**: 백그라운드 에이전트(`jewel-producer`)가 `audit_global.db`를 상시 모니터링하며 작은 인사이트 단위(Jewel)를 자율 생성한다. 이 Jewels는 이후 Automation Level 판단(Signal C)에 반영된다.
+**Provider-free 기조**: 5-Phase 단일 세션이 기본이며 LLM/에이전트 환경에 무관하게 동작한다. Jewels + Agent Teams는 Claude Code 환경에서 활성화할 수 있는 선택적 강화다.
+
+**Proactive Async + Jewels 패턴** (Claude Code 전용): 백그라운드 에이전트(`jewel-producer`)가 `audit_global.db`를 상시 모니터링하며 작은 인사이트 단위(Jewel)를 자율 생성한다. 이 Jewels는 이후 Automation Level 판단(Signal C)에 반영된다.
 
 ```
 optimizer-lead (delegate mode)
