@@ -1,7 +1,42 @@
 # module.agent-team
 
-> mso-workflow-optimizer의 Agent Teams 아키텍처.
-> Proactive Async + Jewels 패턴을 Claude Code Agent Teams로 구현한다.
+> mso-workflow-optimizer의 멀티 에이전트 아키텍처.
+> Proactive Async + Jewels 패턴의 구현 명세.
+>
+> - **provider-free 구현**: `mso-agent-collaboration` 스킬의 티켓 dispatch 활용
+> - **Claude Code 네이티브 구현**: Agent Teams 직접 사용
+
+---
+
+## mso-agent-collaboration 기반 구현 (provider-free)
+
+`mso-agent-collaboration`의 `dispatch_mode`와 `handoff_payload`로 teammates를 표현한다.
+
+### Teammate → 티켓 매핑
+
+| Teammate | dispatch_mode | tags | 비고 |
+|----------|--------------|------|------|
+| jewel-producer | `swarm` | `worker`, `persistent` | WATCH 티켓. 완료하지 않고 루프 유지 |
+| decision-agent | `run` | `worker` | DECIDE_LEVEL 티켓. on-demand |
+| level-executor | `batch` | `worker` | EXECUTE_L{N} 티켓. decision 완료 후 unblock |
+| hitl-coordinator | `run` | `review` | HITL 티켓. executor 완료 후 unblock |
+
+### handoff_payload 확장 필드
+
+```json
+{
+  "run_id": "<run_id>",
+  "task_id": "DECIDE_LEVEL_{run_id}",
+  "owner_agent": "decision-agent",
+  "role": "worker",
+  "objective": "3-Signal + Jewels → Automation Level 결정",
+  "jewels": ["JWL-opt-..."],
+  "workflow_name": "<name>",
+  "current_metrics": {}
+}
+```
+
+Jewels는 jewel-producer 티켓의 출력으로 저장(`{workspace}/.mso-context/jewels/opt/`)되며, decision-agent 티켓의 `handoff_payload.jewels`로 참조된다.
 
 ---
 
