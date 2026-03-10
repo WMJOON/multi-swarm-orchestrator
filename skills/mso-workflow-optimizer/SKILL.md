@@ -58,24 +58,39 @@ description: |
 
 ## 실행 모드
 
-이 스킬은 **provider-free**가 기본이다. LLM/에이전트 환경에 무관하게 5-Phase 단일 세션으로 동작한다.
-Claude Code Agent Teams는 선택적 강화 옵션이다.
+이 스킬은 **provider-free**가 기본이다. 어떤 LLM/에이전트 환경에서도 동작하며, 환경 역량에 따라 단계적으로 강화된다.
 
 | 모드 | 설명 | 진입 조건 |
 |------|------|----------|
-| **단일 세션 모드** | 5-Phase 순차 실행. provider 무관 | 기본값. 모든 환경에서 동작 |
-| **Agent Teams 모드** | jewel-producer 상시 실행 + on-demand teammates | Claude Code 전용. 명시적으로 팀 초기화 시 |
+| **단일 세션 모드** | 5-Phase 순차 실행 | 기본값. 모든 환경에서 동작 |
+| **mso-agent-collaboration 모드** | 티켓 기반 멀티 에이전트 dispatch + Jewels | provider-free. `mso-agent-collaboration` 스킬 활성화 시 |
+| **Claude Code Agent Teams 모드** | jewel-producer 상시 실행 + on-demand teammates (네이티브) | Claude Code 전용. 명시적 팀 초기화 시 |
 
-Agent Teams 모드 아키텍처 상세: [modules/module.agent-team.md](modules/module.agent-team.md)
+멀티 에이전트 아키텍처 상세: [modules/module.agent-team.md](modules/module.agent-team.md)
 
 ---
 
 ## 실행 프로세스
 
-### Phase 0: Agent Teams 초기화 (선택, Claude Code 전용)
+### Phase 0: 멀티 에이전트 초기화 (선택)
 
-기본 단일 세션 모드로 실행 시 이 Phase를 건너뛰고 Phase 1부터 시작한다.
-Claude Code 환경에서 Jewels 패턴을 활성화하려면 팀을 먼저 구성한다.
+단일 세션 모드로 실행 시 이 Phase를 건너뛰고 Phase 1부터 시작한다.
+Jewels 패턴을 활성화하려면 환경에 맞는 방식으로 초기화한다.
+
+**mso-agent-collaboration 방식 (provider-free):**
+
+`mso-agent-collaboration` 스킬을 통해 teammates를 티켓으로 등록·dispatch한다.
+
+| teammate | dispatch_mode | 역할 |
+|----------|--------------|------|
+| jewel-producer | `swarm` (persistent) | audit_global.db 상시 모니터링 + Jewel 생성 |
+| decision-agent | `run` (on-demand) | Phase 2: Level 판단 |
+| level-executor | `batch` (on-demand) | Phase 3: Level 실행 |
+| hitl-coordinator | `run` (on-demand) | Phase 5: HITL + goal |
+
+Jewels는 `handoff_payload`에 포함되어 decision-agent 티켓으로 전달된다.
+
+**Claude Code Agent Teams 방식 (네이티브):**
 
 ```
 Create an agent team for mso-workflow-optimizer.
@@ -258,6 +273,7 @@ flowchart TD
 | ←    | `mso-workflow-topology-design` | topology 변경 후 최적화 재평가 트리거 발생 시 Phase 1 진입     |
 | →    | `mso-task-context-management`  | goal 산출 후 다음 주기 최적화 작업을 티켓으로 등록             |
 | ←    | `mso-execution-design`         | execution_graph 실행 완료 신호 수신 시 트리거                  |
+| →    | `mso-agent-collaboration`      | Phase 0 (멀티 에이전트 모드): teammates를 티켓으로 dispatch (provider-free Jewels 패턴) |
 
 ---
 
