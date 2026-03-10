@@ -2,11 +2,15 @@
 
 ## 설계 (Design)
 
-목표(Goal)가 입력되면, 다음의 세 단계를 거쳐 실행 가능한 워크플로우 명세(Spec)로 구체화된다.
+목표(Goal)가 입력되면, 두 가지 경로 중 하나로 실행 가능한 워크플로우 명세(Spec)가 생성된다.
 
-1. **Topology Design** — 목표를 노드(Node)와 엣지(Edge)로 구조화한다. 작업 단위와 실행 순서를 정의한다.
-2. **Mental Model Design** — 각 노드에 적절한 사고 모델(Mental Model)을 부여한다.
-3. **Execution Design** — 두 가지를 통합하여 최종 실행 계획(execution_graph DAG)을 수립한다. 브랜칭/머지 정책, 에러 분류 기반 폴백 전략, 라이프사이클 정책을 포함한다.
+**Mode B (Graph Search Loader)**: 레지스트리에 유사 워크플로우가 있으면 Intent 기반 검색으로 기존 Topology를 로딩한다. 6가지 Topology Motif(Chain/Star/Fork-Join/Loop/Diamond/Switch)와 Vertex(agent/skill/tool/model) 바인딩을 통해 즉시 실행 가능한 워크플로우를 반환한다.
+
+**Mode A (신규 설계)**: 레지스트리에 유사 워크플로우가 없으면 다음의 세 단계로 설계한다.
+
+1. **Topology Design** — 목표를 노드(Node)와 엣지(Edge)로 구조화. Motif 식별 → `topology_type` 선택 → Vertex Composition.
+2. **Mental Model Design (Vertex Registry)** — 각 노드에 적절한 directive(framework/instruction/prompt)를 바인딩한다.
+3. **Execution Design** — 두 가지를 통합하여 최종 실행 계획(execution_graph DAG)을 수립한다.
 
 Topology와 Mental Model은 상호보완적이다. 어느 쪽에서 시작하든, 서로의 출력이 상대방을 정제하고 보완한다.
 

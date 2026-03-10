@@ -670,7 +670,7 @@ def resolve_runtime_paths(
         "observability_dir": rendered["observation_dir"],
         "audit_db_path": rendered["db_path"],
         "topology_path": phases["10_topology"] / "workflow_topology_spec.json",
-        "bundle_path": phases["20_mental-model"] / "mental_model_bundle.json",
+        "bundle_path": phases["20_mental-model"] / "directive_binding.json",
         "execution_plan_path": phases["30_execution"] / "execution_plan.json",
         "governance_dir": phases["70_governance"],
         "worktree_root": run_root / "worktree",

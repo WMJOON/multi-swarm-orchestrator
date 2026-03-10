@@ -1,10 +1,9 @@
 ---
 name: mso-agent-audit-log
 description: |
-  Standardizes agent execution logs into a SQLite SoT.
-  Use when an execution result, run-manifest, or dispatch output needs audit trail recording.
-  v0.0.4: Global DB, extended work tracking (work_type, intent, pattern_tag), suggestion_history.
-disable-model-invocation: true
+  Standardizes agent execution logs into a SQLite SoT (audit_global.db).
+  Use when an execution result, run-manifest, or dispatch output needs audit trail recording,
+  or when work_type/intent/pattern_tag tracking and suggestion_history queries are required.
 ---
 
 # mso-agent-audit-log

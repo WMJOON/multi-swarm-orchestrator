@@ -105,13 +105,15 @@ def main() -> int:
         ):
             raise RuntimeError("topology generation failed")
 
-        print(f"[pipeline:{run_id}] 20 build bundle")
+        print(f"[pipeline:{run_id}] 20 bind directives")
         if run(
             [
                 "python3",
-                _script("skills/mso-mental-model-design/scripts/build_bundle.py"),
+                _script("skills/mso-mental-model-design/scripts/bind_directives.py"),
                 "--topology",
                 str(topology_output),
+                "--registry",
+                _script("skills/mso-mental-model-design/directives"),
                 "--output",
                 str(bundle_output),
                 "--run-id",
@@ -124,7 +126,7 @@ def main() -> int:
                 paths["observer_id"],
             ]
         ):
-            raise RuntimeError("bundle build failed")
+            raise RuntimeError("directive binding failed")
 
         print(f"[pipeline:{run_id}] 30 build plan")
         if run(

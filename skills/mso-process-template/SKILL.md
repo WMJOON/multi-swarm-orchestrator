@@ -2,9 +2,8 @@
 name: mso-process-template
 description: |
   MSO 런타임의 프로세스 규약, 워크플로우 정의, Hand-off 템플릿을 제공하는 레퍼런스 스킬.
-  워크트리 브랜치 프로세스, 단계 라우팅, 콜백 계약, 에러 택소노미를 정의한다.
-  Loaded by the Governance layer as a process/convention reference.
-disable-model-invocation: true
+  Use when worktree branch process, stage routing, callback contracts, or error taxonomy definitions are needed,
+  or when the Governance layer requires process/convention reference lookup.
 ---
 
 # mso-process-template

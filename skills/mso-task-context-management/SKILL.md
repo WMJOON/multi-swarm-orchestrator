@@ -2,8 +2,8 @@
 name: mso-task-context-management
 description: |
   Creates and manages task-context nodes and ticket lifecycle.
-  Use when tasks need to be tracked, prioritized, and transitioned through states within a run context.
-disable-model-invocation: true
+  Use when tasks need to be tracked, prioritized, and transitioned through states within a run context,
+  or when ticket state transitions, priority calculation, or context propagation is required.
 ---
 
 # mso-task-context-management

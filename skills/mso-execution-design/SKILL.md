@@ -1,11 +1,10 @@
 ---
 name: mso-execution-design
 description: |
-  Transforms topology and mental model into a versioned execution graph (v0.0.3).
+  Transforms topology and mental model into a versioned execution graph.
   Produces execution_graph with commit/branch/merge node types,
   handoff contracts, fallback rules (error taxonomy), and lifecycle policy.
-  Use when an execution plan needs to be built from topology_spec and mental_model_bundle.
-disable-model-invocation: true
+  Use when an execution plan needs to be built from topology_spec and directive_binding.
 ---
 
 # mso-execution-design
@@ -54,7 +53,7 @@ disable-model-invocation: true
 | 연결 | 스킬 | 설명 |
 |------|------|------|
 | ← | `mso-workflow-topology-design` | CC-01: topology_spec를 입력으로 소비 |
-| ← | `mso-mental-model-design` | CC-02: mental_model_bundle를 입력으로 소비 |
+| ← | `mso-mental-model-design` | CC-02: directive_binding을 입력으로 소비 |
 | → | `mso-agent-audit-log` | CC-06: execution_graph 노드 → 스냅샷 기록 |
 
 ---

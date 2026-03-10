@@ -1,5 +1,7 @@
 # references
 
-- Source intent: AWT `mental-model-design`
-- Decoupled scope: no context-framework IDs
-- Output schema: `schemas/mental_model_bundle.schema.json`
+- Source: v0.0.7-2 — Vertex Registry + Directive Taxonomy 재설계
+- Directive frontmatter schema: `schemas/directive.frontmatter.schema.json`
+- Binding output schema: `schemas/directive_binding.schema.json`
+- Seed directives: `directives/` (analysis, general)
+- CC-02: `directive_binding.json` → `mso-execution-design`

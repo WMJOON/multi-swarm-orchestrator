@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "directive_binding.schema.json",
+  "title": "Directive Binding",
+  "type": "object",
+  "required": ["run_id", "bindings", "unbound_nodes", "metadata"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 4},
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node_id", "vertex_type", "directives"],
+        "properties": {
+          "node_id": {"type": "string", "minLength": 1},
+          "vertex_type": {
+            "type": "string",
+            "enum": ["agent", "skill", "tool", "model"]
+          },
+          "directives": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["directive_id", "directive_path", "type"],
+              "properties": {
+                "directive_id": {"type": "string", "pattern": "^dir-\\d{3}"},
+                "directive_path": {"type": "string", "minLength": 1},
+                "type": {
+                  "type": "string",
+                  "enum": ["framework", "instruction", "prompt"]
+                },
+                "binding_rationale": {"type": "string"}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "unbound_nodes": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {"type": "string"},
+        "registry_path": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

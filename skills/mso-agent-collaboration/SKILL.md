@@ -1,10 +1,9 @@
 ---
 name: mso-agent-collaboration
-description: >
+description: |
   Dispatches tickets for multi-agent execution and integrates run output.
-  Use when a ticket requires multi-agent execution.
-  v0.0.3: Supports 6-agent role model with branching and merge dispatch.
-disable-model-invocation: true
+  Use when a ticket requires multi-agent execution, 6-agent role model dispatch,
+  branching/merge orchestration, or Jewels-pattern teammate coordination.
 ---
 
 # mso-agent-collaboration

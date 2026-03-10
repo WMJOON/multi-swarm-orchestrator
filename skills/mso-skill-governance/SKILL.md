@@ -2,8 +2,8 @@
 name: mso-skill-governance
 description: |
   스킬 구조, CC 계약, 레지스트리 정합성을 검증한다.
-  Use when skills are modified, before releases, or during integration testing.
-disable-model-invocation: true
+  Use when skills are modified, before releases, during integration testing,
+  or when skill schema validation and cross-contract consistency checks are needed.
 ---
 
 # mso-skill-governance

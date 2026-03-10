@@ -1,7 +1,7 @@
 # mso-execution-design — Core Rules (v0.0.3)
 
 ## Purpose
-`workflow_topology_spec` + `mental_model_bundle`을 버전화된 실행 그래프(`execution_graph`)로 매핑한다.
+`workflow_topology_spec` + `directive_binding`을 버전화된 실행 그래프(`execution_graph`)로 매핑한다.
 Git-metaphor 상태 전이 그래프(Versioned State Transition Graph) 기반의 실행 계획을 생성한다.
 
 ## Terms
@@ -17,7 +17,7 @@ Git-metaphor 상태 전이 그래프(Versioned State Transition Graph) 기반의
 
 ## Input Interface
 - `workflow_topology_spec`(필수): `nodes`, `edges`, `topology_type`
-- `mental_model_bundle`(필수): `bundle_ref`, `node_chart_map`, `local_charts`
+- `directive_binding`(필수): `bundle_ref`, `node_chart_map`, `local_charts`
 
 ## Output Interface
 필수 키:
