@@ -58,10 +58,13 @@ description: |
 
 ## 실행 모드
 
+이 스킬은 **provider-free**가 기본이다. LLM/에이전트 환경에 무관하게 5-Phase 단일 세션으로 동작한다.
+Claude Code Agent Teams는 선택적 강화 옵션이다.
+
 | 모드 | 설명 | 진입 조건 |
 |------|------|----------|
-| **Agent Teams 모드** | jewel-producer 상시 실행 + on-demand teammates | 권장. 팀 초기화 후 자동 전환 |
-| **단일 세션 모드** | 기존 5-Phase 순차 실행 | 팀 미초기화 시 fallback |
+| **단일 세션 모드** | 5-Phase 순차 실행. provider 무관 | 기본값. 모든 환경에서 동작 |
+| **Agent Teams 모드** | jewel-producer 상시 실행 + on-demand teammates | Claude Code 전용. 명시적으로 팀 초기화 시 |
 
 Agent Teams 모드 아키텍처 상세: [modules/module.agent-team.md](modules/module.agent-team.md)
 
@@ -69,9 +72,10 @@ Agent Teams 모드 아키텍처 상세: [modules/module.agent-team.md](modules/m
 
 ## 실행 프로세스
 
-### Phase 0: Agent Teams 초기화 (최초 1회)
+### Phase 0: Agent Teams 초기화 (선택, Claude Code 전용)
 
-Agent Teams 모드 진입 전 팀을 구성한다.
+기본 단일 세션 모드로 실행 시 이 Phase를 건너뛰고 Phase 1부터 시작한다.
+Claude Code 환경에서 Jewels 패턴을 활성화하려면 팀을 먼저 구성한다.
 
 ```
 Create an agent team for mso-workflow-optimizer.
@@ -80,8 +84,6 @@ Lead stays in delegate mode.
 ```
 
 **jewel-producer 자동 실행**: 팀 구성 직후 `WATCH_{workflow_name}` 태스크를 클레임하고 `audit_global.db` 모니터링을 시작한다.
-
-**단일 세션 fallback**: 팀 초기화가 불가능한 환경이면 Phase 1부터 순차 실행한다.
 
 ---
 
