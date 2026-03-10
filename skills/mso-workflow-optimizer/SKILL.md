@@ -1,5 +1,6 @@
 ---
 name: mso-workflow-optimizer
+version: "0.0.7"
 description: |
   워크플로우/분석 결과를 평가하고 Automation Level(10/20/30)을 선택하여 최적화 리포트를 생성.
   operation-agent 의사결정 → audit-log 기록 → HITL 피드백 수렴 → 최적화 goal 도출.
@@ -55,7 +56,34 @@ description: |
 
 ---
 
+## 실행 모드
+
+| 모드 | 설명 | 진입 조건 |
+|------|------|----------|
+| **Agent Teams 모드** | jewel-producer 상시 실행 + on-demand teammates | 권장. 팀 초기화 후 자동 전환 |
+| **단일 세션 모드** | 기존 5-Phase 순차 실행 | 팀 미초기화 시 fallback |
+
+Agent Teams 모드 아키텍처 상세: [modules/module.agent-team.md](modules/module.agent-team.md)
+
+---
+
 ## 실행 프로세스
+
+### Phase 0: Agent Teams 초기화 (최초 1회)
+
+Agent Teams 모드 진입 전 팀을 구성한다.
+
+```
+Create an agent team for mso-workflow-optimizer.
+Teammates: jewel-producer (background), decision-agent, level-executor, hitl-coordinator.
+Lead stays in delegate mode.
+```
+
+**jewel-producer 자동 실행**: 팀 구성 직후 `WATCH_{workflow_name}` 태스크를 클레임하고 `audit_global.db` 모니터링을 시작한다.
+
+**단일 세션 fallback**: 팀 초기화가 불가능한 환경이면 Phase 1부터 순차 실행한다.
+
+---
 
 ### Phase 1: 트리거 수신 + 컨텍스트 로드
 
@@ -235,6 +263,7 @@ flowchart TD
 
 | 상황                         | 파일                                                                           |
 | ---------------------------- | ------------------------------------------------------------------------------ |
+| **Agent Teams 아키텍처**     | [modules/module.agent-team.md](modules/module.agent-team.md)                   |
 | 5-Phase 전체 오케스트레이션  | [modules/module.analysis-optimizing.md](modules/module.analysis-optimizing.md) |
 | agent-decision 3-Signal 판단 | [modules/module.agent-decision.md](modules/module.agent-decision.md)           |
 | Automation Level 실행 상세   | [modules/module.automation-level.md](modules/module.automation-level.md)       |
@@ -242,7 +271,8 @@ flowchart TD
 | 프로세스 반복 최적화         | [modules/module.process-optimizing.md](modules/module.process-optimizing.md)   |
 | LLM 기반 라벨링·평가         | [modules/module.llm-as-a-judge.md](modules/module.llm-as-a-judge.md)           |
 | 출력 스키마 검증             | [schemas/optimizer_result.schema.json](schemas/optimizer_result.schema.json)   |
-| goal 산출물 저장             | `{workspace}/.mso-context/active/<run_id>/optimizer/goal.json`                   |
+| goal 산출물 저장             | `{workspace}/.mso-context/active/<run_id>/optimizer/goal.json`                 |
+| Jewel 저장 경로              | `{workspace}/.mso-context/jewels/opt/JWL-opt-{id}.json`                        |
 
 ---
 
