@@ -107,21 +107,22 @@ def test_build_bundle_from_topology():
         run_dir = runs[0]
         topo_file = run_dir / "10_topology" / "workflow_topology_spec.json"
 
-        # Step 2: Build bundle
+        # Step 2: Bind directives
         proc2 = _run([
-            "python3", _script("skills/mso-mental-model-design/scripts/build_bundle.py"),
+            "python3", _script("skills/mso-mental-model-design/scripts/bind_directives.py"),
             "--topology", str(topo_file),
+            "--registry", str(_script("skills/mso-mental-model-design/directives")),
             "--run-id", run_dir.name,
             "--skill-key", "msowd",
             "--case-slug", "test-bundle",
         ])
-        assert proc2.returncode == 0, f"build_bundle failed: {proc2.stderr}"
+        assert proc2.returncode == 0, f"bind_directives failed: {proc2.stderr}"
 
-        bundle_file = run_dir / "20_mental-model" / "mental_model_bundle.json"
-        assert bundle_file.exists()
-        bundle = json.loads(bundle_file.read_text())
-        assert "local_charts" in bundle
-        assert "node_chart_map" in bundle
+        binding_file = run_dir / "20_mental-model" / "directive_binding.json"
+        assert binding_file.exists()
+        binding = json.loads(binding_file.read_text())
+        assert "bindings" in binding
+        assert "unbound_nodes" in binding
     finally:
         ctx.cleanup()
 
@@ -141,15 +142,16 @@ def test_build_execution_plan():
         run_dir = runs[0]
         topo = run_dir / "10_topology" / "workflow_topology_spec.json"
 
-        # Build bundle
+        # Bind directives
         _run([
-            "python3", _script("skills/mso-mental-model-design/scripts/build_bundle.py"),
+            "python3", _script("skills/mso-mental-model-design/scripts/bind_directives.py"),
             "--topology", str(topo),
+            "--registry", str(_script("skills/mso-mental-model-design/directives")),
             "--run-id", run_dir.name,
             "--skill-key", "msowd",
             "--case-slug", "test-plan",
         ])
-        bundle = run_dir / "20_mental-model" / "mental_model_bundle.json"
+        bundle = run_dir / "20_mental-model" / "directive_binding.json"
 
         # Build plan
         proc = _run([

@@ -35,12 +35,12 @@ graph TD
 
 ---
 
-## Mental Model Mapping
-mental_model_bundle.json(CC-02)에서 각 노드에 할당된 chart를 요약한다.
+## Directive Binding
+directive_binding.json(CC-02)에서 각 노드에 바인딩된 directive를 요약한다.
 
-| Node ID | chart_ids | model_selection | 비고 |
-|---------|-----------|-----------------|------|
-|         |           |                 |      |
+| Node ID | vertex_type | directive_id | type | 비고 |
+|---------|-------------|--------------|------|------|
+|         |             |              |      |      |
 
 - Bundle Ref: {bundle-ref}
 

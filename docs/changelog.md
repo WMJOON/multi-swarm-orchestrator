@@ -4,34 +4,101 @@
 
 ### 핵심 변경
 
+#### Part 1: Agent Teams + Jewels
+
 | 변경 | 내용 |
 |------|------|
 | **Agent Teams + Jewels 패턴** | mso-workflow-optimizer에 4-teammate 아키텍처 도입. Proactive Async 패턴으로 audit_global.db 상시 모니터링 |
 | **provider-free mso-agent-collaboration 연계** | 단일 세션 외에 티켓 dispatch 방식으로 Jewels 패턴 구현 가능 (CC-10) |
 | **CC-10 계약 추가** | optimizer(Phase 0) → mso-agent-collaboration teammate dispatch 계약 |
 | **CC-07~09 governance 등록** | _cc_defaults.py에 CC-07~09 계약 추가, CC_VERSION 0.0.7 갱신 |
-| **tier_downgrade Jewel 타입** | module.agent-team.md에 v0.1.0 예정 tier_downgrade 타입 명세 추가 |
+| **tier_downgrade Jewel 타입** | module.agent-team.md에 tier_downgrade 타입 명세 추가 |
 | **Claude Code Hook 3종** | PostToolUse(jewels 경로) + PostToolUse(report 경로) + SubagentStop(jewel-producer) |
-| **레거시 제거** | mso-agent-collaboration core.md의 provider mapping 참조 제거 |
+
+#### Part 2: Topology Motif + Graph Search Loader + Tier Escalation
+
+| 변경 | 내용 |
+|------|------|
+| **Topology Motif 도입** | 6가지 표준 구조 패턴(Chain/Star/Fork-Join/Loop/Diamond/Switch) 정의. 기존 topology_type과 매핑 |
+| **Vertex Composition** | Task Node에 실행 단위 유형(agent/skill/tool/model) 지정 체계. `Workflow Graph = Motif + Vertex Mapping` |
+| **Graph Search Loader (Mode B)** | mso-workflow-topology-design에 Mode A(신규 설계)/Mode B(레지스트리 검색) 이원화 |
+| **Tier Escalation** | mso-workflow-optimizer에 `pattern_stability = frequency × success_rate` 기반 자동 에스컬레이션. L30→L20→L10 |
+
+#### Part 3: Vertex Registry (mso-mental-model-design 재설계)
+
+| 변경 | 내용 |
+|------|------|
+| **Directive 도입** | Vertex에 바인딩되는 도메인 지식 단위. type: framework / instruction / prompt |
+| **Vertex Registry** | Directive를 택소노미로 분류·검색·관리하는 MD 파일 기반 저장소 |
+| **mental_model_bundle.json → directive_binding.json** | CC-02 출력 형식 변경 |
+| **Seed Directives** | `directives/analysis/` (MECE, Root Cause Analysis) + `directives/general/` (Generic Reasoning) |
+
+#### Part 4: 스킬 표준화
+
+| 변경 | 내용 |
+|------|------|
+| **frontmatter 표준화** | 전체 10개 스킬 frontmatter를 skill-creator 표준(`name` + `description`만)으로 통일 |
+| **description 보강** | 전체 10개 스킬에 "Use when" 트리거 추가 |
+| **extraneous file 삭제** | mso-workflow-optimizer/DIRECTORY.md 제거 |
 
 ### 수정 파일
+
+**Part 1 파일**
 
 | 파일 | 변경 |
 |------|------|
 | `skills/mso-workflow-optimizer/modules/module.agent-team.md` | tier_downgrade 추가, Hook 3종 추가 |
+| `skills/mso-workflow-optimizer/modules/module.agent-decision.md` | Signal C에 Jewels 입력 추가 |
 | `skills/mso-agent-collaboration/core.md` | when_unsure 레거시 텍스트 교체 |
 | `skills/mso-skill-governance/SKILL.md` | CC 검증 범위 CC-10으로 확장 |
-| `skills/mso-skill-governance/scripts/_cc_defaults.py` | CC-07~10 등록, CC_VERSION 0.0.7 갱신 |
-| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | CC-07~10 매핑, CC-10 warn 분기 추가 |
+| `skills/mso-skill-governance/scripts/_cc_defaults.py` | CC-07~10 등록 |
+| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | CC-07~10 매핑 |
 | `docs/pipelines.md` | CC-10 계약 + Mermaid 업데이트 |
-| `docs/changelog.md` | v0.0.7 항목 추가 |
-| `README.md` | CC-01~10 텍스트 반영 |
+
+**Part 2 파일**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-workflow-topology-design/SKILL.md` | Mode A/B 이원화, JSON 스키마 축약 |
+| `skills/mso-workflow-topology-design/modules/module.motif-vocabulary.md` | **신규** — Motif 6종 정의·매핑·구분 기준 |
+| `skills/mso-workflow-topology-design/modules/module.vertex-composition.md` | **신규** — Vertex 4종 정의·선택 기준 |
+| `skills/mso-workflow-topology-design/modules/module.graph-search-loader.md` | **신규** — 레지스트리 구조·검색 점수·Vertex Binding |
+| `skills/mso-workflow-topology-design/modules/module.topology-selection.md` | Motif 식별 Step 추가, 중복 축약 |
+| `skills/mso-workflow-optimizer/SKILL.md` | Tier Escalation 섹션 추가 |
+
+**Part 3 파일 (Vertex Registry)**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-mental-model-design/SKILL.md` | 전면 재설계 — Vertex Registry + Directive 택소노미 |
+| `skills/mso-mental-model-design/core.md` | 재작성 — Directive 인터페이스 |
+| `skills/mso-mental-model-design/modules/module.directive-taxonomy.md` | **신규** — 택소노미 구조, reserved domains |
+| `skills/mso-mental-model-design/modules/module.vertex-binding.md` | **신규** — 검색·바인딩 규칙, CC-02 호환 |
+| `skills/mso-mental-model-design/schemas/directive_binding.schema.json` | **신규** — 바인딩 출력 스키마 |
+| `skills/mso-mental-model-design/schemas/directive.frontmatter.schema.json` | **신규** — frontmatter 스키마 |
+| `skills/mso-mental-model-design/directives/` | **신규** — seed directives (3개) |
+| `skills/mso-mental-model-design/schemas/mental_model_bundle.schema.json` | **삭제** |
+| `skills/mso-mental-model-design/scripts/build_bundle.py` | **삭제** |
+| `skills/mso-mental-model-design/modules/module.bundle-contract.md` | **삭제** |
+| `skills/mso-mental-model-design/modules/module.loading-policy.md` | **삭제** |
+| `skills/mso-mental-model-design/modules/module.routing-kpi.md` | **삭제** |
+| `skills/mso-process-template/core.md` | 수정 — `mental_model_bundle.json` → `directive_binding.json` |
+| `docs/getting-started.md` | 수정 — Vertex Registry 디렉토리·스크립트 반영 |
+| `docs/pipelines.md` | 수정 — Design 파이프라인 설명 업데이트 |
+| `docs/usage_matrix.md` | 수정 — mental-model-design 설명 업데이트 |
+
+**Part 4 파일**
+
+- 전체 10개 `SKILL.md` — frontmatter 표준화 (`disable-model-invocation`, `version` 제거)
+- `skills/mso-workflow-optimizer/DIRECTORY.md` — **삭제**
 
 ### 하위 호환 (v0.0.6 → v0.0.7)
 
-- **스키마**: 변경 없음. DB 스키마 v1.5.0 유지
+- **스키마**: DB 스키마 v1.5.0 유지. workflow_topology_spec.json에 `vertex_type`, `metadata.motif`, `metadata.motif_composition` 필드 추가 (optional)
 - **CC Contracts**: CC-01~09 변경 없음. CC-10 순수 추가
 - **단일 세션 모드**: 변경 없음. Phase 0는 선택적
+- **Mode B**: 레지스트리(`workflow_registry.json`) 미존재 시 자동 Mode A fallback
+- **Tier Escalation**: audit_global.db 기반 동적 계산. 기존 3-Signal 판단 로직과 병행
 - **Hook**: Claude Code 환경에서만 활성화. 미지원 환경에서는 무시됨
 - **CC-10 governance**: 단일 세션 모드 사용자는 warn 처리 (파이프라인 차단 없음)
 

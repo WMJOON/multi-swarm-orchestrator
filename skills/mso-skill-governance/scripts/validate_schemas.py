@@ -31,8 +31,8 @@ SCHEMA_TARGETS: Tuple[Dict[str, Any], ...] = (
     },
     {
         "skill": "mso-mental-model-design",
-        "name": "mental_model_bundle",
-        "schema": Path("skills/mso-mental-model-design/schemas/mental_model_bundle.schema.json"),
+        "name": "directive_binding",
+        "schema": Path("skills/mso-mental-model-design/schemas/directive_binding.schema.json"),
         "kind": "json",
     },
     {
@@ -155,7 +155,7 @@ def _latest_index_record(index_path: Path) -> Tuple[str, Any]:
 def load_artifact(paths: Dict[str, Any], target_name: str, kind: str, ticket_id: str | None = None) -> Tuple[str, Any, Path]:
     if target_name == "workflow_topology_spec":
         artifact_path = Path(paths["topology_path"])
-    elif target_name == "mental_model_bundle":
+    elif target_name == "directive_binding":
         artifact_path = Path(paths["bundle_path"])
     elif target_name == "execution_plan":
         artifact_path = Path(paths["execution_plan_path"])

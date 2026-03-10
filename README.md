@@ -6,7 +6,7 @@
 ```mermaid
 graph LR
     subgraph Design ["설계"]
-        S00["Topology"] <-.->|상호보완| S01["Mental Model"]
+        S00["Topology<br/>(Workflow Registry)"] <-.->|상호보완| S01["Vertex Registry<br/>(Directive)"]
         S00 & S01 --> S02["Execution"]
     end
     subgraph Ops ["운영"]
@@ -44,21 +44,34 @@ graph LR
 | [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~10, 티켓 생명주기, Hand-off Templates |
 | [시작하기](docs/getting-started.md) | 디렉토리 구조, 설계·운영·검증 명령어 |
 | [스킬 사용 매트릭스](docs/usage_matrix.md) | Phase × Swarm × Role 매트릭스, 실행 흐름 시퀀스 |
-| [변경 이력](docs/changelog.md) | v0.0.3~v0.0.6 변경 이력 및 하위 호환 노트 |
+| [변경 이력](docs/changelog.md) | v0.0.3~v0.0.7 변경 이력 및 하위 호환 노트 |
 
 ---
 
 ## 변경 이력
 
-### v0.0.7 — mso-workflow-optimizer: Agent Teams + Jewels
+### v0.0.7 — Agent Teams + Topology Motif + Graph Search Loader
 
-**mso-workflow-optimizer** 스킬에 Claude Code **Agent Teams** 아키텍처와 **Jewels 패턴**을 도입.
+> **한 줄 요약**: 사용자가 하는 작업(user-workflow)이 아니라, 그 작업을 **조립·실행·개선하는 시스템의 작업**(workspace-workflow)을 자동화한 버전.
 
-#### 핵심 변경
+지금까지 MSO는 목표를 받으면 매번 처음부터 워크플로우를 설계했다. 비슷한 작업을 반복해도 이전 경험을 활용하지 못했고, 모든 단계에서 LLM이 풀파워로 동작했다. v0.0.7은 "워크플로우를 어떻게 만들고, 어떻게 재사용하고, 어떻게 더 효율적으로 돌릴 것인가"를 개선했다.
 
-**Provider-free 기조**: 5-Phase 단일 세션이 기본이며 LLM/에이전트 환경에 무관하게 동작한다. Jewels + Agent Teams는 Claude Code 환경에서 활성화할 수 있는 선택적 강화다.
+1. **워크플로우를 패턴으로 분류**: 복잡한 워크플로우도 결국 6가지 기본 패턴(순차, 분기, 병합, 반복, 조건 분기, 허브)의 조합이다. 이 패턴을 "Topology Motif"라 부르고, 각 패턴 안의 실행 단위를 "Vertex"(에이전트/스킬/도구/모델)로 타입을 구분한다.
+2. **한 번 만든 워크플로우를 저장하고, 다음에 검색해서 재사용**: "시장 조사 보고서 작성"이라는 요청이 들어오면, 이전에 성공한 비슷한 워크플로우를 레지스트리에서 찾아 즉시 로딩한다(Graph Search Loader). 각 Vertex에 바인딩할 도메인 지식(분석 프레임워크, 실행 지침, 프롬프트)도 별도 레지스트리(Vertex Registry)에서 검색한다. 처음부터 설계하는 것은 검색 결과가 없을 때만 한다.
+3. **반복할수록 실행 비용을 자동으로 최적화**: 같은 워크플로우가 여러 번 성공하면 시스템이 이를 감지하고, LLM 전체 추론(Level 30) → 경량 모델(Level 20) → 규칙 기반 스크립트(Level 10)로 자동 전환한다(Tier Escalation). 목표는 "처음엔 비싸게, 나중엔 거의 공짜로" 돌리는 것이다.
 
-**Proactive Async + Jewels 패턴** (Claude Code 전용): 백그라운드 에이전트(`jewel-producer`)가 `audit_global.db`를 상시 모니터링하며 작은 인사이트 단위(Jewel)를 자율 생성한다. 이 Jewels는 이후 Automation Level 판단(Signal C)에 반영된다.
+| 개선 영역    | Before (v0.0.6)           | After (v0.0.7)                          |
+| -------- | ------------------------- | --------------------------------------- |
+| 워크플로우 설계 | 매번 Goal→DQ→Topology 전체 수행 | 레지스트리 검색 → 즉시 로딩 (Mode B)               |
+| 도메인 지식   | 노드별 chart 자동 생성 (범용)      | Directive 택소노미에서 검색·바인딩 (MD, 사람이 편집 가능) |
+| 실행 비용    | 항상 LLM 풀파워 (Level 30)     | 반복 시 자동 경량화 (Level 30→20→10)            |
+| 재사용성     | 없음 (매 Run 독립)             | 두 레지스트리에 패턴·지식 누적                       |
+
+---
+
+#### Part 1: Agent Teams + Jewels
+
+**mso-workflow-optimizer** 스킬에 Agent Teams 아키텍처와 Jewels 패턴 도입.
 
 ```
 optimizer-lead (delegate mode)
@@ -68,33 +81,36 @@ optimizer-lead (delegate mode)
     └── hitl-coordinator [on-demand]  — HITL 피드백 + goal.json 생성
 ```
 
-**Jewel 타입 4종**: `kpi_drift` / `level_escalation` / `pattern_alert` / `sampling_adjust`
+#### Part 2: Topology Motif + Graph Search Loader + Tier Escalation
 
-**Signal C 확장**: Jewels를 HITL 피드백 보정에 추가 반영.
+워크플로우를 그래프 패턴으로 학습하고, 반복 패턴이 쌓이면 더 단순한 실행 계층으로 자동 이동하는 구조.
+
+- **Topology Motif**: 6가지 표준 구조 패턴(Chain/Star/Fork-Join/Loop/Diamond/Switch) + 기존 `topology_type` 매핑
+- **Vertex Composition**: Task Node에 실행 단위 유형(`vertex_type`: agent/skill/tool/model) 지정
+- **Graph Search Loader** (Mode B): 레지스트리 검색으로 기존 워크플로우 자동 로딩
+- **Tier Escalation**: `pattern_stability = frequency × success_rate` 기반 Level 30→20→10 자동 이동
+
+#### Part 3: Vertex Registry (mso-mental-model-design 재설계)
+
+`mso-mental-model-design`을 **Vertex Registry**로 전면 재설계. 도메인별 **directive**(framework/instruction/prompt)를 택소노미로 관리하고 topology vertex에 바인딩한다.
+
+- **Directive**: Vertex에 바인딩되는 도메인 지식 단위 (MD 파일, 사람이 편집 가능)
+- **Vertex Registry**: Directive를 택소노미로 분류·검색·관리하는 저장소
+- **Workflow Registry**(topology-design Mode B)와 상호보완: 구조는 Workflow, 지식은 Vertex
+
 ```
-total_C_delta = clip(hitl_delta + jewel_delta, -10, +10)
+Workflow Registry (Topology)     Vertex Registry (Directive)
+─────────────────────────────    ─────────────────────────────
+Motif + Vertex 구조 저장          framework / instruction / prompt 저장
+Intent → 워크플로우 검색           vertex_type + motif → directive 검색
+workflow_topology_spec.json      directive_binding.json
 ```
 
-#### 변경 파일
+#### Part 4: 스킬 표준화
 
-| 파일 | 변경 유형 |
-|------|----------|
-| `skills/mso-workflow-optimizer/modules/module.agent-team.md` | 신규/수정 — Agent Teams 전체 아키텍처, tier_downgrade 추가, Hook 3종 추가 |
-| `skills/mso-workflow-optimizer/modules/module.agent-decision.md` | 수정 — Signal C에 Jewels 입력 추가 |
-| `skills/mso-workflow-optimizer/modules/modules_index.md` | 수정 — Agent Teams Module 항목 추가 |
-| `skills/mso-workflow-optimizer/SKILL.md` | 수정 — v0.0.7, 실행 모드 테이블, Phase 0 추가 |
-| `skills/mso-agent-collaboration/core.md` | 수정 — when_unsure 레거시 텍스트 교체 |
-| `skills/mso-skill-governance/SKILL.md` | 수정 — CC 검증 범위 CC-10으로 확장 |
-| `skills/mso-skill-governance/scripts/_cc_defaults.py` | 수정 — CC-07~10 등록, CC_VERSION 0.0.7 갱신 |
-| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | 수정 — CC-07~10 매핑, CC-10 warn 분기 추가 |
-| `docs/pipelines.md` | 수정 — CC-10 계약 + Mermaid 업데이트 |
-| `docs/changelog.md` | 수정 — v0.0.7 항목 추가 |
+전체 10개 스킬 frontmatter를 skill-creator 표준(`name` + `description`만)으로 통일.
 
-#### 의존성 영향
-
-- `mso-agent-audit-log`: jewels 소비 시 `jewels_consumed` 필드가 audit payload에 추가됨
-- `mso-observability`: 변경 없음 (audit DB 패턴 분석 경로 동일)
-- Jewel 저장 경로 신규: `{workspace}/.mso-context/jewels/opt/JWL-opt-{id}.json`
+상세: [docs/changelog.md](docs/changelog.md)
 
 ---
 
@@ -102,30 +118,14 @@ total_C_delta = clip(hitl_delta + jewel_delta, -10, +10)
 
 ### v0.1.0 — Processing Tier 최적화 최소 환경
 
-> 모든 워크플로우는 처음에 Agentic으로 시작한다.
-> 패턴이 쌓일수록 Light Model로, 그리고 Logical로 내려간다.
-> v0.1.0은 이 하강을 자동으로 감지하고, 각 Tier에서 실행 가능한 **최소 환경**을 구성하는 시스템이다.
-
-```
-Agentic processing    ← 패턴 미확립. LLM 전체 판단 필요. (Level 30)
-        ↓ 최적화 방향
-Light Model processing ← 패턴 부분 확립. 경량 모델 + 최소 프롬프트. (Level 20)
-        ↓
-Logical processing    ← 패턴 완전 확립. 규칙·스크립트만으로 처리. (Level 10)
-```
-
-**Level 30이 높다고 좋은 것이 아니다.** 목표는 Level 30 → 10으로의 이동이다.
-
-#### 구성 스킬
+v0.0.7에서 Tier Escalation 메커니즘(`pattern_stability` 공식, Level 30→20→10 자동 이동 규칙)과 Graph Search Loader(워크플로우 레지스트리 검색)를 도입했다. v0.1.0은 이를 기반으로 **각 Tier에서 실행 가능한 최소 환경을 자동 구성**하는 시스템을 완성한다.
 
 | 스킬 | 역할 | 비고 |
 |------|------|------|
-| `mso-workflow-optimizer` | Tier 전환 자율 감지 + Logical/Light 환경 구성 지시 | `jewel-producer`에 `tier_downgrade` jewel 타입 추가 |
+| `mso-workflow-optimizer` | Tier 전환 자율 감지 + Logical/Light 환경 구성 지시 | v0.0.7: Tier Escalation + `pattern_stability` 구현 완료 |
 | `mso-model-optimizer` | 모델 수준 성능 평가 + fine-tuning lifecycle | v0.1.0에서 신규 개발 |
 
-`mso-workflow-optimizer`가 **프로세스 수준**의 tier 최적화를 담당하고, `mso-model-optimizer`는 **모델 수준**의 평가와 fine-tuning을 담당한다. 두 스킬이 함께 최적화 최소 환경을 완성한다.
-
-> **배경**: AI Model·AI Agent·Physical AI를 관통하는 평가 관점으로, 복잡도가 인지 수준을 초과한 AI System은 **멱등성**(동일 입력 → 동일 결과)과 **설명력**(왜 그 결과인가)으로 측정해야 하는 블랙박스에 수렴한다. 두 optimizer 스킬은 이 평가 축의 프로세스 레이어와 모델 레이어를 각각 커버한다.
+`mso-workflow-optimizer`가 **프로세스 수준**의 tier 최적화를, `mso-model-optimizer`는 **모델 수준**의 평가와 fine-tuning을 담당한다.
 
 ---
 

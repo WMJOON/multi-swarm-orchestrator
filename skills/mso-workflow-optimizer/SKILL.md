@@ -1,10 +1,9 @@
 ---
 name: mso-workflow-optimizer
-version: "0.0.7"
 description: |
   워크플로우/분석 결과를 평가하고 Automation Level(10/20/30)을 선택하여 최적화 리포트를 생성.
-  operation-agent 의사결정 → audit-log 기록 → HITL 피드백 수렴 → 최적화 goal 도출.
-  Use when an existing workflow or analysis pipeline needs performance assessment and optimization suggestions.
+  Use when an existing workflow or analysis pipeline needs performance assessment, optimization suggestions,
+  Tier Escalation (Agentic→Light Model→Logical) 판단, or pattern_stability 기반 자동화 수준 결정.
 ---
 
 # mso-workflow-optimizer
@@ -215,6 +214,47 @@ HITL 운영 상세는 [modules/module.hitl-feedback.md](modules/module.hitl-feed
 
 ---
 
+## Tier Escalation 메커니즘
+
+반복 패턴이 확인된 워크플로우는 자동으로 더 단순한 실행 계층으로 이동한다.
+
+### Processing Tier 구조
+
+| Tier | Automation Level | 상태 | 특징 |
+|------|-----------------|------|------|
+| Agentic Processing | Level 30 | 패턴 미확립 | LLM reasoning, workflow 불안정, exploration |
+| Light Model Processing | Level 20 | 패턴 부분 안정 | topology 확정, 경량 모델, 제한된 reasoning |
+| Logical Processing | Level 10 | 패턴 완전 안정 | deterministic rule, script 기반, LLM 없음 |
+
+### 측정 지표
+
+| 지표 | 의미 |
+|------|------|
+| `frequency` | 해당 워크플로우 반복 실행 횟수 |
+| `success_rate` | 성공 실행 비율 |
+| `topology_stability` | 구조 변경 없이 반복된 비율 |
+| `cost_efficiency` | LLM 비용 대비 효율 |
+
+### 패턴 안정성 공식
+
+```
+pattern_stability = frequency × success_rate
+```
+
+### 에스컬레이션 규칙
+
+| 조건 | 이동 방향 |
+|------|----------|
+| `pattern_stability` < 임계값 또는 topology 불안정 | Level 30 유지 |
+| topology 확정 + `pattern_stability` ≥ 하한 임계값 | Level 30 → Level 20 |
+| `pattern_stability` ≥ 상한 임계값 + deterministic 경로 확인 | Level 20 → Level 10 |
+
+**임계값은 Phase 2 agent-decision에서 audit_global.db 기반으로 동적 계산한다.**
+
+`pattern_stability` 계산 스크립트: `scripts/calc_pattern_stability.py --workflow <name>`
+
+---
+
 ## operation-agent escalation 처리
 
 | 상황                           | operation-agent 역할                             |
@@ -291,6 +331,7 @@ flowchart TD
 | 출력 스키마 검증             | [schemas/optimizer_result.schema.json](schemas/optimizer_result.schema.json)   |
 | goal 산출물 저장             | `{workspace}/.mso-context/active/<run_id>/optimizer/goal.json`                 |
 | Jewel 저장 경로              | `{workspace}/.mso-context/jewels/opt/JWL-opt-{id}.json`                        |
+| 패턴 안정성 계산             | `python3 {mso-workflow-optimizer}/scripts/calc_pattern_stability.py --workflow <name>` → `frequency`, `success_rate`, `pattern_stability` |
 
 ---
 

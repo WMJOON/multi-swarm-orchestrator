@@ -5,8 +5,9 @@
 ```
 skills/
 ├── mso-skill-governance/            ← 계약 검증, 구조 점검
-├── mso-workflow-topology-design/    ← 목표 → 노드 구조
-├── mso-mental-model-design/         ← 노드별 사고 모델
+├── mso-workflow-topology-design/    ← 목표 → 노드 구조 (Mode A: 신규 설계, Mode B: Graph Search)
+├── mso-mental-model-design/         ← Vertex Registry: directive 택소노미·바인딩
+│   └── directives/                  ← seed directives (analysis, general)
 ├── mso-execution-design/            ← 실행 계획 생성 (execution_graph)
 ├── mso-task-context-management/     ← 티켓 관리
 │   └── templates/                   ← PRD.md, SPEC.md, ADR.md
@@ -48,6 +49,7 @@ MSO 런타임 산출물은 기본적으로 `{workspace}/.mso-context` 하위에 
     ├── config/
     │   └── policy.yaml
     ├── audit_global.db
+    ├── workflow_registry.json
     ├── active/
     │   └── <run_id>/
     │       ├── manifest.json
@@ -55,7 +57,7 @@ MSO 런타임 산출물은 기본적으로 `{workspace}/.mso-context` 하위에 
     │       ├── 10_topology/
     │       │   └── workflow_topology_spec.json
     │       ├── 20_mental-model/
-    │       │   └── mental_model_bundle.json
+    │       │   └── directive_binding.json
     │       ├── 30_execution/
     │       │   └── execution_plan.json
     │       ├── 40_collaboration/
@@ -98,6 +100,24 @@ MSO 런타임 산출물은 기본적으로 `{workspace}/.mso-context` 하위에 
 
 ## 1. 워크플로우 설계 (Design)
 
+두 가지 경로가 있다. 유사한 워크플로우가 레지스트리에 있으면 **Mode B**(검색)를 먼저 시도하고, 없으면 **Mode A**(신규 설계)로 진행한다.
+
+### Mode B: Graph Search (기존 워크플로우 로딩)
+
+```bash
+RUN_ID="YYYYMMDD-msowd-onboarding"
+
+# 레지스트리에서 유사 워크플로우 검색
+python3 {mso-workflow-topology-design}/scripts/graph_search.py \
+  --intent "사용자 온보딩 프로세스 설계" \
+  --top-k 3 \
+  --registry {workspace}/.mso-context/workflow_registry.json
+```
+
+similarity ≥ 0.6이면 검색된 워크플로우로 진행. 아니면 Mode A로 fallback.
+
+### Mode A: 신규 설계
+
 ```bash
 RUN_ID="YYYYMMDD-msowd-onboarding"
 
@@ -108,11 +128,11 @@ python3 {mso-workflow-topology-design}/scripts/generate_topology.py \
   --case-slug onboarding \
   --goal "사용자 온보딩 프로세스 설계"
 
-# 각 노드에 사고 모델(Mental Model)을 매핑한다.
-python3 {mso-mental-model-design}/scripts/build_bundle.py \
-  --run-id "$RUN_ID" \
-  --skill-key msowd \
-  --case-slug onboarding
+# 각 노드에 directive를 바인딩한다 (Vertex Registry 검색).
+python3 {mso-mental-model-design}/scripts/bind_directives.py \
+  --topology {workspace}/.mso-context/active/$RUN_ID/10_topology/workflow_topology_spec.json \
+  --registry {workspace}/.mso-context/vertex_registry \
+  --output {workspace}/.mso-context/active/$RUN_ID/20_mental-model/directive_binding.json
 
 # 두 결과를 통합하여 execution_graph를 생성한다.
 python3 {mso-execution-design}/scripts/build_plan.py \

@@ -2,9 +2,8 @@
 name: mso-observability
 description: |
   Reads execution SoT (audit-log) to analyze patterns and generates HITL checkpoints and improvement proposals.
-  Use when execution logs need pattern analysis, anomaly detection, or improvement proposals.
-  v0.0.4: Adds work_type imbalance, pattern_tag candidate, and error hotspot detection signals.
-disable-model-invocation: true
+  Use when execution logs need pattern analysis, anomaly detection, improvement proposals,
+  work_type imbalance detection, pattern_tag candidate extraction, or error hotspot identification.
 ---
 
 # mso-observability

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build execution_plan.json from topology + mental model bundle.
+"""Build execution_plan.json from topology + directive binding.
 
 v0.0.3: Outputs execution_graph (Git-metaphor state transition graph)
 instead of flat node_chart_map / task_to_chart_map / node_mode_policy.
+v0.0.7: Accepts directive_binding.json (Vertex Registry) instead of mental_model_bundle.json.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from skills._shared.runtime_workspace import (  # noqa: E402
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build execution_plan.json (v0.0.3)")
     p.add_argument("--topology", default="", help="Path to workflow_topology_spec.json")
-    p.add_argument("--bundle", default="", help="Path to mental_model_bundle.json")
+    p.add_argument("--bundle", default="", help="Path to directive_binding.json")
     p.add_argument("--output", default="", help="Optional output path override")
     p.add_argument("--run-id", default="", help="Run ID override")
     p.add_argument("--skill-key", default="msowd", help="Skill key for run-id generation")
@@ -81,14 +82,25 @@ def compute_parent_refs(node_id: str, topology: dict) -> List[str]:
     return [p for p in parents if p]
 
 
+def _build_directive_map(binding: dict) -> Dict[str, List[str]]:
+    """Build node_id → directive_ids map from directive_binding.json."""
+    result: Dict[str, List[str]] = {}
+    for b in binding.get("bindings") or []:
+        node_id = b.get("node_id", "")
+        dirs = [d.get("directive_id", "") for d in b.get("directives") or [] if d.get("directive_id")]
+        if node_id and dirs:
+            result[node_id] = dirs
+    return result
+
+
 def build(topology: dict, bundle: dict, run_id: str) -> dict:
     nodes = topology.get("nodes") or []
     if not isinstance(nodes, list) or not nodes:
         raise ValueError("topology.nodes is empty")
 
-    chart_map = bundle.get("node_chart_map") or {}
-    if not isinstance(chart_map, dict):
-        chart_map = {}
+    # Support both legacy (node_chart_map) and new (bindings) format
+    directive_map = _build_directive_map(bundle)
+    legacy_chart_map = bundle.get("node_chart_map") or {}
 
     execution_graph: Dict[str, Any] = {}
 
@@ -96,25 +108,24 @@ def build(topology: dict, bundle: dict, run_id: str) -> dict:
         node_id = str(node.get("id"))
         theta = str(node.get("theta_gt_band", "moderate"))
 
-        charts = chart_map.get(node_id)
-        if not charts:
-            fallback_chart = f"chart_{node_id}"
-            charts = [fallback_chart]
-        if not isinstance(charts, list):
-            charts = [str(charts)]
-        chart_ids = [str(c) for c in charts if c]
+        # Prefer directive_map, fallback to legacy chart_map
+        directive_refs = directive_map.get(node_id) or legacy_chart_map.get(node_id) or [f"dir-{node_id}"]
+        if not isinstance(directive_refs, list):
+            directive_refs = [str(directive_refs)]
 
         node_type = determine_node_type(node_id, topology)
         parent_refs = compute_parent_refs(node_id, topology)
 
+        bundle_ref = bundle.get("bundle_ref") or bundle.get("run_id") or "binding-unknown"
+
         graph_node: Dict[str, Any] = {
             "type": node_type,
-            "bundle_ref": bundle.get("bundle_ref", "bundle-unknown"),
+            "bundle_ref": bundle_ref,
             "parent_refs": parent_refs,
             "tree_hash_type": "sha256",
             "tree_hash_ref": None,
             "model_selection": "gpt-4o-mini" if theta != "wide" else "claude-3.5-sonnet",
-            "chart_ids": chart_ids,
+            "directive_refs": directive_refs,
             "mode": infer_mode(theta),
             "handoff_contract": {
                 "required_keys": ["output", "status", "evidence"],
@@ -139,7 +150,7 @@ def build(topology: dict, bundle: dict, run_id: str) -> dict:
 
     return {
         "run_id": run_id,
-        "bundle_ref": bundle.get("bundle_ref", "bundle-unknown"),
+        "bundle_ref": bundle.get("bundle_ref") or bundle.get("run_id") or "binding-unknown",
         "execution_graph": execution_graph,
         "fallback_rules": [
             {
@@ -218,9 +229,11 @@ def main() -> int:
             if req not in topology:
                 raise SystemExit(f"invalid topology: missing {req}")
 
-        for req in ["bundle_ref", "local_charts"]:
-            if req not in bundle:
-                raise SystemExit(f"invalid bundle: missing {req}")
+        # Accept both new (directive_binding) and legacy (mental_model_bundle) formats
+        has_new = "bindings" in bundle
+        has_legacy = "bundle_ref" in bundle and "local_charts" in bundle
+        if not has_new and not has_legacy:
+            raise SystemExit("invalid bundle: expected 'bindings' (directive_binding) or 'bundle_ref'+'local_charts' (legacy)")
 
         run_id = str(topology.get("run_id") or bundle.get("run_id") or paths["run_id"])
         output = build(topology, bundle, run_id)
