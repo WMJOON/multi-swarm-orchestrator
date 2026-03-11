@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ontology.schema.json",
+  "title": "Categorical Ontology",
+  "description": "범주론적 온톨로지: Ob(objects) + Hom(morphisms) + composition_table",
+  "type": "object",
+  "required": ["category", "domain", "source_chart", "objects", "morphisms", "composition_table"],
+  "properties": {
+    "category": {
+      "type": "string",
+      "const": "C",
+      "description": "범주 식별자 (고정값)"
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_chart": {
+      "type": "string",
+      "description": "원본 chart.json 파일명 또는 경로"
+    },
+    "objects": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "Ob(C) — 프레임워크 축 ID 목록 (chart.json axes[].id와 일치)"
+    },
+    "morphisms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/morphism"
+      },
+      "description": "Hom(C) — explicit + derived morphisms"
+    },
+    "composition_table": {
+      "type": "object",
+      "patternProperties": {
+        "^.+\\+.+$": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "합성 규칙 테이블: 'type_a+type_b' → result_type"
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "morphism": {
+      "type": "object",
+      "required": ["id", "from", "to", "type", "derived"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^m\\d+$",
+          "description": "사상 식별자 (m1, m2, ...)"
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "description": "source object (axis id)"
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "target object (axis id)"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["causes", "requires", "constrains", "informs", "contrasts_with"],
+          "description": "사상 유형"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "관계 강도 (explicit morphism에 필수)"
+        },
+        "derived": {
+          "type": "boolean",
+          "description": "true면 합성으로 도출된 사상"
+        },
+        "via": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^m\\d+$" },
+          "minItems": 2,
+          "description": "합성 경로 (derived=true일 때 필수)"
+        },
+        "rule": {
+          "type": "string",
+          "description": "적용된 합성 규칙 (예: 'informs∘requires→informs')"
+        },
+        "warning": {
+          "type": ["string", "null"],
+          "description": "contrasts_with 합성 경고 메시지"
+        }
+      },
+      "additionalProperties": false,
+      "if": { "properties": { "derived": { "const": true } } },
+      "then": { "required": ["id", "from", "to", "type", "derived", "via", "rule"] }
+    }
+  }
+}

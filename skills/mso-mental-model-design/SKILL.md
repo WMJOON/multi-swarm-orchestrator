@@ -26,6 +26,10 @@ description: |
 | **Sparsity 원칙** | 주도 축 ≥ 0.7 (이상적으로 ≥ 0.8), 나머지 보조 축 ≤ 0.3. 1 vertex = 1 핵심 관심사(concern) 원칙 |
 | **Purpose** | 차트 Bootstrap 기준점. 문제 공간 경계·제약 조건·좌표계 기준을 정의. 지나치게 넓으면 의미 공간 확산으로 구조 안정성 저하 |
 | **LLM 의미 근사** | 실제 Embedding 모델 대신 LLM이 프롬프트 쌍의 의미 유사도를 0.0~1.0으로 직접 판단. Embedding 모델 기반으로 추후 교체 가능 |
+| **Morphism (사상)** | 두 프레임워크(Ob) 사이의 방향성 관계. `ontology.json`의 `morphisms[]`에 기록. 유형: `causes`, `requires`, `constrains`, `informs`, `contrasts_with` |
+| **Composition Table (합성 테이블)** | 사상 유형 쌍의 합성 결과를 정의하는 규칙 테이블. `f: A→B` + `g: B→C` → `g∘f: A→C`의 결과 유형 결정 |
+| **ontology.json** | 범주론적 온톨로지 파일. `chart.json`(Ob 좌표)과 분리하여 Morphism + Composition Table을 기록. explicit morphisms만 저장하고, derived morphisms는 쿼리 시 동적 계산(Lazy) |
+| **contrasts_with 합성 규칙** | `contrasts_with`가 합성 경로에 포함되면 합성을 차단하지 않되, 결과 사상에 `"warning": "contrasts_with chain"` 플래그를 표시. 소비자가 필터링/가중치 조정 판단 |
 
 ### Directive 유형
 
@@ -69,6 +73,7 @@ applicable_motifs: [fork_join, diamond]
 | `~/.mso-registry/<domain>/` | **글로벌** Directive 저장소 — 워크플로우·프로젝트 간 공유 |
 | `~/.mso-registry/<domain>/chart.json` | 도메인 Local Chart (축 정의 + vertex 좌표 캐시) |
 | `~/.mso-registry/<domain>/orthogonality.json` | 직교성 검증 결과 + similarity_matrix |
+| `{workspace}/.mso-context/active/<run_id>/20_mental-model/ontology.json` | Run별 범주론적 온톨로지 (explicit morphisms + composition_table) |
 | `{mso-mental-model-design}/directives/` | 스킬 내장 seed Directive (초기값) |
 | `{workspace}/.mso-context/active/<run_id>/20_mental-model/directive_binding.json` | Run별 노드↔directive 바인딩 (워크스페이스 로컬) |
 
@@ -246,9 +251,65 @@ python3 {mso-mental-model-design}/scripts/register_directive.py \
 
 실물 예시: `~/.mso-registry/ir-deck/chart.json` 참조.
 
-**스크립트:** `bootstrap_chart.py` — 현재 미구현. LLM이 Step 0~7을 직접 실행하여 `chart.json`을 수동 작성.
+**Step 8: Morphism Inference (사상 추론)**
+- Step 7에서 확정된 axes/vertices 기반으로 프레임워크 간 관계를 추론한다
+- 8.1 **임베딩 강도 계산**: 각 축 쌍(i, j)에 대해 "축 i의 분석 결과가 축 j의 해석에 얼마나 영향을 미치는가?" → 방향성 관계 강도 R_ij를 0.0~1.0으로 산출
+- 8.2 **사상 유형 판별**: R_ij ≥ 0.5인 쌍에 대해 관계 유형 판별:
+  - `causes`: i의 결과가 j의 상태를 직접 변화시킴
+  - `requires`: j가 i의 산출물을 전제 조건으로 요구
+  - `constrains`: i가 j의 가능 범위를 제한
+  - `informs`: i가 j의 해석 맥락을 제공 (가장 약한 관계)
+  - `contrasts_with`: i와 j가 대립 관점을 제시 (합성 시 warning 플래그)
+- 8.3 **ontology.json 저장**: explicit morphisms만 기록. derived morphisms는 저장하지 않음 (Lazy — 쿼리 시 composition_table 기반 동적 계산)
 
-**산출물:** `chart.json` + `orthogonality.json` + 각 vertex별 directive MD 파일
+```jsonc
+// ontology.json 스키마
+{
+  "category": "C",
+  "domain": "<domain>",
+  "source_chart": "chart.json",
+  "objects": ["<axis_id_1>", "<axis_id_2>", ...],
+  "morphisms": [
+    {
+      "id": "m1",
+      "from": "<source_axis>",
+      "to": "<target_axis>",
+      "type": "informs|causes|requires|constrains|contrasts_with",
+      "confidence": 0.82,
+      "derived": false
+    }
+  ],
+  "composition_table": {
+    "causes+causes": "causes",
+    "causes+requires": "causes",
+    "causes+constrains": "causes",
+    "causes+informs": "informs",
+    "requires+causes": "requires",
+    "requires+requires": "requires",
+    "requires+constrains": "constrains",
+    "requires+informs": "requires",
+    "constrains+causes": "constrains",
+    "constrains+requires": "constrains",
+    "constrains+constrains": "constrains",
+    "constrains+informs": "constrains",
+    "informs+causes": "informs",
+    "informs+requires": "informs",
+    "informs+constrains": "informs",
+    "informs+informs": "informs",
+    "contrasts_with+*": "warning:contrasts_with chain",
+    "*+contrasts_with": "warning:contrasts_with chain"
+  }
+}
+```
+
+**Step 9: 사용자 확인 (HITL)**
+- 추론된 morphisms 목록을 사용자에게 제시
+- 사용자가 morphism 추가/수정/삭제 후 확정
+- 확정된 결과를 `ontology.json`에 최종 저장
+
+**스크립트:** `bootstrap_chart.py` — 현재 미구현. LLM이 Step 0~7을 직접 실행하여 `chart.json`을 수동 작성. Step 8~9의 ontology.json도 LLM이 직접 생성. 추후 `build_ontology.py`로 자동화 예정.
+
+**산출물:** `chart.json` + `orthogonality.json` + `ontology.json` + 각 vertex별 directive MD 파일
 
 **when_unsure**: 축 수 결정이 어려울 때 → 개념 목록의 자연 클러스터 수 기준 결정(보통 5~12개).
 
@@ -309,6 +370,8 @@ python3 {mso-mental-model-design}/scripts/register_directive.py \
 | Directive Binding 생성 | `python3 {mso-mental-model-design}/scripts/bind_directives.py --topology <path> --registry <path> --output <path>` |
 | **[Mode C] 신규 vertex 투영** | `python3 scripts/project_vertex.py --domain <domain> --id <id> --name "<이름>" --axis <축> --coords '<[...]>'` |
 | **[Mode D] 차트 최초 생성** | `python3 scripts/bootstrap_chart.py --domain <domain> --purpose "<목적>" --axes '<[{id,label,semantic}]>'` |
+| **[Mode D] 온톨로지 생성/쿼리** | `python3 scripts/build_ontology.py --chart <chart.json> --output <ontology.json>` (생성) / `--query "A→?"` (lazy composition 쿼리) |
+| 온톨로지 스키마 검증 | [schemas/ontology.schema.json](schemas/ontology.schema.json) |
 | **글로벌 registry 초기화** | `python3 scripts/init_global_registry.py` |
 
 ---
