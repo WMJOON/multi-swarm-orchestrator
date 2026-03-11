@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (v0.0.8)
+# Multi-Swarm Orchestrator (v0.0.9)
 
 복잡한 AI 에이전트 작업의 **비재현성·비가시성·반복 실패**를 해결하기 위해 설계된 오케스트레이션 시스템.
 워크플로우를 JSON 스키마로 정의하고, 실행을 티켓·감사 로그로 추적하며, 스킬 간 데이터 흐름을 계약(CC-01~10)으로 검증한다.
@@ -49,6 +49,48 @@ graph LR
 ---
 
 ## 변경 이력
+
+### v0.0.9 — Categorical Relation Inference
+
+> **한 줄 요약**: `mso-mental-model-design` Mode D에 **Morphism Inference(Step 8-9)**를 추가하여 프레임워크 간 범주론적 관계를 `ontology.json`으로 관리한다.
+
+v0.0.8에서 Local Chart(Mode C/D)를 도입해 프레임워크를 의미 좌표(Ob)로 배치했지만, 축 간 관계(Hom)가 없어 프레임워크 간 추론이 불가능했다. v0.0.9는 범주론적 온톨로지 `𝒞 = (Ob, Hom, ∘, id)`를 완성한다.
+
+| 개선 영역 | Before (v0.0.8) | After (v0.0.9) |
+|----------|-----------------|----------------|
+| 프레임워크 관계 | 없음 (Ob만 존재) | `ontology.json`에 Morphism(Hom) + Composition Table 기록 |
+| Mode D 범위 | Step 0~7 (chart.json 생성) | Step 0~9 (chart.json + ontology.json + HITL 확인) |
+| 합성 추론 | 불가 | Lazy composition — `build_ontology.py --query "A→?"` |
+| contrasts_with 처리 | 해당 없음 | 합성 허용 + warning 플래그 표시 |
+
+#### 산출물 구조
+
+```
+mso-context/active/<run_id>/20_mental-model/
+├── chart.json           (Ob 좌표 — 기존 불변)
+├── ontology.json        (Hom + composition_table — 신규)
+└── directive_binding.json
+```
+
+#### 설계 결정
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D-1 | Mode D 안에 통합 (Mode E 분리 안 함) | 사용자 진입점 최소화 |
+| D-2 | derived morphisms는 Lazy (쿼리 시 동적 계산) | 파일 비대화 방지 |
+| D-3 | `20_mental-model/` 내 별도 파일 | chart.json과 동일 단계 산출물 |
+| D-4 | `contrasts_with` 합성은 경고만 허용 | 소비자가 최종 판단 |
+
+#### 신규 스크립트/스키마
+
+| 파일 | 설명 |
+|------|------|
+| `build_ontology.py` | chart.json → ontology.json 생성 + 검증 + lazy composition 쿼리 |
+| `ontology.schema.json` | ontology.json JSON Schema 정의 |
+
+상세: [docs/changelog.md](docs/changelog.md)
+
+---
 
 ### v0.0.8 — Global Registry + Local Chart
 
