@@ -1,5 +1,44 @@
 # 변경 이력
 
+## v0.0.9
+
+### 핵심 변경
+
+#### Categorical Relation Inference — ontology.json 도입
+
+| 변경 | 내용 |
+|------|------|
+| **ontology.json 신설** | chart.json(Ob 좌표)과 분리하여 Morphism(Hom) + Composition Table을 별도 파일로 관리. `20_mental-model/` 내 저장 |
+| **Mode D Step 8: Morphism Inference** | 축 간 임베딩 강도 계산(R_ij) → 사상 유형 판별(`causes`, `requires`, `constrains`, `informs`, `contrasts_with`) → ontology.json 저장 |
+| **Mode D Step 9: HITL 확인** | 추론된 morphisms를 사용자에게 제시 → 추가/수정/삭제 후 확정 |
+| **Lazy Composition** | derived morphisms는 ontology.json에 저장하지 않고, `build_ontology.py --query` 실행 시 composition_table 기반 동적 계산 |
+| **contrasts_with 합성 규칙** | 합성을 차단하지 않되 `"warning": "contrasts_with chain"` 플래그 표시. 소비자가 필터링/가중치 조정 판단 |
+
+### 수정 파일
+
+**신규**
+
+| 파일 | 설명 |
+|------|------|
+| `skills/mso-mental-model-design/scripts/build_ontology.py` | chart.json → ontology.json 생성 + 스키마 검증(`--validate`) + lazy composition 쿼리(`--query "A→?"`, `"?→B"`, `"all"`) |
+| `skills/mso-mental-model-design/schemas/ontology.schema.json` | ontology.json JSON Schema (category, objects, morphisms, composition_table) |
+
+**수정**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-mental-model-design/SKILL.md` | 핵심 정의에 Morphism/Composition Table/ontology.json/contrasts_with 규칙 추가. 저장 경로에 ontology.json 추가. Mode D에 Step 8(Morphism Inference) + Step 9(HITL) 추가. 상세 파일 참조에 build_ontology.py + ontology.schema.json 추가 |
+
+### 하위 호환 (v0.0.8 → v0.0.9)
+
+- **chart.json**: 변경 없음. 기존 chart.json 소비자에 영향 없음
+- **ontology.json**: 순수 추가. Mode D 실행 시 자동 생성되나, 기존 워크플로우에서 참조하지 않으면 무시 가능
+- **CC Contracts**: CC-01~CC-10 변경 없음
+- **스크립트 CLI**: 기존 스크립트(`bootstrap_chart.py`, `bind_directives.py` 등) 인터페이스 변경 없음
+- **directive_binding.json**: 스키마 변경 없음
+
+---
+
 ## v0.0.8
 
 ### 핵심 변경
