@@ -54,8 +54,13 @@ description: |
 ```
 python3 {mso-workflow-topology-design}/scripts/graph_search.py \
   --intent "<intent>" --domain-tags "<tag1,tag2>" --top-k 3 \
-  --registry {workspace}/.mso-context/workflow_registry.json
+  --registry ~/.mso-registry/workflows/workflow_registry.json \
+  --fallback-registry {workspace}/.mso-context/workflow_registry.json
 ```
+
+**Registry 해석 순서:**
+1. `~/.mso-registry/workflows/workflow_registry.json` (글로벌)
+2. `{workspace}/.mso-context/workflow_registry.json` (워크스페이스 로컬)
 
 **선택 점수:** `score = similarity_score × 0.6 + success_rate × 0.4`
 
@@ -103,7 +108,8 @@ Mode A와 동일한 스키마로 반환. `source: graph_search_loader` 필드로
 ```
 python3 {mso-workflow-topology-design}/scripts/registry_upsert.py \
   --workflow-spec <path> --intent "<intent>" \
-  --registry {workspace}/.mso-context/workflow_registry.json
+  --registry ~/.mso-registry/workflows/workflow_registry.json \
+  --fallback-registry {workspace}/.mso-context/workflow_registry.json
 ```
 
 ---
@@ -251,8 +257,8 @@ Phase 1~4를 통합하여 `{workspace}/.mso-context/active/<run_id>/10_topology/
 | 출력 스키마 검증 | [schemas/workflow_topology_spec.schema.json](schemas/workflow_topology_spec.schema.json) |
 | Topology 자동 생성 | `python3 {mso-workflow-topology-design}/scripts/generate_topology.py --goal "..." --output {workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` |
 | 런타임 수렴 측정 | `python3 {mso-workflow-topology-design}/scripts/estimator.py --prev prev.json --curr curr.json` → `theta_gt_actual`, `delta_entropy`, `delta_rsv`, `redundancy` |
-| **[Mode B]** 레지스트리 검색 | `python3 {mso-workflow-topology-design}/scripts/graph_search.py --intent "..." --top-k 3 --registry {workspace}/.mso-context/workflow_registry.json` |
-| **[Mode B]** 레지스트리 등록/갱신 | `python3 {mso-workflow-topology-design}/scripts/registry_upsert.py --workflow-spec <path> --intent "..." --registry {workspace}/.mso-context/workflow_registry.json` |
+| **[Mode B]** 레지스트리 검색 | `python3 {mso-workflow-topology-design}/scripts/graph_search.py --intent "..." --top-k 3 --registry ~/.mso-registry/workflows/workflow_registry.json --fallback-registry {workspace}/.mso-context/workflow_registry.json` |
+| **[Mode B]** 레지스트리 등록/갱신 | `python3 {mso-workflow-topology-design}/scripts/registry_upsert.py --workflow-spec <path> --intent "..." --registry ~/.mso-registry/workflows/workflow_registry.json --fallback-registry {workspace}/.mso-context/workflow_registry.json` |
 | **[Mode B]** Graph Search 상세 | [modules/module.graph-search-loader.md](modules/module.graph-search-loader.md) |
 
 ---

@@ -63,6 +63,27 @@ def _load_registry(registry_path: Path) -> List[Dict[str, Any]]:
     return directives
 
 
+def _load_registry_multi(paths: List[Path]) -> List[Dict[str, Any]]:
+    """여러 registry 경로를 순회하여 directive를 로드한다.
+
+    먼저 등장한 id가 우선이며, 각 directive에 _source 키를 추가한다.
+    """
+    merged: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+    for reg_path in paths:
+        if not reg_path.is_dir():
+            continue
+        items = _load_registry(reg_path)
+        for d in items:
+            did = d.get("id", "")
+            if did in seen_ids:
+                continue
+            seen_ids.add(did)
+            d["_source"] = str(reg_path)
+            merged.append(d)
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # Matching
 # ---------------------------------------------------------------------------
@@ -150,7 +171,8 @@ def bind(topology: Dict, directives: List[Dict], default_domain: str = "general"
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Bind directives to topology nodes")
     p.add_argument("--topology", default="", help="Path to workflow_topology_spec.json")
-    p.add_argument("--registry", default="", help="Path to vertex_registry directory")
+    p.add_argument("--registry", default="~/.mso-registry", help="Path to global vertex_registry directory (default: ~/.mso-registry)")
+    p.add_argument("--local-registry", default="", help="Path to workspace-local vertex_registry directory (optional)")
     p.add_argument("--output", default="", help="Optional output path override")
     p.add_argument("--domain", default="general", help="Default domain for search")
     p.add_argument("--run-id", default="", help="Run ID override")
@@ -172,17 +194,21 @@ def main() -> int:
     )
 
     topo_path = Path(args.topology).expanduser().resolve() if args.topology else Path(paths["topology_path"])
-    reg_path = Path(args.registry).expanduser().resolve() if args.registry else Path(paths.get("registry_path", ""))
+    # 글로벌 + 로컬 registry 경로 목록 구성
+    global_reg = Path(args.registry).expanduser().resolve()
+    registry_paths: List[Path] = [global_reg]
+    if args.local_registry:
+        registry_paths.append(Path(args.local_registry).expanduser().resolve())
     out = Path(args.output).expanduser().resolve() if args.output else Path(paths["bundle_path"])
 
     try:
         update_manifest_phase(paths, "20", "active")
         topology = json.loads(topo_path.read_text(encoding="utf-8"))
 
-        directives = _load_registry(reg_path) if reg_path.is_dir() else []
+        directives = _load_registry_multi(registry_paths)
         result = bind(topology, directives, args.domain)
         result["run_id"] = result["run_id"] or str(paths["run_id"])
-        result["metadata"]["registry_path"] = str(reg_path)
+        result["metadata"]["registry_path"] = [str(p) for p in registry_paths]
 
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

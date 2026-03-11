@@ -40,6 +40,12 @@ Optional 키 (스키마에서 허용, 생성 시 권장):
 4. 노드에 `assigned_dqs`, `rsv_target`, `explicit_output` 성격 부여.
 5. `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` 생성.
 
+## Registry 해석 규칙 (Mode B)
+
+workflow_registry 검색 시 해석 순서:
+1. `~/.mso-registry/workflows/workflow_registry.json` (글로벌)
+2. `{workspace}/.mso-context/workflow_registry.json` (워크스페이스 로컬)
+
 ## Error Handling
 - `goal` 미제공: fail-fast.
 - 목표를 DQ로 분해할 수 없는 경우: `when_unsure` 권고 메시지와 함께 실패/건너뛰기.
