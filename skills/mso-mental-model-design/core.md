@@ -12,7 +12,10 @@
 ## Input Interface
 
 - `workflow_topology_spec.json` (nodes[].id, vertex_type, motif)
-- `{workspace}/.mso-context/vertex_registry/` (directive MD 파일)
+- Directive Registry (해석 순서):
+  1. `~/.mso-registry/<domain>/` (글로벌)
+  2. `{workspace}/.mso-context/vertex_registry/<domain>/` (워크스페이스 fallback)
+  3. `{mso-mental-model-design}/directives/` (seed fallback)
 
 ## Output Interface
 
@@ -40,4 +43,4 @@
 
 - topology가 비었거나 노드가 부재하면 fail-fast
 - directive frontmatter에 필수 키 누락 시 등록 거부
-- registry 경로가 존재하지 않으면 빈 디렉토리 자동 생성
+- 글로벌 registry(`~/.mso-registry/`)가 없으면 `init_global_registry.py`를 실행하여 초기화한다

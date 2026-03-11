@@ -1,5 +1,78 @@
 # 변경 이력
 
+## v0.0.8
+
+### 핵심 변경
+
+#### Part 1: Global Registry (`~/.mso-registry/`)
+
+| 변경 | 내용 |
+|------|------|
+| **글로벌 레지스트리 경로** | Vertex Registry + Workflow Registry를 `~/.mso-registry/`로 승격. 프로젝트 간 공유 기본 |
+| **이원 구조 해석(Resolution)** | 글로벌 → 워크스페이스 로컬 → seed 순서. UNION 머지, id 충돌 시 글로벌 우선 |
+| **`registry_config.json`** | `_meta/` 하위에 버전, 해석 순서, 도메인 목록 관리 |
+| **`init_global_registry.py`** | 글로벌 registry 초기화 + seed directive 복사 스크립트 |
+| **`_load_registry_multi()`** | `bind_directives.py`에 다중 경로 로딩 함수 추가. 글로벌 + 로컬 동시 탐색 |
+
+#### Part 2: Local Chart (Mode C/D)
+
+| 변경 | 내용 |
+|------|------|
+| **chart.json** | 도메인별 의미 좌표계. axes(축 정의) + vertices(좌표 캐시) + metrics(직교성) |
+| **Mode C: Chart Projection** | 기존 chart에 새 vertex 투영. `project_vertex.py` scaffold 구현 |
+| **Mode D: Chart Bootstrap** | Purpose 기반 7단계 좌표계 구성. `bootstrap_chart.py` scaffold 구현 |
+| **Sparsity 원칙** | 주도 축 ≥ 0.7, 보조 축 ≤ 0.3. 1 vertex = 1 핵심 관심사 |
+| **LLM 의미 근사** | Embedding 모델 대신 LLM이 유사도 판단 (추후 교체 포인트) |
+| **Purpose 정의** | Mode D 기준점. 문제 공간 경계를 정의하여 좌표계 안정성 확보 |
+
+#### Part 3: Workflow Registry 글로벌화
+
+| 변경 | 내용 |
+|------|------|
+| **`graph_search.py`** | **신규** — 글로벌 + 로컬 workflow_registry.json에서 intent 기반 워크플로우 검색 |
+| **`registry_upsert.py`** | **신규** — 완료된 topology spec을 글로벌 레지스트리에 등록 |
+| **Mode B 이원 구조** | topology SKILL.md + core.md에 글로벌 우선 해석 규칙 반영 |
+
+### 수정 파일
+
+**신규 스크립트**
+
+| 파일 | 설명 |
+|------|------|
+| `skills/mso-mental-model-design/scripts/init_global_registry.py` | 글로벌 registry 초기화 + seed 복사 |
+| `skills/mso-mental-model-design/scripts/project_vertex.py` | Mode C: 기존 chart에 vertex 투영 |
+| `skills/mso-mental-model-design/scripts/bootstrap_chart.py` | Mode D: 도메인 chart.json 골격 생성 |
+| `skills/mso-workflow-topology-design/scripts/graph_search.py` | Mode B: intent 기반 워크플로우 검색 |
+| `skills/mso-workflow-topology-design/scripts/registry_upsert.py` | 워크플로우 메타데이터 글로벌 등록 |
+
+**수정 스크립트**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-mental-model-design/scripts/bind_directives.py` | `_load_registry_multi()` 추가, `--registry` default `~/.mso-registry`, `--local-registry` 옵션 |
+| `skills/mso-mental-model-design/scripts/search_directives.py` | `--registry` default 변경, `--local-registry` 옵션, `_load_registry_multi` 사용 |
+| `skills/mso-mental-model-design/scripts/register_directive.py` | `--registry` default 변경, `--local` 플래그, `registry_config.json` domains 자동 갱신 |
+
+**문서**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-mental-model-design/SKILL.md` | Registry 해석 순서 테이블, Mode C/D 스크립트 참조, Local Chart 개념 |
+| `skills/mso-mental-model-design/core.md` | Input Interface 이원 구조, init 안내 |
+| `skills/mso-workflow-topology-design/SKILL.md` | Mode B 글로벌 경로, graph_search/registry_upsert 참조 |
+| `skills/mso-workflow-topology-design/core.md` | Registry 해석 규칙 (Mode B) 섹션 추가 |
+| `README.md` | v0.0.8 변경 이력 |
+
+### 하위 호환 (v0.0.7 → v0.0.8)
+
+- **레지스트리 경로**: `~/.mso-registry/` 미존재 시 `init_global_registry.py` 실행 필요. 워크스페이스 로컬 경로는 fallback으로 유지되어 기존 데이터 접근 가능
+- **스키마**: DB 스키마 v1.5.0 유지. chart.json은 순수 추가
+- **CC Contracts**: CC-01~CC-10 변경 없음
+- **스크립트 CLI**: `--registry` 기본값 변경(빈 문자열 → `~/.mso-registry`). 명시적으로 `--registry`를 지정하던 기존 호출은 영향 없음
+- **Mode B fallback**: workflow_registry.json 미존재 시 자동 Mode A fallback 유지
+
+---
+
 ## v0.0.7
 
 ### 핵심 변경

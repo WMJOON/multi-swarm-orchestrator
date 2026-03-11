@@ -35,7 +35,8 @@ def validate_frontmatter(fm: dict) -> list[str]:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Register directive to vertex registry")
     p.add_argument("--file", required=True, help="Path to directive MD file")
-    p.add_argument("--registry", required=True, help="Path to vertex_registry directory")
+    p.add_argument("--registry", default="~/.mso-registry", help="Path to global vertex_registry directory (default: ~/.mso-registry)")
+    p.add_argument("--local", action="store_true", help="Register to workspace-local registry instead of global")
     p.add_argument("--dry-run", action="store_true", help="Validate only, don't copy")
     return p.parse_args()
 
@@ -43,7 +44,13 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     src = Path(args.file).expanduser().resolve()
-    reg = Path(args.registry).expanduser().resolve()
+    global_reg = Path(args.registry).expanduser().resolve()
+
+    # --local 플래그: 워크스페이스 로컬 경로에 등록
+    if args.local:
+        reg = Path.cwd() / ".mso-registry"
+    else:
+        reg = global_reg
 
     if not src.exists():
         print(f"ERROR: file not found: {src}", file=sys.stderr)
@@ -72,6 +79,19 @@ def main() -> int:
     dest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
     print(f"REGISTERED {dest}")
+
+    # 글로벌 registry_config.json에 domain 등록 (없으면 추가)
+    config_path = global_reg / "_meta" / "registry_config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if config_path.exists():
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    else:
+        config = {"domains": []}
+    if domain not in config.get("domains", []):
+        config.setdefault("domains", []).append(domain)
+        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"  domain '{domain}' added to {config_path}")
+
     return 0
 
 

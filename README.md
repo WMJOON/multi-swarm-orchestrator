@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (v0.0.7)
+# Multi-Swarm Orchestrator (v0.0.8)
 
 복잡한 AI 에이전트 작업의 **비재현성·비가시성·반복 실패**를 해결하기 위해 설계된 오케스트레이션 시스템.
 워크플로우를 JSON 스키마로 정의하고, 실행을 티켓·감사 로그로 추적하며, 스킬 간 데이터 흐름을 계약(CC-01~10)으로 검증한다.
@@ -44,71 +44,71 @@ graph LR
 | [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~10, 티켓 생명주기, Hand-off Templates |
 | [시작하기](docs/getting-started.md) | 디렉토리 구조, 설계·운영·검증 명령어 |
 | [스킬 사용 매트릭스](docs/usage_matrix.md) | Phase × Swarm × Role 매트릭스, 실행 흐름 시퀀스 |
-| [변경 이력](docs/changelog.md) | v0.0.3~v0.0.7 변경 이력 및 하위 호환 노트 |
+| [변경 이력](docs/changelog.md) | v0.0.3~v0.0.8 변경 이력 및 하위 호환 노트 |
 
 ---
 
 ## 변경 이력
 
-### v0.0.7 — Agent Teams + Topology Motif + Graph Search Loader
+### v0.0.8 — Global Registry + Local Chart
 
-> **한 줄 요약**: 사용자가 하는 작업(user-workflow)이 아니라, 그 작업을 **조립·실행·개선하는 시스템의 작업**(workspace-workflow)을 자동화한 버전.
+> **한 줄 요약**: Vertex Registry와 Workflow Registry를 **글로벌 경로(`~/.mso-registry/`)**로 통합하여 프로젝트 간 재사용을 가능하게 하고, 멘탈모델 좌표계(Local Chart)를 도입하여 도메인 지식을 의미 공간에서 관리한다.
 
-지금까지 MSO는 목표를 받으면 매번 처음부터 워크플로우를 설계했다. 비슷한 작업을 반복해도 이전 경험을 활용하지 못했고, 모든 단계에서 LLM이 풀파워로 동작했다. v0.0.7은 "워크플로우를 어떻게 만들고, 어떻게 재사용하고, 어떻게 더 효율적으로 돌릴 것인가"를 개선했다.
+v0.0.7에서 Vertex Registry(directive 택소노미)와 Workflow Registry(Graph Search)를 도입했지만, 모든 데이터가 워크스페이스 안에 갇혀 있었다. 다른 프로젝트에서 같은 분석 프레임워크를 쓰려면 매번 복사해야 했고, 한번 만든 멘탈모델 좌표계를 재활용할 방법이 없었다. v0.0.8은 이 두 가지를 해결한다.
 
-1. **워크플로우를 패턴으로 분류**: 복잡한 워크플로우도 결국 6가지 기본 패턴(순차, 분기, 병합, 반복, 조건 분기, 허브)의 조합이다. 이 패턴을 "Topology Motif"라 부르고, 각 패턴 안의 실행 단위를 "Vertex"(에이전트/스킬/도구/모델)로 타입을 구분한다.
-2. **한 번 만든 워크플로우를 저장하고, 다음에 검색해서 재사용**: "시장 조사 보고서 작성"이라는 요청이 들어오면, 이전에 성공한 비슷한 워크플로우를 레지스트리에서 찾아 즉시 로딩한다(Graph Search Loader). 각 Vertex에 바인딩할 도메인 지식(분석 프레임워크, 실행 지침, 프롬프트)도 별도 레지스트리(Vertex Registry)에서 검색한다. 처음부터 설계하는 것은 검색 결과가 없을 때만 한다.
-3. **반복할수록 실행 비용을 자동으로 최적화**: 같은 워크플로우가 여러 번 성공하면 시스템이 이를 감지하고, LLM 전체 추론(Level 30) → 경량 모델(Level 20) → 규칙 기반 스크립트(Level 10)로 자동 전환한다(Tier Escalation). 목표는 "처음엔 비싸게, 나중엔 거의 공짜로" 돌리는 것이다.
+1. **레지스트리를 글로벌로**: directive와 워크플로우 메타데이터를 `~/.mso-registry/`에 저장한다. 어떤 프로젝트에서든 같은 레지스트리를 참조하고, 새로 등록한 directive는 즉시 다른 프로젝트에서도 검색된다. 워크스페이스 로컬은 fallback으로 유지한다.
+2. **멘탈모델에 좌표계 부여**: 도메인별로 의미 축(axis)을 정의하고, 각 directive를 좌표(axis_coord)로 배치하는 Local Chart를 도입한다. 새 개념을 추가할 때 기존 N개 vertex와 전부 비교하지 않고 K개 축에 투영만 하면 된다(Mode C). 좌표계가 없으면 Purpose 기반으로 처음부터 구성한다(Mode D).
 
-| 개선 영역    | Before (v0.0.6)           | After (v0.0.7)                          |
-| -------- | ------------------------- | --------------------------------------- |
-| 워크플로우 설계 | 매번 Goal→DQ→Topology 전체 수행 | 레지스트리 검색 → 즉시 로딩 (Mode B)               |
-| 도메인 지식   | 노드별 chart 자동 생성 (범용)      | Directive 택소노미에서 검색·바인딩 (MD, 사람이 편집 가능) |
-| 실행 비용    | 항상 LLM 풀파워 (Level 30)     | 반복 시 자동 경량화 (Level 30→20→10)            |
-| 재사용성     | 없음 (매 Run 독립)             | 두 레지스트리에 패턴·지식 누적                       |
+| 개선 영역 | Before (v0.0.7) | After (v0.0.8) |
+|----------|-----------------|----------------|
+| 레지스트리 범위 | 워크스페이스 로컬 전용 | `~/.mso-registry/` 글로벌 + 로컬 fallback |
+| 신규 directive 추가 | 수동 MD 작성 + 등록 | Mode C: 좌표 투영으로 위치 배정 + 자동 등록 |
+| 도메인 좌표계 | 없음 | chart.json (축 정의 + vertex 좌표 + 직교성 메트릭) |
+| 워크플로우 검색 | SKILL.md에만 참조 | `graph_search.py` 구현 완료 |
 
 ---
 
-#### Part 1: Agent Teams + Jewels
+#### Part 1: Global Registry (`~/.mso-registry/`)
 
-**mso-workflow-optimizer** 스킬에 Agent Teams 아키텍처와 Jewels 패턴 도입.
-
-```
-optimizer-lead (delegate mode)
-    ├── jewel-producer   [background] — audit_global.db 상시 모니터링 + Jewel 생성
-    ├── decision-agent   [on-demand]  — 3-Signal + Jewels → Automation Level 결정
-    ├── level-executor   [on-demand]  — Level 10/20/30 실행 + audit 기록
-    └── hitl-coordinator [on-demand]  — HITL 피드백 + goal.json 생성
-```
-
-#### Part 2: Topology Motif + Graph Search Loader + Tier Escalation
-
-워크플로우를 그래프 패턴으로 학습하고, 반복 패턴이 쌓이면 더 단순한 실행 계층으로 자동 이동하는 구조.
-
-- **Topology Motif**: 6가지 표준 구조 패턴(Chain/Star/Fork-Join/Loop/Diamond/Switch) + 기존 `topology_type` 매핑
-- **Vertex Composition**: Task Node에 실행 단위 유형(`vertex_type`: agent/skill/tool/model) 지정
-- **Graph Search Loader** (Mode B): 레지스트리 검색으로 기존 워크플로우 자동 로딩
-- **Tier Escalation**: `pattern_stability = frequency × success_rate` 기반 Level 30→20→10 자동 이동
-
-#### Part 3: Vertex Registry (mso-mental-model-design 재설계)
-
-`mso-mental-model-design`을 **Vertex Registry**로 전면 재설계. 도메인별 **directive**(framework/instruction/prompt)를 택소노미로 관리하고 topology vertex에 바인딩한다.
-
-- **Directive**: Vertex에 바인딩되는 도메인 지식 단위 (MD 파일, 사람이 편집 가능)
-- **Vertex Registry**: Directive를 택소노미로 분류·검색·관리하는 저장소
-- **Workflow Registry**(topology-design Mode B)와 상호보완: 구조는 Workflow, 지식은 Vertex
+레지스트리 경로를 사용자 홈 디렉토리로 승격. 프로젝트 간 공유가 기본이 된다.
 
 ```
-Workflow Registry (Topology)     Vertex Registry (Directive)
-─────────────────────────────    ─────────────────────────────
-Motif + Vertex 구조 저장          framework / instruction / prompt 저장
-Intent → 워크플로우 검색           vertex_type + motif → directive 검색
-workflow_topology_spec.json      directive_binding.json
+~/.mso-registry/
+├── _meta/registry_config.json    # 해석 순서, 도메인 목록
+├── workflows/                    # Workflow Registry (Mode B)
+├── ir-deck/                      # 도메인별 Directive + chart.json
+├── analysis/                     # Seed directive
+└── general/                      # Fallback directive
 ```
 
-#### Part 4: 스킬 표준화
+**해석(Resolution) 순서**:
+1. `~/.mso-registry/<domain>/` — 글로벌 (우선)
+2. `{workspace}/.mso-context/vertex_registry/<domain>/` — 워크스페이스 로컬
+3. `{skill}/directives/` — seed
 
-전체 10개 스킬 frontmatter를 skill-creator 표준(`name` + `description`만)으로 통일.
+id 충돌 시 글로벌이 우선한다(UNION + Global Priority).
+
+#### Part 2: Local Chart (Mode C/D)
+
+도메인별 의미 좌표계(`chart.json`)를 도입. 각 directive를 의미 공간의 좌표로 관리한다.
+
+- **Mode C (Chart Projection)**: 기존 chart에 새 vertex 투영. N×N 전체 재연산 대신 1×K 투영만 수행
+- **Mode D (Chart Bootstrap)**: Purpose 정의 → 프롬프트 생성 → LLM 의미 근사 → 직교성 검증 → 축 유도 → chart.json 생성
+- **Sparsity 원칙**: 주도 축 ≥ 0.7, 보조 축 ≤ 0.3. 1 vertex = 1 핵심 관심사
+- **LLM 의미 근사**: Embedding 모델 대신 LLM이 유사도 판단 (추후 교체 포인트)
+
+#### Part 3: 신규/수정 스크립트
+
+| 스크립트 | 스킬 | 상태 |
+|---------|------|------|
+| `init_global_registry.py` | mental-model | **신규** — 글로벌 registry 초기화 + seed 복사 |
+| `project_vertex.py` | mental-model | **신규** — Mode C scaffold |
+| `bootstrap_chart.py` | mental-model | **신규** — Mode D scaffold |
+| `graph_search.py` | topology | **신규** — intent 기반 워크플로우 검색 |
+| `registry_upsert.py` | topology | **신규** — 워크플로우 레지스트리 등록 |
+| `bind_directives.py` | mental-model | **수정** — `_load_registry_multi()` 이원 구조 |
+| `search_directives.py` | mental-model | **수정** — 글로벌 default + 로컬 fallback |
+| `register_directive.py` | mental-model | **수정** — 글로벌 default + `--local` flag |
 
 상세: [docs/changelog.md](docs/changelog.md)
 
