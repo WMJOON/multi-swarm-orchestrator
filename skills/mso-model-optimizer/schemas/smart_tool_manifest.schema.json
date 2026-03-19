@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "smart_tool_manifest",
+  "description": "Smart Tool manifest.json 스키마. Tool의 메타정보와 슬롯 구조를 선언한다.",
+  "type": "object",
+  "required": ["name", "version", "lifecycle_state", "slots"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Smart Tool 고유 이름"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Tool 버전 (semver)"
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["local", "symlinked", "global"],
+      "description": "Tool Lifecycle 상태"
+    },
+    "owner_workspace": {
+      "type": ["string", "null"],
+      "description": "소유 workspace 식별자 (global이면 null)"
+    },
+    "slots": {
+      "type": "object",
+      "description": "Smart Tool의 처리 슬롯. 모든 슬롯은 선택이다.",
+      "properties": {
+        "input_norm": {
+          "$ref": "#/$defs/slot",
+          "description": "Input normalization 슬롯"
+        },
+        "rules": {
+          "$ref": "#/$defs/slot",
+          "description": "Rule processing 슬롯 (mso-workflow-optimizer 산출물)"
+        },
+        "inference": {
+          "$ref": "#/$defs/slot",
+          "description": "Light model inference 슬롯 (mso-model-optimizer 산출물)"
+        },
+        "script": {
+          "$ref": "#/$defs/slot",
+          "description": "Script / API execution 슬롯"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/slot"
+      }
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "description": "생성일"
+    },
+    "promoted_from": {
+      "type": ["string", "null"],
+      "description": "승격 전 workspace 경로 (Local→Symlinked/Global 시 기록)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Tool 설명"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "검색·분류용 태그"
+    }
+  },
+  "$defs": {
+    "slot": {
+      "type": "object",
+      "required": ["type", "entry"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["script", "static", "model"],
+          "description": "슬롯 유형. script=실행 가능, static=정적 파일, model=ML 모델"
+        },
+        "entry": {
+          "type": "string",
+          "description": "슬롯 진입점 상대 경로"
+        },
+        "runtime": {
+          "type": "string",
+          "enum": ["python", "node", "onnx", "pytorch", "rules"],
+          "description": "실행 런타임 (type=model/script 시)"
+        },
+        "deploy_spec_ref": {
+          "type": "string",
+          "description": "연결된 deploy_spec.json 경로 (type=model 시)"
+        },
+        "version": {
+          "type": "string",
+          "description": "슬롯 내 아티팩트 버전"
+        }
+      }
+    }
+  }
+}

@@ -253,6 +253,25 @@ pattern_stability = frequency × success_rate
 
 `pattern_stability` 계산 스크립트: `scripts/calc_pattern_stability.py --workflow <name>`
 
+### mso-model-optimizer 연동
+
+Tier Escalation이 발생하면 `mso-model-optimizer`에 Handoff Payload를 전달하여 경량 모델 생성을 트리거할 수 있다.
+
+| Escalation 이벤트 | model-optimizer 트리거 | Handoff Payload |
+|-------------------|----------------------|-----------------|
+| Level 30 → Level 20 | TL-20 또는 TL-30 (태스크 복잡도에 따라) | `escalation.from_level=30, to_level=20` |
+| Level 20 → Level 10 | TL-10 (rule로 대체 가능 수준) | `escalation.from_level=20, to_level=10` |
+
+**트리거 조건**: Escalation 결정이 확정되고 Phase 5 goal에 `"model_replacement_needed": true`가 포함된 경우에만 발동한다. 자동 발동은 하지 않으며, HITL 확인 후 트리거한다.
+
+**Handoff Payload 생성 과정**:
+
+1. Phase 5 goal에서 `model_replacement_needed` 확인
+2. 해당 워크플로우의 LLM inference 패턴을 `sample_io.jsonl`로 추출
+3. Handoff Payload를 구성하여 `mso-model-optimizer` Phase 0으로 전달
+
+Handoff Payload 스키마: `mso-model-optimizer/schemas/handoff_payload.schema.json`
+
 ---
 
 ## operation-agent escalation 처리
@@ -314,6 +333,8 @@ flowchart TD
 | →    | `mso-task-context-management`  | goal 산출 후 다음 주기 최적화 작업을 티켓으로 등록             |
 | ←    | `mso-execution-design`         | execution_graph 실행 완료 신호 수신 시 트리거                  |
 | →    | `mso-agent-collaboration`      | Phase 0 (멀티 에이전트 모드): teammates를 티켓으로 dispatch (provider-free Jewels 패턴) |
+| →    | `mso-model-optimizer`          | Tier Escalation 시 Handoff Payload 전달 → 경량 모델 생성 트리거 |
+| ↔    | `mso-model-optimizer`          | llm-as-a-judge를 서브프로세스로 공유 (Phase 1 데이터 품질 검증) |
 
 ---
 

@@ -9,7 +9,7 @@ description: |
 # mso-skill-governance
 
 > 이 스킬은 pack 전체의 정합성 게이트키퍼이다.
-> CC-01~CC-06 계약 검증, 구조 검사, 레거시 참조 탐지를 수행한다.
+> CC-01~CC-14 계약 검증, 구조 검사, 레거시 참조 탐지를 수행한다.
 
 ---
 
@@ -17,7 +17,7 @@ description: |
 
 | 개념 | 정의 |
 |------|------|
-| **CC (Contract Coupling)** | 스킬 간 입출력 계약. CC-01~CC-10으로 정의 |
+| **CC (Contract Coupling)** | 스킬 간 입출력 계약. CC-01~CC-14로 정의 |
 | **governance status** | `ok` / `warn` / `fail`. fail 시 파이프라인 중단 |
 | **finding** | 개별 검사 항목의 결과. level(fail/warn) + evidence 포함 |
 
@@ -37,11 +37,13 @@ description: |
 ### Phase 2: CC 계약 검증
 
 1. CC 계약 정의 로딩
-2. CC-01~CC-10 각각에 대해:
+2. CC-01~CC-14 각각에 대해:
    - producer/consumer 스킬 명 일치 확인
    - required_output_keys / required_input_keys 존재 확인
    - expected_artifact 경로에 실제 파일 존재 확인 (runtime wiring)
    - CC-10(optimizer → collaboration): mso-agent-collaboration 모드 비활성 시 warn 처리
+   - CC-11(optimizer → model-optimizer): Tier Escalation 미발생 시 warn 처리
+   - CC-14(observability → model-optimizer): 배포된 모델 미존재 시 warn 처리
 3. 불일치 → `finding: fail` + evidence 기록
 
 ### Phase 3: 레거시 참조 탐지

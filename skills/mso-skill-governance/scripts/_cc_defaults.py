@@ -1,12 +1,31 @@
 #!/usr/bin/env python3
-"""Embedded CC contract defaults for runtime workspace v0.0.7."""
+"""Embedded CC contract defaults for runtime workspace v0.0.10."""
 
 from __future__ import annotations
 
 import copy
 from typing import Any, Dict, List
 
-CC_VERSION = "0.0.7"
+CC_VERSION = "0.0.10"
+
+_AUDIT_LOG_KEYS = ["run_id", "artifact_uri", "status", "work_type"]
+
+
+def _make_audit_producer_contract(
+    cc_id: str, producer: str, output_path: str, validation_note: str
+) -> Dict[str, Any]:
+    """Factory for optimizer→audit-log CC contracts (shared key pattern)."""
+    return {
+        "id": cc_id,
+        "producer": producer,
+        "consumer": "mso-agent-audit-log",
+        "required_output_keys": list(_AUDIT_LOG_KEYS),
+        "required_input_keys": list(_AUDIT_LOG_KEYS),
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": validation_note,
+        "producer_output_path": output_path,
+    }
 
 DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
     {
@@ -91,17 +110,11 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "validation_rule": "observability callback JSON과 user_feedback 테이블이 optimizer Phase 1에 소비 가능해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/60_observability",
     },
-    {
-        "id": "CC-08",
-        "producer": "mso-workflow-optimizer",
-        "consumer": "mso-agent-audit-log",
-        "required_output_keys": ["run_id", "artifact_uri", "status", "work_type"],
-        "required_input_keys": ["run_id", "artifact_uri", "status", "work_type"],
-        "compatibility_policy": "strict",
-        "status": "ok",
-        "validation_rule": "optimizer decision_output이 audit_global.db audit_logs 행으로 직렬화 가능해야 함",
-        "producer_output_path": "workspace/.mso-context/active/{run_id}/optimizer",
-    },
+    _make_audit_producer_contract(
+        "CC-08", "mso-workflow-optimizer",
+        "workspace/.mso-context/active/{run_id}/optimizer",
+        "optimizer decision_output이 audit_global.db audit_logs 행으로 직렬화 가능해야 함",
+    ),
     {
         "id": "CC-09",
         "producer": "mso-workflow-optimizer",
@@ -124,6 +137,46 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "validation_rule": "optimizer Phase 0에서 생성한 teammate 티켓이 mso-agent-collaboration dispatch 요건을 충족해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/40_collaboration/task-context/tickets",
         "activation_condition": "mso-agent-collaboration 모드 활성화 시에만 적용. 단일 세션 모드에서는 warn 처리",
+    },
+    {
+        "id": "CC-11",
+        "producer": "mso-workflow-optimizer",
+        "consumer": "mso-model-optimizer",
+        "required_output_keys": ["trigger_type", "target"],
+        "required_input_keys": ["trigger_type", "target.tool_name", "target.inference_pattern"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "Handoff Payload가 handoff_payload.schema.json을 충족하고 target.tool_name에 해당하는 Smart Tool manifest가 존재해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/optimizer/handoff_payload.json",
+        "activation_condition": "Tier Escalation 발생 + Phase 5 goal에 model_replacement_needed=true 시에만 적용",
+    },
+    _make_audit_producer_contract(
+        "CC-12", "mso-model-optimizer",
+        "workspace/.mso-context/active/{run_id}/model-optimizer",
+        "model-optimizer 평가 결과가 audit_global.db audit_logs 행으로 직렬화 가능해야 함 (work_type=model_optimization)",
+    ),
+    {
+        "id": "CC-13",
+        "producer": "mso-model-optimizer",
+        "consumer": "mso-task-context-management",
+        "required_output_keys": ["tool_name", "version", "model_artifact_path", "inference_slot", "runtime", "reproducibility", "evaluation", "rollback", "approved_by"],
+        "required_input_keys": ["id", "status", "priority", "owner", "tags"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "deploy_spec.json의 배포 지시가 TKT 티켓으로 등록 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/model-optimizer/deploy_spec.json",
+    },
+    {
+        "id": "CC-14",
+        "producer": "mso-observability",
+        "consumer": "mso-model-optimizer",
+        "required_output_keys": ["tool_name", "rolling_f1", "drift_detected"],
+        "required_input_keys": ["tool_name", "inference_pattern", "trigger_type"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "observability 모니터링 이벤트가 model-optimizer Phase 0 트리거 컨텍스트로 소비 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/60_observability",
+        "activation_condition": "배포된 모델이 존재하고 rolling_f1 모니터링이 활성화된 경우에만 적용",
     },
 ]
 

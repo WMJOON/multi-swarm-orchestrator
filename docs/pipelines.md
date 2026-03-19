@@ -22,6 +22,8 @@ Topology와 Mental Model은 상호보완적이다. 어느 쪽에서 시작하든
 
 멀티에이전트 협업이 필요한 경우 `Agent Collaboration`으로 작업을 분배(Dispatch)한다. 브랜치 노드의 포크와 머지 노드의 집계가 6개 에이전트 역할(Provisioning/Execution/Handoff/Branching/Critic-Judge/Sentinel)에 의해 수행된다.
 
+`Workflow Optimizer`가 반복 패턴이 안정된 워크플로우에 Tier Escalation(Lv30→20→10)을 적용하면, `Model Optimizer`가 경량 모델을 학습·배포하여 Smart Tool의 inference 슬롯을 채운다. 이 Automation Escalation 루프가 LLM 비용과 latency를 점진적으로 줄이는 핵심 메커니즘이다.
+
 ### 티켓 생명주기
 
 ```mermaid
@@ -49,9 +51,9 @@ stateDiagram-v2
 
 ---
 
-## 스킬 간 계약 (CC-01~10)
+## 스킬 간 계약 (CC-01~14)
 
-스킬 간 데이터 교환은 10가지 핵심 계약(CC-01~CC-10)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
+스킬 간 데이터 교환은 14가지 핵심 계약(CC-01~CC-14)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
 
 ```mermaid
 flowchart LR
@@ -67,6 +69,11 @@ flowchart LR
     Optimizer -- CC-08 --> AuditLog
     Optimizer -- CC-09 --> TaskContext
     Optimizer -- CC-10 --> Collaboration
+
+    Optimizer -- CC-11 --> ModelOpt["Model Optimizer"]
+    ModelOpt -- CC-12 --> AuditLog
+    ModelOpt -- CC-13 --> TaskContext
+    Observability -- CC-14 --> ModelOpt
 ```
 
 `Governance`가 이 계약을 자동으로 검증한다. 필수 필드가 누락되거나 스키마가 일치하지 않으면 파이프라인 진입 전에 즉시 차단한다.
@@ -111,6 +118,48 @@ flowchart LR
 | **필수 키** | 티켓: `id`, `status`(todo), `owner_agent`, `dispatch_mode`, `tags`(workflow_optimization), `task_id`. payload: `run_id`, `task_id`, `owner_agent`, `role`, `objective`, `workflow_name` |
 | **전달 방식** | 티켓 Markdown 생성 → `dispatch.py --ticket <ticket.md>` 호출 |
 | **적용 조건** | mso-agent-collaboration 모드 활성화 시에만. 단일 세션 모드에서는 해당 없음 (governance: warn) |
+
+### CC-11: mso-workflow-optimizer → mso-model-optimizer
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-workflow-optimizer` (Tier Escalation 발생 + Phase 5 goal에 `model_replacement_needed: true`) |
+| **소비자** | `mso-model-optimizer` (Phase 0: 트리거 수신) |
+| **전달 데이터** | Handoff Payload: `trigger_type`, `escalation`(from_level/to_level), `target`(tool_name/inference_pattern/sample_io_ref) |
+| **필수 키** | `trigger_type`, `target.tool_name`, `target.inference_pattern` |
+| **전달 방식** | `handoff_payload.json` 생성 → model-optimizer Phase 0 진입 |
+| **적용 조건** | Tier Escalation 발생 + `model_replacement_needed=true` 시에만. 미발생 시 warn |
+
+### CC-12: mso-model-optimizer → mso-agent-audit-log
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-model-optimizer` (Phase 4: 평가 완료 / Phase 5: HITL 피드백) |
+| **소비자** | `mso-agent-audit-log` |
+| **전달 데이터** | audit payload: `run_id`, `artifact_uri`, `status`, `work_type`(`model_optimization` 또는 `model_retraining` 또는 `model_rollback`) |
+| **필수 키** | `run_id`, `artifact_uri`, `status`, `work_type` |
+| **전달 방식** | `mso-agent-audit-log` 스킬 표준 인터페이스 |
+
+### CC-13: mso-model-optimizer → mso-task-context-management
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-model-optimizer` (Phase 5: deploy_spec 생성 후) |
+| **소비자** | `mso-task-context-management` |
+| **전달 데이터** | `deploy_spec.json`의 배포 지시 → TKT 티켓 등록 |
+| **필수 키** | 티켓: `id`(TKT-xxxx), `status`(todo), `priority`, `owner`, `tags`(model_deployment 포함) |
+| **전달 방식** | deploy_spec 기반 티켓 Markdown 생성 |
+
+### CC-14: mso-observability → mso-model-optimizer
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-observability` (배포된 모델의 rolling_f1 모니터링) |
+| **소비자** | `mso-model-optimizer` (module.model-retraining 트리거) |
+| **전달 데이터** | `tool_name`, `rolling_f1`, `drift_detected` |
+| **필수 키** | `tool_name`, `rolling_f1`, `drift_detected` |
+| **전달 방식** | audit_global.db monitoring 이벤트 → model-optimizer Phase 0 트리거 |
+| **적용 조건** | 배포된 모델이 존재하고 rolling_f1 모니터링이 활성화된 경우에만 |
 
 ---
 
