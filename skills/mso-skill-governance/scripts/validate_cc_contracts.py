@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate CC-01~CC-10 contract definitions and runtime wiring."""
+"""Validate CC-01~CC-14 contract definitions and runtime wiring."""
 
 from __future__ import annotations
 
@@ -28,21 +28,32 @@ from _cc_defaults import CC_VERSION, get_contract_index, get_default_contracts, 
 REQUIRED_CONTRACTS = get_contract_index()
 
 
+def _active_run_subdir(paths: Dict[str, Any], subdir: str) -> Path:
+    """Return {workspace_root}/.mso-context/active/{run_id}/{subdir}."""
+    return Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / subdir
+
+
 def resolve_contract_output(paths: Dict[str, Any], contract_id: str) -> Path:
+    obs_dir = Path(paths.get("observability_dir", str(_active_run_subdir(paths, "60_observability"))))
+    opt_dir = Path(paths.get("optimizer_dir", str(_active_run_subdir(paths, "optimizer"))))
+    mopt_dir = Path(paths.get("model_optimizer_dir", str(_active_run_subdir(paths, "model-optimizer"))))
+    tickets = Path(paths["task_context_dir"]) / "tickets"
+
     mapping = {
         "CC-01": Path(paths["topology_path"]),
         "CC-02": Path(paths["bundle_path"]),
-        "CC-03": Path(paths["task_context_dir"]) / "tickets",
-        "CC-04": Path(paths["task_context_dir"]) / "tickets",
+        "CC-03": tickets,
+        "CC-04": tickets,
         "CC-05": Path(paths["audit_db_path"]),
         "CC-06": Path(paths["execution_plan_path"]),
-        "CC-07": Path(paths.get("observability_dir",
-            str(Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / "60_observability"))),
-        "CC-08": Path(paths.get("optimizer_dir",
-            str(Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / "optimizer"))),
-        "CC-09": Path(paths.get("optimizer_dir",
-            str(Path(paths["workspace_root"]) / ".mso-context/active" / paths["run_id"] / "optimizer"))) / "goal.json",
-        "CC-10": Path(paths["task_context_dir"]) / "tickets",
+        "CC-07": obs_dir,
+        "CC-08": opt_dir,
+        "CC-09": opt_dir / "goal.json",
+        "CC-10": tickets,
+        "CC-11": opt_dir / "handoff_payload.json",
+        "CC-12": mopt_dir,
+        "CC-13": mopt_dir / "deploy_spec.json",
+        "CC-14": obs_dir,
     }
     return mapping[contract_id]
 
@@ -326,8 +337,8 @@ def check_runtime_wiring(
                     )
                     break
 
-        elif cid in ("CC-07", "CC-08"):
-            # CC-07/08 producer_output은 디렉토리. 존재 여부만 경고로 확인.
+        elif cid in ("CC-07", "CC-08", "CC-12", "CC-14"):
+            # CC-07/08/12/14 producer_output은 디렉토리. 존재 여부만 경고로 확인.
             if not producer_output.exists():
                 warnings.append({
                     "contract": cid,
@@ -370,6 +381,26 @@ def check_runtime_wiring(
                     "finding": "; ".join(problems),
                     "evidence": str(opt_ticket),
                 })
+
+        elif cid == "CC-11":
+            # CC-11은 Tier Escalation + model_replacement_needed 시에만 활성화.
+            # 파일 부재는 warn (정상적으로 트리거되지 않은 상태).
+            if not producer_output.exists():
+                warnings.append({
+                    "contract": cid,
+                    "level": "warn",
+                    "finding": "CC-11 handoff_payload.json missing (Tier Escalation may not have triggered model-optimizer)",
+                    "evidence": str(producer_output),
+                })
+            else:
+                ok, problems = check_file_json_fields(producer_output, list(expected["required_output_keys"]))
+                if not ok:
+                    fails.append({
+                        "contract": cid,
+                        "level": "fail",
+                        "finding": "; ".join(problems),
+                        "evidence": str(producer_output),
+                    })
 
         elif producer_output.exists() and producer_output.suffix == ".json":
             ok, problems = check_file_json_fields(producer_output, list(expected["required_output_keys"]))

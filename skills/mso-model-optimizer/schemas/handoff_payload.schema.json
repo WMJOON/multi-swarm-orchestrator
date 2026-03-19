@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "handoff_payload",
+  "description": "mso-workflow-optimizer → mso-model-optimizer Tier Escalation 트리거 Handoff Payload",
+  "type": "object",
+  "required": ["trigger_type", "target"],
+  "properties": {
+    "trigger_type": {
+      "type": "string",
+      "enum": ["tier_escalation", "direct"],
+      "description": "트리거 유형. tier_escalation: workflow-optimizer 경유, direct: 사용자 직접"
+    },
+    "source_skill": {
+      "type": "string",
+      "const": "mso-workflow-optimizer",
+      "description": "트리거 발신 스킬 (tier_escalation 시 필수)"
+    },
+    "escalation": {
+      "type": "object",
+      "description": "Tier Escalation 컨텍스트 (trigger_type=tier_escalation 시 필수)",
+      "required": ["from_level", "to_level", "workflow_name", "run_id"],
+      "properties": {
+        "from_level": {
+          "type": "integer",
+          "enum": [20, 30],
+          "description": "Escalation 출발 Automation Level"
+        },
+        "to_level": {
+          "type": "integer",
+          "enum": [10, 20],
+          "description": "Escalation 도착 Automation Level"
+        },
+        "workflow_name": {
+          "type": "string",
+          "description": "대상 워크플로우 이름"
+        },
+        "run_id": {
+          "type": "string",
+          "description": "workflow-optimizer 실행 식별자"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["tool_name", "inference_pattern"],
+      "properties": {
+        "tool_name": {
+          "type": "string",
+          "description": "대상 Smart Tool 이름"
+        },
+        "inference_pattern": {
+          "type": "string",
+          "enum": ["classification", "ner", "ranking", "tagging", "extraction"],
+          "description": "대체할 inference 패턴 유형"
+        },
+        "current_llm_calls_per_run": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "현재 run당 LLM 호출 횟수 (비용 절감 기대치 산출용)"
+        },
+        "sample_io_ref": {
+          "type": "string",
+          "description": "LLM input/output 샘플 JSONL 경로"
+        },
+        "task_metadata": {
+          "type": "object",
+          "description": "태스크별 추가 메타데이터",
+          "properties": {
+            "label_count": {
+              "type": "integer",
+              "description": "분류 클래스 수 (classification 시)"
+            },
+            "entity_type_count": {
+              "type": "integer",
+              "description": "엔티티 유형 수 (NER 시)"
+            },
+            "language": {
+              "type": "string",
+              "description": "주 사용 언어 (ko, en, etc.)"
+            }
+          }
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": { "trigger_type": { "const": "tier_escalation" } }
+  },
+  "then": {
+    "required": ["trigger_type", "source_skill", "escalation", "target"]
+  }
+}

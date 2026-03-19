@@ -21,6 +21,9 @@ skills/
 │   ├── configs/                     ← llm-model-catalog.yaml
 │   ├── schemas/                     ← optimizer_result.schema.json
 │   └── scripts/                     ← select_llm_model.py
+├── mso-model-optimizer/             ← Smart Tool 경량 모델 학습·평가·배포
+│   ├── modules/                     ← model-decision, training-level, retraining, rollback
+│   └── schemas/                     ← deploy_spec, handoff_payload, smart_tool_manifest
 ├── mso-process-template/            ← 프로세스 규약, Hand-off 템플릿 SoT
 └── _shared/                         ← 공통 유틸 (runtime_workspace.py)
 rules/
@@ -74,20 +77,20 @@ MSO 런타임 산출물은 기본적으로 `{workspace}/.mso-context` 하위에 
     │       ├── 70_governance/
     │       ├── 80_delivery/
     │       ├── 90_meta/
-    │       └── optimizer/
-    │           ├── level10_report.md
-    │           ├── level20_report.md
-    │           ├── level30_report.md
-    │           ├── goal.json
-    │           ├── process/
-    │           │   ├── analysis-report.md
-    │           │   ├── evaluation-report.md
-    │           │   └── improvement-evaluation-report.md
-    │           └── llm-as-a-judge/
-    │               ├── sample.csv
-    │               ├── labeled-data.csv
-    │               ├── TF-PN.csv
-    │               └── report.md
+    │       ├── optimizer/
+    │       │   ├── level10_report.md
+    │       │   ├── level20_report.md
+    │       │   ├── level30_report.md
+    │       │   ├── goal.json
+    │       │   ├── handoff_payload.json      ← CC-11: model-optimizer 트리거
+    │       │   ├── process/
+    │       │   └── llm-as-a-judge/
+    │       └── model-optimizer/
+    │           ├── tl10_model/               ← TL-10: rules.json
+    │           ├── tl20_model/               ← TL-20: model/ + tokenizer/
+    │           ├── tl30_model/               ← TL-30: model/ + checkpoints/
+    │           ├── tl{XX}_eval_report.md
+    │           └── deploy_spec.json
     └── archive/
         └── <YYYY-MM>/
 ```

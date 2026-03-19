@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "deploy_spec",
+  "description": "mso-model-optimizer 모델 배포 계약 스키마",
+  "type": "object",
+  "required": ["tool_name", "version", "model_artifact_path", "inference_slot", "runtime", "reproducibility", "evaluation", "rollback", "approved_by"],
+  "properties": {
+    "tool_name": {
+      "type": "string",
+      "description": "대상 Smart Tool 이름"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "모델 배포 버전 (semver)"
+    },
+    "model_artifact_path": {
+      "type": "string",
+      "description": "Smart Tool 내 model artifact 상대 경로"
+    },
+    "inference_slot": {
+      "type": "string",
+      "description": "Smart Tool 내 inference slot 상대 경로"
+    },
+    "runtime": {
+      "type": "string",
+      "enum": ["onnx", "pytorch", "rules"],
+      "description": "추론 런타임"
+    },
+    "input_schema": {
+      "type": "object",
+      "description": "모델 입력 스키마"
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "모델 출력 스키마"
+    },
+    "reproducibility": {
+      "type": "object",
+      "required": ["dataset_version", "dataset_size", "training_level"],
+      "properties": {
+        "base_model": {
+          "type": ["string", "null"],
+          "description": "파인튜닝에 사용된 base model 식별자"
+        },
+        "dataset_version": {
+          "type": "string",
+          "description": "학습 데이터셋 해시"
+        },
+        "dataset_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "학습 데이터셋 크기 (건수)"
+        },
+        "training_level": {
+          "type": "string",
+          "enum": ["TL-10", "TL-20", "TL-30"],
+          "description": "적용된 Training Level"
+        },
+        "hyperparameters": {
+          "type": "object",
+          "description": "학습 하이퍼파라미터 (TL-10은 빈 객체)"
+        },
+        "training_log_ref": {
+          "type": "string",
+          "description": "training_log.jsonl 경로"
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["f1", "latency_ms", "model_size_mb", "llm_baseline_f1", "eval_report_ref"],
+      "properties": {
+        "f1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "test set F1 score"
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "inference 1건 평균 latency (ms)"
+        },
+        "model_size_mb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "모델 파일 크기 (MB)"
+        },
+        "cost_per_1k": {
+          "type": "number",
+          "minimum": 0,
+          "description": "1000건 처리 비용 (선택)"
+        },
+        "llm_baseline_f1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "동일 test set에서의 LLM baseline F1"
+        },
+        "eval_report_ref": {
+          "type": "string",
+          "description": "eval report 경로"
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "required": ["fallback_strategy", "degradation_threshold_f1"],
+      "properties": {
+        "fallback_strategy": {
+          "type": "string",
+          "enum": ["llm_passthrough", "previous_version", "rule_fallback"],
+          "description": "성능 저하 시 fallback 전략"
+        },
+        "degradation_threshold_f1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "rolling_f1이 이 값 아래로 떨어지면 경고 발생"
+        },
+        "previous_version": {
+          "type": ["string", "null"],
+          "description": "이전 배포 버전 (rollback 대상)"
+        }
+      }
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["local", "symlinked", "global"],
+      "description": "현재 Tool Lifecycle 상태"
+    },
+    "promotion_candidate": {
+      "type": "boolean",
+      "description": "global 승격 후보 여부"
+    },
+    "approved_by": {
+      "type": "string",
+      "enum": ["human_feedback", "timeout_fallback"],
+      "description": "배포 승인 주체"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "trigger_type": {
+          "type": "string",
+          "enum": ["tier_escalation", "direct", "retraining"]
+        }
+      }
+    }
+  }
+}

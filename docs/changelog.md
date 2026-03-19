@@ -1,5 +1,86 @@
 # 변경 이력
 
+## v0.0.10
+
+### 핵심 변경
+
+#### Part 1: mso-model-optimizer 스킬 신설
+
+| 변경 | 내용 |
+|------|------|
+| **mso-model-optimizer 스킬 추가** | Smart Tool의 `slots/inference/` 슬롯을 채울 경량 특화 모델을 학습·평가·배포하는 스킬. 5-Phase 파이프라인 (트리거→데이터수집→TL판단→학습→평가→배포) |
+| **Training Level (TL-10/20/30)** | TL-10: Rule/Heuristic, TL-20: 경량 파인튜닝, TL-30: 전체 학습. `TL-` 접두어로 Automation Level과 명시적 구분 |
+| **deploy_spec.json** | 모델 배포 계약. reproducibility(재현성 메타데이터) + evaluation(평가 지표) + rollback(Fallback 전략) 포함 |
+| **model-retraining 모듈** | data drift 감지 → 데이터 병합(Append/Window/Replace) → 재학습 → regression guard |
+| **rollback 모듈** | rolling_f1/latency_p95/error_rate 모니터링 → Degradation 3단계 → Fallback(llm_passthrough/previous_version/rule_fallback) |
+
+#### Part 2: Smart Tool 구조 표준
+
+| 변경 | 내용 |
+|------|------|
+| **Smart Tool manifest.json** | Tool의 메타정보(name, version, lifecycle_state)와 슬롯 구조(input_norm/rules/inference/script)를 선언하는 표준 스키마 |
+| **Thin Agent, Thick Smart Tools 패턴** | Agent는 orchestration에 집중, 실제 기능은 Smart Tool 내부로 이동하는 설계 원칙 공식화 |
+| **Tool Lifecycle** | Local → Symlinked → Global 3단계 승격. pattern_stability + workspace_count + abstraction_score 기반 |
+| **Tier Escalation vs Tool Lifecycle 직교 분리** | Tier Escalation = "어떤 수준으로 처리할 것인가"(처리 전략), Tool Lifecycle = "어디에 배치할 것인가"(배치 scope). 별개의 축 |
+
+#### Part 3: CC-11~14 계약 추가
+
+| 변경 | 내용 |
+|------|------|
+| **CC-11: workflow-optimizer → model-optimizer** | Tier Escalation 시 Handoff Payload 전달. activation_condition: model_replacement_needed=true |
+| **CC-12: model-optimizer → audit-log** | 모델 평가 결과를 audit_global.db에 기록 (work_type: model_optimization/model_retraining/model_rollback) |
+| **CC-13: model-optimizer → task-context** | deploy_spec.json 배포 지시를 TKT 티켓으로 등록 |
+| **CC-14: observability → model-optimizer** | rolling_f1 모니터링 → 재학습 트리거. activation_condition: 배포된 모델 존재 시 |
+| **CC_VERSION 0.0.10** | _cc_defaults.py 버전 갱신, validate_cc_contracts.py에 CC-11~14 매핑 추가 |
+
+#### Part 4: mso-workflow-optimizer 연동
+
+| 변경 | 내용 |
+|------|------|
+| **Tier Escalation → model-optimizer 연동** | SKILL.md에 model-optimizer 트리거 섹션 추가. Handoff Payload 생성 과정 명시 |
+| **Pack 내 관계 확장** | model-optimizer 2행 추가 (→ Handoff, ↔ llm-as-a-judge 공유) |
+
+### 수정 파일
+
+**신규**
+
+| 파일 | 설명 |
+|------|------|
+| `skills/mso-model-optimizer/SKILL.md` | 5-Phase 정의 + Handoff Payload + Rollback + Retraining |
+| `skills/mso-model-optimizer/core.md` | Terminology + I/O Interface + Processing Rules |
+| `skills/mso-model-optimizer/modules/modules_index.md` | Core + Operational 모듈 인덱스 |
+| `skills/mso-model-optimizer/modules/module.model-decision.md` | 3-Signal Training Strategy 판단 |
+| `skills/mso-model-optimizer/modules/module.training-level.md` | TL-10/20/30 실행 흐름 + 강등 정책 |
+| `skills/mso-model-optimizer/modules/module.model-retraining.md` | 재학습 루프 + drift 감지 + regression guard |
+| `skills/mso-model-optimizer/modules/module.rollback.md` | Degradation 정책 + Fallback 전략 |
+| `skills/mso-model-optimizer/schemas/deploy_spec.schema.json` | 모델 배포 계약 스키마 |
+| `skills/mso-model-optimizer/schemas/handoff_payload.schema.json` | workflow-optimizer → model-optimizer Handoff 스키마 |
+| `skills/mso-model-optimizer/schemas/smart_tool_manifest.schema.json` | Smart Tool manifest 표준 스키마 |
+
+**수정**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-workflow-optimizer/SKILL.md` | Tier Escalation → model-optimizer 연동 섹션 추가 + Pack 내 관계 2행 추가 |
+| `skills/mso-skill-governance/scripts/_cc_defaults.py` | CC-11~14 등록, CC_VERSION 0.0.10 |
+| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | CC-11~14 매핑 + 검증 로직 |
+| `skills/mso-skill-governance/SKILL.md` | CC 검증 범위 CC-14로 확장 |
+| `docs/pipelines.md` | mermaid 다이어그램에 Model Optimizer + CC-11~14 추가, CC-11~14 계약 설명 |
+| `docs/changelog.md` | v0.0.10 변경 이력 추가 |
+| `README.md` | v0.0.10 반영 + Roadmap 조정 |
+
+### 하위 호환 (v0.0.9 → v0.0.10)
+
+- **mso-model-optimizer**: 순수 신규 스킬. 기존 워크플로우에 영향 없음
+- **Smart Tool manifest**: 기존 tool에 manifest.json이 없어도 기존 동작에 영향 없음
+- **CC-11~14**: 순수 추가. CC-01~10 변경 없음
+- **CC-11 activation_condition**: Tier Escalation + model_replacement_needed 미발생 시 warn 처리 (파이프라인 차단 없음)
+- **CC-14 activation_condition**: 배포된 모델 미존재 시 warn 처리
+- **Handoff Payload**: workflow-optimizer goal에 `model_replacement_needed` 필드가 없으면 CC-11은 트리거되지 않음
+- **Tool Lifecycle**: 기존 스킬에 lifecycle_state 개념이 부재하더라도 영향 없음. 신규 Smart Tool 생성 시부터 적용
+
+---
+
 ## v0.0.9
 
 ### 핵심 변경
