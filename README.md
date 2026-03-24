@@ -1,5 +1,7 @@
 # Multi-Swarm Orchestrator (v0.1.0)
 
+> ⚠️ **v0.1.x는 개인 업무 환경에서의 검증 단계입니다. 외부 프로덕션 사용은 권장하지 않습니다.** v0.2.0부터 다른 사람들도 실질적인 도구로 활용할 수 있는 상태를 목표로 합니다.
+
 > *A Companion of Agent Swarm* — Agent Swarm은 뒤에서 일하는 도구가 아니라, 믿을 수 있는 동료다.
 
 사람과 Agent Swarm이 동료로서 함께 일하는 오케스트레이션 시스템.
