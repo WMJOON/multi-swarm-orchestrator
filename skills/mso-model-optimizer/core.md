@@ -5,6 +5,10 @@
 | 용어 | 정의 |
 |------|------|
 | Training Level (TL) | 학습 전략 깊이 (TL-10 / TL-20 / TL-30). 높을수록 학습 복잡도가 크다 |
+| Label Strategy (LS) | 라벨 확보 전략 깊이 (LS-0~3). 라벨 부족 시 Phase 1.5에서 자동 선택 |
+| effective_count | `labeled + 0.7 × (augmented + weak + synthetic)`. Signal A의 핵심 입력 |
+| SetFit | Sentence Transformer 기반 few-shot 학습. 클래스당 8개로 GPT-3급 성능 |
+| LoRA/QLoRA | 저랭크 어댑터 파인튜닝. Full FT 대비 90~95% 품질, VRAM 10~20배 절감 |
 | model-decision | 3-Signal을 종합하여 Training Level을 결정하는 판단 노드 |
 | deploy_spec | 학습된 모델의 배포 계약. runtime, schema, rollback 전략을 포함 |
 | Smart Tool | 자체 workflow를 가진 실행 모듈. manifest.json으로 구조를 선언 |
@@ -62,13 +66,16 @@
 1. Phase 0에서 `tool_name`과 `inference_pattern`을 반드시 확정한다.
 2. Phase 1에서 데이터 소스 우선순위를 따른다: sample_io_ref > audit_global.db > workspace 로그 > 사용자 제공.
 3. Phase 1의 `llm-as-a-judge` 서브프로세스 호출은 `mso-workflow-optimizer`의 인터페이스 계약을 따른다.
-4. Phase 2 model-decision은 3-Signal(A: 데이터 가용성, B: 태스크 특성, C: 기존 모델 이력)로 TL을 결정한다.
-5. Signal 충돌 시 보수적 TL(낮은 값) 선택 + `escalation_needed: true`.
-6. Phase 3 실행 후 반드시 Phase 4 평가를 완료해야 Phase 5로 진행한다.
-7. Phase 4에서 f1 기준 미달 시 Phase 5 진입 불가: Phase 2 회귀 또는 HITL 에스컬레이션.
-8. Phase 5 HITL 타임아웃 시 배포 보류 + model artifact 보존.
-9. 재학습된 모델은 **regression guard**: 기존 모델 대비 개선되지 않으면 배포하지 않는다.
-10. deploy_spec.json의 `reproducibility` 블록은 필수: 재현성 없는 모델은 배포 불가.
+4. **Phase 1.5**: Label Strategy 모듈이 `labeled_count`와 `unlabeled_count`를 분석하여 LS-0~3을 결정한다. 라벨 충분(LS-3) 시 건너뜀.
+5. Phase 1.5의 `effective_count`가 Phase 2 Signal A의 핵심 입력이 된다.
+6. Phase 2 model-decision은 3-Signal(A: 데이터 가용성+라벨 전략, B: 태스크 특성, C: 기존 모델 이력)로 TL을 결정한다.
+7. Signal 충돌 시 보수적 TL(낮은 값) 선택 + `escalation_needed: true`.
+8. Phase 3 실행 후 반드시 Phase 4 평가를 완료해야 Phase 5로 진행한다.
+9. Phase 4에서 f1 기준 미달 시 Phase 5 진입 불가: Phase 2 회귀 또는 HITL 에스컬레이션.
+10. Phase 5 HITL 타임아웃 시 배포 보류 + model artifact 보존.
+11. 재학습된 모델은 **regression guard**: 기존 모델 대비 개선되지 않으면 배포하지 않는다.
+12. deploy_spec.json의 `reproducibility` 블록은 필수: 재현성 없는 모델은 배포 불가.
+13. TL-20은 SetFit/LoRA/QLoRA/표준 FT 중 라벨 수·태스크에 맞는 경로를 자동 라우팅한다.
 
 ---
 
@@ -76,7 +83,8 @@
 
 - `tool_name` 미제공: fail-fast.
 - `inference_pattern` 미제공: fail-fast.
-- 데이터 부족 (< 50건): TL-10 강제 선택 + warning 기록.
+- 데이터 부족 (< 50건): Phase 1.5 Label Strategy(LS-0) 시도 후에도 부족 시 TL-10 강제 선택 + warning 기록.
+- Label Strategy 실패 (Zero-shot/Clustering 모두 실패): HITL에 수동 라벨링 요청.
 - TL-30 학습 실패: TL-20으로 강등 재시도, `carry_over_issues`에 기록.
 - TL-20 학습 실패: TL-10으로 강등 재시도.
 - TL-10도 실패: HITL 에스컬레이션 (데이터 품질 문제 가능성).

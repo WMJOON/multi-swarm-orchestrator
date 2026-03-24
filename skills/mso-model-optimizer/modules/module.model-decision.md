@@ -4,20 +4,55 @@
 
 ---
 
-## Signal A — 데이터 가용성
+## Signal A — 데이터 가용성 + 라벨 전략
 
-| 상태 | 판정 TL |
-|------|---------|
-| 데이터 < 100건, 라벨 품질 불확실 | TL-10 |
-| 데이터 100~10K건, llm-as-a-judge 품질 Pass | TL-20 |
-| 데이터 > 10K건, 품질 안정 + 다양한 분포 확인 | TL-30 |
+> Phase 1.5(Label Strategy)의 산출물을 반영한다. `label_strategy_output.json`이 존재하면 `effective_count`를 사용하고, 존재하지 않으면 `total_count`로 fallback한다.
+
+### A-1: 라벨 유무 분류
+
+| 필드 | 설명 |
+|------|------|
+| `labeled_count` | 인간 검증 라벨 수 |
+| `unlabeled_count` | 비라벨 데이터 수 |
+| `augmented_count` | Augmentation으로 생성된 라벨 수 |
+| `weak_supervision_count` | Weak Supervision으로 생성된 라벨 수 |
+| `synthetic_count` | LLM 합성 라벨 수 |
+| `effective_count` | `labeled + 0.7 × (augmented + weak + synthetic)` |
+
+### A-2: TL 판정 기준
+
+| 상태 | 판정 TL | 학습 방식 권고 |
+|------|---------|---------------|
+| `effective_count` < 50 | TL-10 | Rule/Heuristic |
+| `effective_count` 50~200, `labeled_count`(인간 검증만) ≥ 8/class | TL-20 | **SetFit** (Few-shot) |
+| `effective_count` 200~2K | TL-20 | **LoRA/QLoRA** 또는 표준 fine-tuning |
+| `effective_count` 2K~10K, llm-as-a-judge Pass | TL-20 | 표준 fine-tuning |
+| `effective_count` > 10K, 품질 안정 + 다양한 분포 | TL-30 | 전체 학습 |
+
+### A-3: 라벨 소스 품질 가중치
+
+라벨 소스에 따라 신뢰도가 다르다. `effective_count` 산정 시 가중치를 적용한다.
+
+| 소스 | 가중치 | 근거 |
+|------|--------|------|
+| 인간 검증 라벨 (HITL) | 1.0 | 최고 신뢰도 |
+| Active Learning 선별 + 인간 라벨 | 1.0 | 인간 검증 동일 |
+| Data Augmentation (EDA/Back-Translation) | 0.7 | 의미 보존 변형이나 노이즈 가능 |
+| Weak Supervision (Snorkel) | 0.7 | 규칙 기반, 커버리지 제한 |
+| LLM 합성 데이터 | 0.5 | 실제 분포 괴리 가능 |
+| Zero-shot pseudo-label (미검증) | 0.3 | 정확도 편차 큼 |
+
+> Cleanlab 감사를 거친 데이터는 가중치 +0.1 보정 (최대 1.0)
 
 **체크 순서:**
 
-1. `dataset_stats.json`의 `total_count` 확인
-2. `total_count < 100` → TL-10 즉시 판정
-3. `llm-as-a-judge` 품질 점수 확인 (cohen_kappa ≥ 0.6 → Pass)
-4. 라벨 분포 불균형 검사 (소수 클래스 비율 < 5% → warning 플래그)
+1. `label_strategy_output.json` 존재 여부 확인
+2. 존재 시: `effective_count` + `label_strategy` 레벨 확인
+3. 미존재 시: `dataset_stats.json`의 `total_count`로 fallback (기존 로직)
+4. `effective_count` 기반 TL 판정
+5. `llm-as-a-judge` 품질 점수 확인 (cohen_kappa ≥ 0.6 → Pass)
+6. 라벨 분포 불균형 검사 (소수 클래스 비율 < 5% → warning 플래그)
+7. 합성/약성 라벨 비율 > 70%이면 warning + HITL 라벨 보강 권고
 
 ---
 
@@ -58,7 +93,7 @@
 ## 3-Signal 종합 규칙
 
 ```
-base_tl       = Signal_A      (데이터 기반 초기 TL)
+base_tl       = Signal_A      (effective_count 기반 초기 TL)
 task_delta    = Signal_B 기본 TL - base_tl   (태스크 복잡도 보정)
 history_delta = Signal_C 보정값
 
@@ -97,10 +132,11 @@ if |task_delta| >= 20:       # 2단계 이상 차이
   "model_type": "classifier",
   "base_model": "distilbert-base-uncased",
   "rationale": [
-    "Signal A: 2,847건 (llm-as-a-judge cohen_kappa=0.73) → TL-20 후보",
+    "Signal A: effective_count=2,847 (labeled=400, augmented=1200×0.7, weak=2500×0.7, cohen_kappa=0.73) → TL-20 후보",
     "Signal B: multi-class classification (15 클래스) → TL-20",
     "Signal C: 이전 모델 없음 → 보정 없음",
-    "종합: TL-20 확정"
+    "Label Strategy: LS-2 (Active Learning + Augmentation 완료)",
+    "종합: TL-20 확정, LoRA fine-tuning 권고"
   ],
   "escalation_needed": false
 }
@@ -112,11 +148,14 @@ if |task_delta| >= 20:       # 2단계 이상 차이
 
 TL-20/30에서 `base_model`을 결정할 때:
 
-| inference_pattern | 권장 base_model 범위 | 비고 |
-|-------------------|---------------------|------|
-| classification | distilbert, albert, tinybert | 속도 우선 |
-| NER | distilbert, bert-base, roberta | 정확도 우선 |
-| ranking | sentence-transformers/all-MiniLM | 임베딩 기반 |
-| tagging | bert-base, roberta | 토큰 레벨 태깅 |
+| inference_pattern | effective_count | 권장 base_model / 방식 | 비고 |
+|-------------------|----------------|----------------------|------|
+| classification | < 200 (라벨 8+/class) | **SetFit** + sentence-transformers | Few-shot 최적 |
+| classification | 200~2K | **LoRA/QLoRA** + distilbert/bert-base | PEFT 효율 |
+| classification | 2K+ | distilbert, albert, tinybert | 표준 fine-tuning |
+| NER | < 500 | **LoRA** + bert-base/roberta | 토큰 레벨 PEFT |
+| NER | 500+ | distilbert, bert-base, roberta | 표준 fine-tuning |
+| ranking | any | sentence-transformers/all-MiniLM | 임베딩 기반 |
+| tagging | any | bert-base, roberta | 토큰 레벨 태깅 |
 
-base_model 최종 선택은 `dataset_stats.json`의 언어 필드와 데이터 크기를 고려하여 결정한다. 사용자가 직접 지정할 수도 있다.
+base_model 최종 선택은 `dataset_stats.json`의 언어 필드, `label_strategy_output.json`의 라벨 상황, 데이터 크기를 종합하여 결정한다. 사용자가 직접 지정할 수도 있다.
