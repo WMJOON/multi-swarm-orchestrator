@@ -97,7 +97,7 @@ optimizer-lead (delegate mode)
 | 동일 workflow Level 30 실행 후 KPI 미개선 2회 | `level_escalation` | medium |
 | 동일 에러 패턴 3회 이상 반복 | `pattern_alert` | medium |
 | llm-as-a-judge samplingRatio < 0.05 누적 | `sampling_adjust` | low |
-| Level 30→10 Tier 하강 조건 충족 감지 (v0.1.0 예정) | `tier_downgrade` | medium |
+| Level 30→10 Tier 하강 조건 충족 감지 (v0.1.0 Label Strategy + PEFT 통합) | `tier_downgrade` | medium |
 
 **조건 미달 시 Jewel 생성 금지** (노이즈 방지).
 
@@ -117,7 +117,7 @@ optimizer-lead (delegate mode)
 
 **저장 경로:** `{workspace}/.mso-context/jewels/opt/{jewel_id}.json`
 
-> `tier_downgrade`는 v0.1.0 Processing Tier 최적화와 연계 예정. v0.0.7에서는 조건 정의만 등록, 실제 감지 로직은 비활성.
+> `tier_downgrade`는 v0.1.0에서 `mso-model-optimizer`의 Label Strategy(LS-0~3) + TL-20 3경로 라우팅(SetFit/LoRA/표준 FT)과 연계. Handoff Payload 전달 시 Phase 1.5(Label Strategy)가 자동으로 라벨 확보 전략을 선택한다.
 
 **lead에게 메시지 (Jewel 생성 시):**
 ```

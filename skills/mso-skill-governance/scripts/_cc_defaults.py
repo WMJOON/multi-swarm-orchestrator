@@ -6,7 +6,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List
 
-CC_VERSION = "0.0.10"
+CC_VERSION = "0.1.0"
 
 _AUDIT_LOG_KEYS = ["run_id", "artifact_uri", "status", "work_type"]
 
