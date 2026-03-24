@@ -1,5 +1,78 @@
 # 변경 이력
 
+## v0.1.0 (2026-03-24)
+
+### 핵심 변경: mso-model-optimizer — Label Strategy + PEFT 통합
+
+소량 라벨 환경에서도 Automation Escalation이 가능하도록 `mso-model-optimizer`를 대폭 확장.
+
+#### Part 1: Label Strategy (Phase 1.5) 신설
+
+| 변경 | 내용 |
+|------|------|
+| **Phase 1.5: Label Strategy (LS-0~3)** | 라벨 부족 시 최적 라벨 확보 전략을 자동 선택하는 Phase. LS-0(Zero-shot) → LS-1(Few-shot+증강) → LS-2(Active Learning) → LS-3(충분→직행) |
+| **module.label-strategy.md** | Zero-shot NLI, Clustering, Active Learning, Weak Supervision, LLM 합성 데이터 전략을 통합한 라벨 확보 모듈 |
+| **module.data-augmentation.md** | EDA, Back-Translation, LLM Paraphrase 3가지 증강 전략. 자동 선택 + 품질 검증(NLI 일치도) |
+| **임베딩 캐싱** | kNN baseline 단계에서 계산된 임베딩을 `embeddings_cache.npy`로 저장, Phase 4 평가/Clustering/AL에서 재사용 |
+
+#### Part 2: TL-20 PEFT 확장
+
+| 변경 | 내용 |
+|------|------|
+| **TL-20 3경로 라우팅** | 경로 A(SetFit, 50~200), 경로 B(LoRA/QLoRA, 200~2K), 경로 C(표준 FT, 2K~10K) 자동 라우팅 |
+| **SetFit 경로** | Sentence Transformer contrastive fine-tuning. 클래스당 8개 라벨로 GPT-3급 성능 |
+| **LoRA/QLoRA 경로** | 저랭크 어댑터 파인튜닝. VRAM 10~20배 절감. QLoRA: 4-bit 양자화 |
+| **NER 오버라이드** | NER/tagging 태스크는 per-entity 라벨 수 기반 라우팅 (< 500 → LoRA 강제) |
+| **경로 간 강등** | SetFit → LoRA → 표준 FT → TL-10 순서 강등 정책 |
+
+#### Part 3: Signal A 확장
+
+| 변경 | 내용 |
+|------|------|
+| **effective_count** | `labeled + 0.7 × (augmented + weak + synthetic)`. 소스별 품질 가중치 적용 (인간=1.0, 증강=0.7, 합성=0.5, pseudo=0.3) |
+| **labeled/unlabeled 분리** | `total_count` 단일 기준 → `labeled_count` + `unlabeled_count` 분리 |
+| **deploy_spec 확장** | `reproducibility`에 `labeled_count`, `augmented_count`, `effective_count`, `label_strategy`, `training_route` 추가 |
+
+#### Part 4: TL-30 DAPT 명시
+
+| 변경 | 내용 |
+|------|------|
+| **Stage 1 명칭 변경** | "Domain Pretrain" → "Domain-Adaptive Pretraining (DAPT)" |
+| **DAPT 자동 권고** | `unlabeled_count > 10K`이면 DAPT 권고, 사용자 승인 후 실행 |
+
+### 수정 파일
+
+**신규**
+
+| 파일 | 설명 |
+|------|------|
+| `skills/mso-model-optimizer/modules/module.label-strategy.md` | Phase 1.5: LS-0~3 라벨 확보 전략 |
+| `skills/mso-model-optimizer/modules/module.data-augmentation.md` | EDA, Back-Translation, LLM Paraphrase 증강 |
+| `skills/mso-model-optimizer/docs/changelog.md` | 스킬 레벨 변경 이력 |
+| `skills/mso-model-optimizer/docs/architecture.md` | 스킬 아키텍처 개요 |
+| `skills/mso-model-optimizer/docs/getting-started.md` | 시나리오별 시작 가이드 |
+
+**수정**
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `skills/mso-model-optimizer/SKILL.md` | Phase 1.5 삽입, TL-20 3경로, deploy_spec 확장, version: 0.1.0 |
+| `skills/mso-model-optimizer/core.md` | 용어 5개 추가, Processing Rules 13개로 확장, Error Handling 강화 |
+| `skills/mso-model-optimizer/modules/module.model-decision.md` | Signal A effective_count 기반, 소스 품질 가중치, base_model 가이드 확장 |
+| `skills/mso-model-optimizer/modules/module.training-level.md` | TL-20 SetFit/LoRA/QLoRA 3경로, NER 오버라이드, TL-30 DAPT |
+| `skills/mso-model-optimizer/modules/modules_index.md` | 신규 모듈 2개 등록 |
+| `README.md` | v0.0.10 → v0.1.0, 변경 이력 + Roadmap 갱신 |
+| `docs/changelog.md` | v0.1.0 섹션 추가 |
+
+### 하위 호환
+
+- v0.0.10의 5-Phase 구조는 유지. Phase 1.5는 Phase 1과 Phase 2 사이에 **조건부 삽입**되며, 라벨이 충분하면(LS-3) 기존과 동일하게 건너뜀.
+- `dataset_stats.json`에 `labeled_count`, `unlabeled_count` 필드 추가. 기존 `total_count`는 유지되며, `label_strategy_output.json` 미존재 시 `total_count`로 fallback.
+- TL-20의 기존 표준 Fine-tuning은 경로 C로 유지. 신규 경로 A(SetFit), B(LoRA)가 추가.
+- `deploy_spec.json`의 `reproducibility` 블록에 선택 필드 추가. 기존 필수 필드 변경 없음.
+
+---
+
 ## v0.0.10
 
 ### 핵심 변경

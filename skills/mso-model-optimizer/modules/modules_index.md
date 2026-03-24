@@ -4,8 +4,10 @@
 
 | module | phase | purpose |
 |---|---|---|
-| module.model-decision.md | Phase 2 | Training Level 결정 3-Signal 판단 상세 |
-| module.training-level.md | Phase 3 | TL-10/20/30 실행 흐름 상세 |
+| module.label-strategy.md | Phase 1.5 | 라벨 부족 시 최적 라벨 확보 전략 (LS-0~3) + Zero-shot/Clustering/Active Learning/Augmentation |
+| module.model-decision.md | Phase 2 | Training Level 결정 3-Signal 판단 상세 (Signal A에 라벨 전략 연동) |
+| module.training-level.md | Phase 3 | TL-10/20/30 실행 흐름 상세 (TL-20: SetFit/LoRA/QLoRA/표준 FT 라우팅) |
+| module.data-augmentation.md | Phase 1.5, 3 | EDA + Back-Translation + LLM Paraphrase 데이터 증강 |
 
 ## Operational Modules (반복 최적화)
 
