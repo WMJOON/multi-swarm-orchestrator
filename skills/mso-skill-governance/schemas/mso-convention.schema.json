@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mso-convention.schema.json",
+  "title": "MSO Workspace Convention Schema",
+  "description": "mso-convention.yaml의 구조를 검증하는 스키마. mso-skill-governance가 convention 파일의 유효성을 검사할 때 사용한다.",
+  "version": "0.1.0",
+
+  "type": "object",
+  "required": ["version", "explicit_knowledge", "implicit_knowledge", "projection"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+
+    "explicit_knowledge": {
+      "type": "object",
+      "required": ["root", "structure"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "명시지 루트 디렉토리명. dot-prefix 금지.",
+          "pattern": "^[^.]"
+        },
+        "per_run": {
+          "type": "boolean",
+          "default": true
+        },
+        "structure": {
+          "type": "object",
+          "description": "명시지 하위 디렉토리 정의. 키는 디렉토리 카테고리명.",
+          "additionalProperties": {
+            "$ref": "#/definitions/explicit_directory"
+          }
+        }
+      }
+    },
+
+    "implicit_knowledge": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "암묵지 루트 디렉토리명. dot-prefix 필수.",
+          "pattern": "^\\."
+        },
+        "global": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "workspace 전역 파일/디렉토리 목록"
+        },
+        "per_run": {
+          "type": "string",
+          "description": "run별 경로 패턴 (예: active/{run_id}/)"
+        },
+        "archive": {
+          "type": "string",
+          "description": "아카이브 경로 패턴 (예: archive/{YYYY-MM}/)"
+        }
+      }
+    },
+
+    "projection": {
+      "type": "object",
+      "required": ["trigger", "mode"],
+      "properties": {
+        "trigger": {
+          "enum": ["on_phase_complete", "on_run_complete", "manual"],
+          "description": "투영 실행 시점"
+        },
+        "mode": {
+          "enum": ["symlink", "copy", "render"],
+          "description": "투영 모드. render는 JSON→Markdown 변환 포함."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "default": false
+        },
+        "render_templates": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "render 모드에서 사용할 Jinja2 템플릿 경로 매핑"
+        }
+      }
+    },
+
+    "classification_rules": {
+      "type": "object",
+      "properties": {
+        "explicit_if_any": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "명시지로 분류하는 조건 목록 (하나라도 해당하면 명시지)"
+        },
+        "implicit_if_any": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "암묵지로 분류하는 조건 목록"
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "explicit_directory": {
+      "type": "object",
+      "required": ["path", "sources"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "explicit_knowledge.root 하위의 상대 경로"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/source_rule" },
+          "minItems": 1
+        }
+      }
+    },
+
+    "source_rule": {
+      "type": "object",
+      "required": ["from", "pick", "format"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "소스 경로 패턴 (암묵지 내 상대 경로). {run_id} 플레이스홀더 사용 가능."
+        },
+        "pick": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "glob": { "type": "string", "description": "파일 glob 패턴" }
+                },
+                "required": ["glob"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "field": { "type": "string", "description": "JSON 내 특정 필드명" }
+                },
+                "required": ["field"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "field_match": {
+                    "type": "object",
+                    "required": ["key", "value"],
+                    "properties": {
+                      "key": { "type": "string" },
+                      "value": { "type": "string" }
+                    }
+                  }
+                },
+                "required": ["field_match"]
+              }
+            ]
+          },
+          "description": "소스에서 가져올 항목 선택 규칙"
+        },
+        "format": {
+          "enum": ["passthrough", "md"],
+          "description": "passthrough: 그대로 복사/링크, md: Markdown으로 변환"
+        }
+      }
+    }
+  }
+}

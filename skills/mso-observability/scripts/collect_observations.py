@@ -165,6 +165,130 @@ def detect_error_hotspots(rows: List[Dict[str, Any]], run_id: str, artifact: str
     return events
 
 
+def detect_model_performance(rows: List[Dict[str, Any]], run_id: str, artifact: str) -> List[Dict[str, Any]]:
+    """Monitor deployed model inference quality: rolling_f1, latency_p95, error_rate."""
+    events: List[Dict[str, Any]] = []
+    inference_rows = [r for r in rows if r.get("work_type") == "model_inference"]
+    if not inference_rows:
+        return events
+
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+    # Group by tool_name
+    by_tool: Dict[str, List[Dict[str, Any]]] = {}
+    for r in inference_rows:
+        tn = r.get("task_name", "unknown")
+        by_tool.setdefault(tn, []).append(r)
+
+    for tool_name, tool_rows in by_tool.items():
+        # error_rate
+        fails = [r for r in tool_rows if str(r.get("status") or "").lower() == "fail"]
+        error_rate = len(fails) / len(tool_rows) if tool_rows else 0.0
+
+        # latency_p95
+        durations = sorted(
+            float(r["duration_sec"]) for r in tool_rows
+            if r.get("duration_sec") is not None
+        )
+        latency_p95 = durations[int(len(durations) * 0.95)] if durations else None
+
+        # rolling_f1 (requires ground_truth column — may not exist)
+        rolling_f1 = None  # computed externally when ground_truth available
+
+        severity = "info"
+        threshold_state = "normal"
+
+        if error_rate > 0.3:
+            severity = "critical"
+            threshold_state = "emergency_fallback"
+            events.append(
+                emit_event(
+                    event_type="hitl_request",
+                    checkpoint_id=f"MM-{now_stamp}-{tool_name}-emergency",
+                    severity="critical",
+                    message=f"error_rate={error_rate:.2f} > 0.3 for {tool_name}. Emergency fallback recommended.",
+                    target_skills=["mso-model-optimizer"],
+                    correlation={"run_id": run_id, "artifact_uri": artifact},
+                    retry_policy={"max_retries": 0, "backoff_seconds": 0, "on_retry": "drop"},
+                )
+            )
+        elif error_rate > 0.1:
+            severity = "warning"
+            threshold_state = "warning"
+
+        # Emit monitoring event
+        monitoring_event = emit_event(
+            event_type="model_monitoring",
+            checkpoint_id=f"MM-{now_stamp}-{tool_name}",
+            severity=severity,
+            message=f"Model monitoring for {tool_name}: error_rate={error_rate:.2f}, latency_p95={latency_p95}, rolling_f1={rolling_f1}",
+            target_skills=["mso-model-optimizer"],
+            correlation={"run_id": run_id, "artifact_uri": artifact},
+            retry_policy={"max_retries": 0, "backoff_seconds": 0, "on_retry": "drop"},
+        )
+        monitoring_event["payload"]["monitoring_metrics"] = {
+            "tool_name": tool_name,
+            "rolling_f1": rolling_f1,
+            "latency_p95": latency_p95,
+            "error_rate": round(error_rate, 4),
+            "window_size": len(tool_rows),
+            "threshold_state": threshold_state,
+        }
+        events.append(monitoring_event)
+
+    return events
+
+
+def detect_promotion_candidates(rows: List[Dict[str, Any]], run_id: str, artifact: str) -> List[Dict[str, Any]]:
+    """Detect Smart Tool promotion candidates based on pattern_stability."""
+    events: List[Dict[str, Any]] = []
+    inference_rows = [r for r in rows if r.get("work_type") == "model_inference"]
+    if not inference_rows:
+        return events
+
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+    by_tool: Dict[str, List[Dict[str, Any]]] = {}
+    for r in inference_rows:
+        tn = r.get("task_name", "unknown")
+        by_tool.setdefault(tn, []).append(r)
+
+    for tool_name, tool_rows in by_tool.items():
+        total = len(tool_rows)
+        success = sum(1 for r in tool_rows if str(r.get("status") or "").lower() != "fail")
+        success_rate = success / total if total else 0.0
+        # pattern_stability = frequency_normalized * success_rate
+        # Normalize frequency: log scale to avoid domination by high-volume tools
+        freq_norm = min(1.0, math.log(1 + total) / math.log(1 + 100))
+        pattern_stability = round(freq_norm * success_rate, 4)
+
+        if pattern_stability >= 0.4:
+            proposed_state = "global" if pattern_stability >= 0.7 else "symlinked"
+            promo_event = emit_event(
+                event_type="promotion_suggestion",
+                checkpoint_id=f"PROMO-{now_stamp}-{tool_name}",
+                severity="info",
+                message=f"Promotion candidate: {tool_name} (stability={pattern_stability}, proposed={proposed_state})",
+                target_skills=["mso-skill-governance"],
+                correlation={"run_id": run_id, "artifact_uri": artifact},
+                retry_policy={"max_retries": 1, "backoff_seconds": 60, "on_retry": "queue"},
+            )
+            promo_event["payload"]["promotion_proposal"] = {
+                "tool_name": tool_name,
+                "current_state": "local",
+                "proposed_state": proposed_state,
+                "metrics": {
+                    "pattern_stability": pattern_stability,
+                    "workspace_count": None,
+                    "abstraction_score": None,
+                },
+                "evidence_refs": [artifact],
+            }
+            events.append(promo_event)
+
+    return events
+
+
 def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: str) -> List[Dict[str, Any]]:
     events: List[Dict[str, Any]] = []
     now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -249,6 +373,10 @@ def build_events(rows: List[Dict[str, Any]], run_id: str, artifact: str, mode: s
     events.extend(detect_work_type_imbalance(rows, run_id, artifact))
     events.extend(detect_pattern_tag_candidates(rows, run_id, artifact))
     events.extend(detect_error_hotspots(rows, run_id, artifact))
+
+    # v0.1.1 model monitoring + promotion detection
+    events.extend(detect_model_performance(rows, run_id, artifact))
+    events.extend(detect_promotion_candidates(rows, run_id, artifact))
 
     if not events:
         events.append(

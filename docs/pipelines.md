@@ -51,9 +51,9 @@ stateDiagram-v2
 
 ---
 
-## 스킬 간 계약 (CC-01~14)
+## 스킬 간 계약 (CC-01~15)
 
-스킬 간 데이터 교환은 14가지 핵심 계약(CC-01~CC-14)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
+스킬 간 데이터 교환은 15가지 핵심 계약(CC-01~CC-15)을 통해 필수 필드와 포맷을 명시적으로 정의한다.
 
 ```mermaid
 flowchart LR
@@ -74,6 +74,7 @@ flowchart LR
     ModelOpt -- CC-12 --> AuditLog
     ModelOpt -- CC-13 --> TaskContext
     Observability -- CC-14 --> ModelOpt
+    Observability -- CC-15 --> Governance["Skill Governance"]
 ```
 
 `Governance`가 이 계약을 자동으로 검증한다. 필수 필드가 누락되거나 스키마가 일치하지 않으면 파이프라인 진입 전에 즉시 차단한다.
@@ -160,6 +161,17 @@ flowchart LR
 | **필수 키** | `tool_name`, `rolling_f1`, `drift_detected` |
 | **전달 방식** | audit_global.db monitoring 이벤트 → model-optimizer Phase 0 트리거 |
 | **적용 조건** | 배포된 모델이 존재하고 rolling_f1 모니터링이 활성화된 경우에만 |
+
+### CC-15: mso-observability → mso-skill-governance
+
+| 항목 | 내용 |
+|------|------|
+| **생산자** | `mso-observability` (module.model-monitoring — 승격 후보 탐지) |
+| **소비자** | `mso-skill-governance` (module.tool-lifecycle — 승격 절차 실행) |
+| **전달 데이터** | `tool_name`, `current_state`, `proposed_state`, `metrics` |
+| **필수 키** | `tool_name`, `proposed_state`, `metrics.pattern_stability` |
+| **전달 방식** | `promotion_suggestion` callback event → tool-lifecycle 모듈의 승격 절차 Step 2 진입 |
+| **적용 조건** | `pattern_stability ≥ 0.4`인 Smart Tool이 감지된 경우에만 |
 
 ---
 

@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tool_registry.schema.json",
+  "title": "Tool Registry Schema",
+  "description": "Smart Tool의 등록·관리·승격을 위한 레지스트리 스키마. 각 Tool 엔트리는 Knowledge Object 구조(결정형/실행형/연결형)를 포함하여, 레지스트리 자체가 명시지 기준을 충족한다.",
+  "version": "0.1.0",
+
+  "type": "object",
+  "required": ["version", "tools"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/tool_entry" }
+    }
+  },
+
+  "definitions": {
+    "tool_entry": {
+      "type": "object",
+      "required": ["tool_name", "version", "lifecycle_state", "knowledge"],
+      "properties": {
+        "tool_name": {
+          "type": "string",
+          "description": "Smart Tool 고유 이름"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "semver 형식의 Tool 버전"
+        },
+        "lifecycle_state": {
+          "enum": ["local", "symlinked", "global"],
+          "description": "현재 배치 상태"
+        },
+        "owner_workspace": {
+          "type": ["string", "null"],
+          "description": "이 Tool의 소유 workspace. global 상태에서는 null"
+        },
+        "manifest_path": {
+          "type": "string",
+          "description": "manifest.json의 상대 경로"
+        },
+
+        "knowledge": {
+          "type": "object",
+          "description": "Knowledge Object 구조. Tool Registry가 첫 번째 KO이다 (D-1).",
+          "required": ["decisional", "operational", "relational"],
+          "properties": {
+            "decisional": {
+              "type": "object",
+              "description": "결정형 — 왜 이 Tool을 만들었는가",
+              "required": ["purpose", "creation_rationale"],
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "description": "이 Tool이 해결하는 문제"
+                },
+                "creation_rationale": {
+                  "type": "string",
+                  "description": "이 Tool을 만든 근거"
+                },
+                "alternatives_considered": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "검토한 대안 목록"
+                }
+              }
+            },
+            "operational": {
+              "type": "object",
+              "description": "실행형 — 이 Tool을 어떻게 쓰는가",
+              "required": ["slots_used"],
+              "properties": {
+                "slots_used": {
+                  "type": "array",
+                  "items": {
+                    "enum": ["input_norm", "rules", "inference", "script"]
+                  },
+                  "description": "사용 중인 Smart Tool 슬롯"
+                },
+                "inference_pattern": {
+                  "enum": ["classification", "ner", "ranking", "tagging", "extraction", "none"],
+                  "description": "inference 슬롯의 태스크 유형"
+                },
+                "runtime": {
+                  "enum": ["onnx", "pytorch", "rules", "script"],
+                  "description": "실행 런타임"
+                }
+              }
+            },
+            "relational": {
+              "type": "object",
+              "description": "연결형 — 이 Tool이 어떤 다른 Tool/스킬과 관계되는가",
+              "properties": {
+                "upstream_triggers": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "이 Tool을 트리거하는 스킬/Tool"
+                },
+                "downstream_consumers": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "이 Tool의 출력을 소비하는 스킬/Tool"
+                },
+                "related_contracts": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "관련 CC 계약 번호"
+                }
+              }
+            }
+          }
+        },
+
+        "metrics": {
+          "type": "object",
+          "description": "mso-observability가 갱신하는 성능/안정성 지표",
+          "properties": {
+            "pattern_stability": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1,
+              "description": "frequency × success_rate. 승격 판정 기준."
+            },
+            "workspace_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "이 Tool이 사용 중인 workspace 수"
+            },
+            "abstraction_score": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1,
+              "description": "workspace-specific 코드 비율. 낮을수록 범용적."
+            },
+            "rolling_f1": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1,
+              "description": "최근 N건 inference의 F1 score"
+            },
+            "last_evaluated_at": {
+              "type": ["string", "null"],
+              "format": "date-time",
+              "description": "마지막 평가 시점"
+            }
+          }
+        },
+
+        "promotion": {
+          "type": "object",
+          "description": "승격 후보 상태",
+          "properties": {
+            "candidate": {
+              "type": "boolean",
+              "description": "승격 후보 여부"
+            },
+            "target_state": {
+              "enum": ["symlinked", "global", null],
+              "description": "승격 목표 상태"
+            },
+            "blockers": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "승격을 막는 요인 목록 (예: abstraction_score > 0.2)"
+            }
+          }
+        }
+      }
+    }
+  }
+}

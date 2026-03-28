@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (v0.1.0)
+# Multi-Swarm Orchestrator (v0.1.1)
 
 > ⚠️ **v0.1.x는 개인 업무 환경에서의 검증 단계입니다. 외부 프로덕션 사용은 권장하지 않습니다.** v0.2.0부터 다른 사람들도 실질적인 도구로 활용할 수 있는 상태를 목표로 합니다.
 
@@ -126,7 +126,7 @@ graph LR
 | **설계**     | topology-design, mental-model-design, execution-design           | 목표를 실행 가능한 워크플로우 구조로 변환      |
 | **운영**     | task-context, collaboration, workflow-optimizer, model-optimizer | 티켓 관리, 에이전트 협업, 성과 평가, 모델 학습 |
 | **인프라**   | audit-log, observability                                         | 실행 기록, 패턴 분석, 피드백 루프              |
-| **거버넌스** | process-template, skill-governance                               | 프로세스 규약, CC-01~14 계약 검증              |
+| **거버넌스** | process-template, skill-governance                               | 프로세스 규약, CC-01~15 계약 검증, Workspace Convention |
 
 ---
 
@@ -135,10 +135,28 @@ graph LR
 | 문서                                       | 설명                                                         |
 | ------------------------------------------ | ------------------------------------------------------------ |
 | [아키텍처](docs/architecture.md)           | Git-Metaphor 상태 모델, 전체 아키텍처, Automation Escalation |
-| [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~14, 티켓 생명주기         |
+| [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~15, 티켓 생명주기         |
 | [시작하기](docs/getting-started.md)        | 디렉토리 구조, 설계·운영·검증 명령어                         |
 | [스킬 사용 매트릭스](docs/usage_matrix.md) | Phase × Swarm × Role 매트릭스                                |
-| [변경 이력](docs/changelog.md)             | v0.0.3~v0.1.0 변경 이력 및 하위 호환 노트                    |
+| [KO 매핑](docs/knowledge-object-mapping.md) | 기존 산출물의 명시지 분류 매핑표                             |
+| [변경 이력](docs/changelog.md)             | v0.0.3~v0.1.1 변경 이력 및 하위 호환 노트                    |
+
+---
+
+## v0.1.1 변경 이력
+
+> v0.0.10 Phase 3 미착수 항목(Tool Registry, Observability 연동, Tool Lifecycle)을 완성하면서, v0.2.0의 Explicit Knowledge Architecture 기초를 도입한 브릿지 릴리스.
+
+| 개선 영역 | v0.1.0 | v0.1.1 |
+|-----------|--------|--------|
+| Tool 재사용 | Tool Registry 없음 | **tool_registry.json** — KO 구조(결정형/실행형/연결형) 포함 레지스트리 |
+| Tool Lifecycle | 개념만 존재 | **module.tool-lifecycle** — 승격/강등/Symlink 규약 공식화 + **CC-15** |
+| 모델 모니터링 | Observability spec만 | **module.model-monitoring** — rolling_f1/latency_p95/error_rate 수집 + 신호 |
+| 명시지/암묵지 분리 | 모든 산출물이 `.mso-context/` 혼재 | **Workspace Convention** — `mso-outputs/`(명시지) vs `.mso-context/`(암묵지) 파일시스템 분리 |
+| HITL Gate | 단순 알림 | **Gate Output Schema** — situation/evidence/options 3블록 구조화 |
+| Handoff 품질 | required 필드 검증만 | **self_assessment** 블록 — 행동 가능성 자기 진단 |
+
+상세: [docs/changelog.md](docs/changelog.md)
 
 ---
 

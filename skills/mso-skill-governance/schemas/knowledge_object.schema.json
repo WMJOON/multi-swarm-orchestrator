@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "knowledge_object.schema.json",
+  "title": "Knowledge Object Schema",
+  "description": "MSO 명시지 분류 체계 기초 스키마. 모든 Knowledge Object는 결정형/실행형/연결형 중 하나 이상으로 분류되며, 각 유형에 대응하는 필수 요소가 존재한다.",
+  "version": "0.1.0",
+
+  "definitions": {
+    "decisional": {
+      "type": "object",
+      "description": "결정형 지식 — '왜 이렇게 했는가?'",
+      "required": ["purpose", "rationale"],
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "description": "이 산출물이 해결하는 문제 또는 달성하려는 목표"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "이 선택을 한 근거"
+        },
+        "alternatives_considered": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "검토했으나 채택하지 않은 대안 목록"
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "이 결정을 제약한 조건들"
+        }
+      }
+    },
+
+    "operational": {
+      "type": "object",
+      "description": "실행형 지식 — '어떻게 하는가?'",
+      "required": ["input_spec", "output_spec"],
+      "properties": {
+        "input_spec": {
+          "type": "object",
+          "description": "입력 요구사항 (필수 데이터, 포맷, 전제조건)",
+          "properties": {
+            "required_fields": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "format": { "type": "string" },
+            "prerequisites": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "output_spec": {
+          "type": "object",
+          "description": "출력 명세 (생산되는 산출물, 포맷)",
+          "properties": {
+            "artifacts": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "format": { "type": "string" }
+          }
+        },
+        "execution_steps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "실행 절차 (순서대로)"
+        }
+      }
+    },
+
+    "relational": {
+      "type": "object",
+      "description": "연결형 지식 — '무엇과 관련되는가?'",
+      "required": ["upstream", "downstream"],
+      "properties": {
+        "upstream": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "이 산출물의 입력을 제공하는 스킬/Tool/산출물"
+        },
+        "downstream": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "이 산출물을 소비하는 스킬/Tool/산출물"
+        },
+        "contracts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "관련 CC 계약 번호 (예: CC-11, CC-15)"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "이 산출물이 의존하는 외부 리소스"
+        }
+      }
+    },
+
+    "ko_meta": {
+      "type": "object",
+      "description": "Knowledge Object 공통 메타데이터. 모든 KO에 부착 가능.",
+      "required": ["ko_types"],
+      "properties": {
+        "ko_types": {
+          "type": "array",
+          "items": {
+            "enum": ["decisional", "operational", "relational"]
+          },
+          "minItems": 1,
+          "description": "이 산출물이 해당하는 지식 유형 (1개 이상)"
+        },
+        "completeness": {
+          "type": "object",
+          "description": "각 유형별 완성도 (0.0~1.0). 해당 유형의 필수 요소 충족 비율.",
+          "properties": {
+            "decisional": { "type": "number", "minimum": 0, "maximum": 1 },
+            "operational": { "type": "number", "minimum": 0, "maximum": 1 },
+            "relational": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "handoff_ready": {
+          "type": "boolean",
+          "description": "이 산출물만으로 다음 주체가 행동을 시작할 수 있는가"
+        },
+        "last_validated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "마지막 검증 시점"
+        },
+        "validated_by": {
+          "enum": ["human", "governance_scan", "not_validated"],
+          "description": "검증 주체"
+        }
+      }
+    }
+  },
+
+  "type": "object",
+  "description": "Knowledge Object 인스턴스. ko_meta + 해당 유형별 블록으로 구성.",
+  "required": ["ko_meta"],
+  "properties": {
+    "ko_meta": { "$ref": "#/definitions/ko_meta" },
+    "decisional": { "$ref": "#/definitions/decisional" },
+    "operational": { "$ref": "#/definitions/operational" },
+    "relational": { "$ref": "#/definitions/relational" }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ko_meta": {
+            "properties": {
+              "ko_types": { "contains": { "const": "decisional" } }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["decisional"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ko_meta": {
+            "properties": {
+              "ko_types": { "contains": { "const": "operational" } }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["operational"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ko_meta": {
+            "properties": {
+              "ko_types": { "contains": { "const": "relational" } }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["relational"]
+      }
+    }
+  ]
+}

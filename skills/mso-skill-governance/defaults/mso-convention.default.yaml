@@ -1,0 +1,134 @@
+# mso-convention.default.yaml
+# MSO Workspace Convention — 명시지/암묵지 디렉토리 분리 기본 규칙
+#
+# 로딩 우선순위:
+#   1. {workspace}/mso-convention.yaml          (프로젝트별 커스텀)
+#   2. ~/.claude/mso-convention.yaml            (사용자 글로벌 커스텀)
+#   3. skills/mso-skill-governance/defaults/    (이 파일 — MSO 기본)
+#
+# 커스텀 convention은 이 파일의 구조를 따르되,
+# 변경이 필요한 섹션만 오버라이드한다. 명시하지 않은 섹션은 기본값을 따른다.
+
+version: "0.1.0"
+
+# ── 명시지 (visible) ──────────────────────────────
+# 사람이 확인해야 하는 산출물. dot-prefix 없이 로컬에서 바로 보인다.
+explicit_knowledge:
+  root: "mso-outputs"
+  per_run: true                        # run_id별 하위 디렉토리 생성
+
+  structure:
+    # 결정형 KO — "왜 이렇게 했는가"
+    decisions:
+      path: "decisions/"
+      description: "워크플로우 설계 결정, 선택 근거, 대안 비교"
+      sources:
+        - from: ".mso-context/active/{run_id}/10_topology/"
+          pick:
+            - field: "decision_questions"
+            - field: "loop_risk_assessment"
+          format: "md"
+        - from: ".mso-context/active/{run_id}/optimizer/"
+          pick:
+            - glob: "*_report.md"
+          format: "passthrough"
+
+    # 실행형 KO — "어떻게 하는가 / 결과가 어떤가"
+    reports:
+      path: "reports/"
+      description: "모델 평가 리포트, 배포 스펙, 실행 결과 요약"
+      sources:
+        - from: ".mso-context/active/{run_id}/model-optimizer/"
+          pick:
+            - glob: "*_eval_report.md"
+            - glob: "deploy_spec.json"
+          format: "passthrough"
+
+    # Gate Output — Knowledge Projector 산출물
+    gates:
+      path: "gates/"
+      description: "HITL Gate에서 사용자에게 제시하는 구조화된 판단 정보"
+      sources:
+        - from: ".mso-context/active/{run_id}/60_observability/"
+          pick:
+            - glob: "gate_output_*.json"
+          format: "md"
+        - from: ".mso-context/active/{run_id}/60_observability/"
+          pick:
+            - field_match:
+                key: "event_type"
+                value: "hitl_request"
+          format: "md"
+
+    # 연결형 KO — 티켓, 협업 문서
+    collaboration:
+      path: "collaboration/"
+      description: "태스크 티켓, 협업 할당, 핸드오프 요약"
+      sources:
+        - from: ".mso-context/active/{run_id}/40_collaboration/"
+          pick:
+            - glob: "TKT-*.md"
+          format: "passthrough"
+
+    # 워크플로우 구조 시각화
+    topology:
+      path: "topology/"
+      description: "워크플로우 구조 다이어그램, 노드-엣지 시각화"
+      sources:
+        - from: ".mso-context/active/{run_id}/10_topology/"
+          pick:
+            - glob: "*.mermaid"
+          format: "passthrough"
+
+# ── 암묵지 (hidden) ───────────────────────────────
+# 기계가 읽고 쓰는 상태. dot-prefix로 숨김.
+implicit_knowledge:
+  root: ".mso-context"
+
+  global:
+    - "audit_global.db"
+    - "tool_registry.json"
+    - "workflow_registry.json"
+    - "vertex_registry/"
+    - "jewels/"
+
+  per_run: "active/{run_id}/"
+
+  archive: "archive/{YYYY-MM}/"
+
+# ── 투영 규칙 ─────────────────────────────────────
+# 암묵지(.mso-context/) → 명시지(mso-outputs/) 투영 방식
+projection:
+  # 투영 실행 시점
+  trigger: "on_phase_complete"         # on_phase_complete | on_run_complete | manual
+
+  # 투영 모드
+  #   symlink:     원본에 대한 심볼릭 링크 (디스크 절약, 실시간 반영)
+  #   copy:        파일 복사 (독립성 보장, 원본 삭제 시에도 유지)
+  #   render:      JSON → Markdown 등 변환 후 저장 (format: "md" 인 경우 필수)
+  mode: "render"                       # format: "md"가 포함된 기본 convention이므로 render
+
+  overwrite: false                     # 기존 투영 파일 덮어쓰기 금지
+
+  # JSON → Markdown 변환 시 사용할 Jinja2 템플릿
+  render_templates:
+    gate_output: "templates/gate_output.md.j2"
+    decision_summary: "templates/decision_summary.md.j2"
+    hitl_request: "templates/hitl_request.md.j2"
+
+# ── 판별 기준 ─────────────────────────────────────
+# 새로운 산출물이 명시지/암묵지 중 어디에 속하는지 판별하는 규칙
+classification_rules:
+  # "이 파일을 사람이 열어서 판단/행동해야 하는가?"
+  explicit_if_any:
+    - "사용자 승인이 필요한 Gate Output"
+    - "사람이 읽어야 하는 리포트 (*.md, *_report.*)"
+    - "배포 결정이 포함된 스펙 (deploy_spec.json)"
+    - "태스크 티켓 (TKT-*.md)"
+    - "선택 근거가 기록된 결정 문서"
+
+  implicit_if_any:
+    - "기계 상태 (audit_global.db, registry, cache)"
+    - "중간 처리물 (embedding, checkpoint, training artifact)"
+    - "스키마 검증용 JSON (callback event 원본)"
+    - "내부 라우팅 데이터 (execution_plan, node snapshots)"
