@@ -15,7 +15,9 @@
         "branch_created",
         "merge_completed",
         "checkout_executed",
-        "snapshot_committed"
+        "snapshot_committed",
+        "model_monitoring",
+        "promotion_suggestion"
       ]
     },
     "checkpoint_id": {"type": "string", "minLength": 1},

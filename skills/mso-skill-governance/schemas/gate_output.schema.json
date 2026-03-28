@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gate_output.schema.json",
+  "title": "Gate Output Schema",
+  "description": "HITL Gate가 사용자에게 제시해야 하는 최소 정보 구조. Gate as Knowledge Projector (v0.2.0)의 첫 번째 구체적 스키마.",
+  "version": "0.1.0",
+
+  "type": "object",
+  "required": ["gate_output"],
+  "properties": {
+    "gate_output": {
+      "type": "object",
+      "required": ["situation", "evidence", "options"],
+      "properties": {
+        "situation": {
+          "type": "object",
+          "description": "왜 이 Gate에 도달했는가",
+          "required": ["summary", "trigger"],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "1~2문장 요약. 사용자가 이것만 읽어도 상황을 파악할 수 있어야 한다."
+            },
+            "trigger": {
+              "type": "string",
+              "description": "이 Gate를 발동시킨 구체적 조건 또는 이벤트"
+            },
+            "context_refs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "관련 산출물 경로 (사용자가 상세 확인 시 참조)"
+            }
+          }
+        },
+
+        "evidence": {
+          "type": "object",
+          "description": "어떤 데이터/메트릭에 기반하는가",
+          "properties": {
+            "metrics": {
+              "type": "object",
+              "description": "정량적 지표. 키-값 쌍으로 자유 구성.",
+              "additionalProperties": true
+            },
+            "comparison": {
+              "type": "object",
+              "description": "변경 전후 비교",
+              "properties": {
+                "before": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "after_expected": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "시스템이 이 판단에 대해 갖는 확신도 (0~1)"
+            }
+          }
+        },
+
+        "options": {
+          "type": "array",
+          "description": "사용자가 취할 수 있는 행동 목록",
+          "items": {
+            "type": "object",
+            "required": ["action", "description"],
+            "properties": {
+              "action": {
+                "type": "string",
+                "description": "행동 식별자 (예: approve, reject, modify, defer)"
+              },
+              "description": {
+                "type": "string",
+                "description": "이 선택의 의미를 사용자에게 설명"
+              },
+              "expected_outcome": {
+                "type": "string",
+                "description": "이 선택 시 예상되는 결과"
+              },
+              "risk": {
+                "type": "string",
+                "description": "이 선택에 수반되는 위험 요소"
+              }
+            }
+          },
+          "minItems": 1
+        },
+
+        "recommended": {
+          "type": "string",
+          "description": "시스템이 권고하는 action. options[].action 중 하나여야 한다."
+        },
+        "recommended_rationale": {
+          "type": "string",
+          "description": "권고 근거. 사용자가 시스템의 판단 로직을 이해할 수 있도록."
+        }
+      }
+    }
+  }
+}

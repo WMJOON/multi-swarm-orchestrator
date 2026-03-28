@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embedded CC contract defaults for runtime workspace v0.0.10."""
+"""Embedded CC contract defaults for runtime workspace v0.1.1."""
 
 from __future__ import annotations
 
@@ -177,6 +177,18 @@ DEFAULT_CC_CONTRACTS: List[Dict[str, Any]] = [
         "validation_rule": "observability 모니터링 이벤트가 model-optimizer Phase 0 트리거 컨텍스트로 소비 가능해야 함",
         "producer_output_path": "workspace/.mso-context/active/{run_id}/60_observability",
         "activation_condition": "배포된 모델이 존재하고 rolling_f1 모니터링이 활성화된 경우에만 적용",
+    },
+    {
+        "id": "CC-15",
+        "producer": "mso-observability",
+        "consumer": "mso-skill-governance",
+        "required_output_keys": ["tool_name", "current_state", "proposed_state", "metrics"],
+        "required_input_keys": ["tool_name", "proposed_state", "metrics.pattern_stability"],
+        "compatibility_policy": "strict",
+        "status": "ok",
+        "validation_rule": "promotion_suggestion 이벤트의 promotion_proposal가 tool-lifecycle 모듈의 승격 판정 기준을 입력으로 소비 가능해야 함",
+        "producer_output_path": "workspace/.mso-context/active/{run_id}/60_observability",
+        "activation_condition": "pattern_stability >= 0.4인 Smart Tool이 감지된 경우에만 적용",
     },
 ]
 

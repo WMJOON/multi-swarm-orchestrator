@@ -1,5 +1,77 @@
 # 변경 이력
 
+## v0.1.1 (2026-03-28)
+
+### 핵심 변경: Infrastructure Completion + Explicit Knowledge Foundation
+
+v0.0.10 Phase 3 미착수 항목(Tool Registry, Observability 연동, Tool Lifecycle)을 완성하면서, v0.2.0(Explicit Knowledge Architecture)의 기초 개념을 프로토타입 수준으로 도입하는 브릿지 릴리스.
+
+#### Part A: Infrastructure Completion
+
+| 변경 | 내용 |
+|------|------|
+| **Tool Registry** | `tool_registry.json` 스키마 정의. Knowledge Object 구조(decisional/operational/relational) 포함. 첫 번째 명시지 객체. |
+| **module.tool-lifecycle** | mso-skill-governance에 Tool Lifecycle 관리 모듈 추가. Local→Symlinked→Global 승격 판정 기준, 절차, 강등 정책 공식화. |
+| **module.model-monitoring** | mso-observability에 모델 모니터링 모듈 추가. rolling_f1/latency_p95/error_rate 수집 + 신호 발생 규칙. |
+| **CC-15 신설** | mso-observability → mso-skill-governance 승격 제안 계약. `promotion_suggestion` event로 tool-lifecycle 모듈 트리거. |
+| **collect_observations.py 확장** | `detect_model_performance` + `detect_promotion_candidates` 함수 추가. 모델 모니터링 + 승격 후보 탐지 로직. |
+| **observability_callback.schema.json 확장** | event_type에 `model_monitoring`, `promotion_suggestion` 추가. |
+| **Symlink 규약 공식화** | `references/symlink-convention.md` — 경로 패턴, 생성 절차, 쓰기 권한, 충돌 방지 규칙. |
+
+#### Part B: Explicit Knowledge Foundation
+
+| 변경 | 내용 |
+|------|------|
+| **Knowledge Object Schema** | `knowledge_object.schema.json` — 결정형/실행형/연결형 3유형 분류 체계 + `ko_meta` 공통 메타데이터. |
+| **Workspace Convention** | `mso-convention.default.yaml` + `mso-convention.schema.json` — 명시지(`mso-outputs/`)와 암묵지(`.mso-context/`)의 파일시스템 수준 분리. 프로젝트별 커스터마이징 가능. |
+| **module.workspace-convention** | mso-skill-governance에 convention 로딩/검증/투영 모듈 추가. 3단계 우선순위(프로젝트 > 사용자 글로벌 > MSO 기본). |
+| **Gate Output Schema** | `gate_output.schema.json` — situation/evidence/options 3블록. Gate as Knowledge Projector (v0.2.0)의 첫 번째 구체적 스키마. |
+| **Semantic Handoff: self_assessment** | `handoff_payload.schema.json`에 `self_assessment` 블록 추가 (선택적). 발신 측이 행동 가능성을 자기 진단. |
+| **KO 매핑 문서** | `docs/knowledge-object-mapping.md` — 기존 산출물의 명시지 분류 매핑표 + 개선 우선순위. |
+
+### 수정 파일
+
+**신규**
+
+| 파일 | 설명 |
+|------|------|
+| `skills/mso-skill-governance/schemas/knowledge_object.schema.json` | 명시지 분류 체계 기초 스키마 |
+| `skills/mso-skill-governance/schemas/tool_registry.schema.json` | KO 구조 포함 Tool Registry 스키마 |
+| `skills/mso-skill-governance/schemas/mso-convention.schema.json` | Workspace Convention 검증 스키마 |
+| `skills/mso-skill-governance/schemas/gate_output.schema.json` | Gate Output Schema |
+| `skills/mso-skill-governance/defaults/mso-convention.default.yaml` | 기본 Workspace Convention |
+| `skills/mso-skill-governance/modules/module.tool-lifecycle.md` | Tool Lifecycle 관리 모듈 |
+| `skills/mso-skill-governance/modules/module.workspace-convention.md` | Convention 로딩/검증/투영 모듈 |
+| `skills/mso-skill-governance/references/symlink-convention.md` | Symlink 경로 규약 참조 문서 |
+| `skills/mso-observability/modules/module.model-monitoring.md` | 모델 모니터링 모듈 |
+| `docs/knowledge-object-mapping.md` | 기존 산출물 KO 매핑 문서 |
+
+**수정**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-observability/scripts/collect_observations.py` | 모델 모니터링 + 승격 탐지 함수 추가 |
+| `skills/mso-observability/schemas/observability_callback.schema.json` | event_type 2개 추가 |
+| `skills/mso-observability/modules/modules_index.md` | model-monitoring 모듈 등록 |
+| `skills/mso-skill-governance/scripts/_cc_defaults.py` | CC-15 등록, 버전 v0.1.1 |
+| `skills/mso-skill-governance/scripts/validate_cc_contracts.py` | CC-15 매핑 + 검증 범위 확장 |
+| `skills/mso-skill-governance/modules/modules_index.md` | tool-lifecycle, workspace-convention 모듈 등록 |
+| `skills/mso-model-optimizer/schemas/handoff_payload.schema.json` | self_assessment 블록 추가 |
+| `docs/pipelines.md` | CC-15 추가, mermaid 다이어그램 갱신 |
+| `docs/changelog.md` | v0.1.1 변경 이력 추가 |
+| `README.md` | v0.1.1 반영 |
+
+### 하위 호환
+
+- **CC-15**: 순수 추가. CC-01~14 변경 없음.
+- **observability_callback.schema.json**: event_type enum에 2개 추가. 기존 event_type은 변경 없음.
+- **handoff_payload.schema.json**: `self_assessment`는 선택적 필드. `required`에 미포함. 기존 payload와 완전 호환.
+- **collect_observations.py**: 기존 함수 변경 없음. 신규 함수 2개 추가 + `build_events`에서 호출.
+- **mso-convention.yaml**: 파일 미존재 시 기본 convention으로 fallback. 기존 워크플로우에 영향 없음.
+- **tool_registry.json**: 파일 미존재 시 승격 탐지를 건너뜀. 기존 워크플로우 차단 없음.
+
+---
+
 ## v0.1.0 (2026-03-24)
 
 ### 핵심 변경: mso-model-optimizer — Label Strategy + PEFT 통합

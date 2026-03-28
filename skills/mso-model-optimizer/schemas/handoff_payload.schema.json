@@ -83,6 +83,32 @@
       }
     }
   },
+  "self_assessment": {
+      "type": "object",
+      "description": "Semantic Handoff Protocol: 발신 측이 수신 측의 행동 가능성을 자기 진단하는 블록. v0.1.1 도입, 선택적.",
+      "properties": {
+        "receiver_can_start_immediately": {
+          "type": "boolean",
+          "description": "수신 측이 이 payload만으로 추가 질문 없이 즉시 시작할 수 있는가"
+        },
+        "missing_context": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "수신 측이 필요로 할 수 있으나 이 payload에 포함되지 않은 정보"
+        },
+        "assumptions_made": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "이 payload 작성 시 발신 측이 한 가정 (수신 측이 검증해야 할 수 있음)"
+        },
+        "uncertainty_areas": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "불확실한 영역. 수신 측이 추가 조회가 필요할 수 있는 부분."
+        }
+      }
+    }
+  },
   "if": {
     "properties": { "trigger_type": { "const": "tier_escalation" } }
   },

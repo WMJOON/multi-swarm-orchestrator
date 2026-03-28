@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate CC-01~CC-14 contract definitions and runtime wiring."""
+"""Validate CC-01~CC-15 contract definitions and runtime wiring."""
 
 from __future__ import annotations
 
@@ -54,6 +54,7 @@ def resolve_contract_output(paths: Dict[str, Any], contract_id: str) -> Path:
         "CC-12": mopt_dir,
         "CC-13": mopt_dir / "deploy_spec.json",
         "CC-14": obs_dir,
+        "CC-15": obs_dir,
     }
     return mapping[contract_id]
 
@@ -337,7 +338,7 @@ def check_runtime_wiring(
                     )
                     break
 
-        elif cid in ("CC-07", "CC-08", "CC-12", "CC-14"):
+        elif cid in ("CC-07", "CC-08", "CC-12", "CC-14", "CC-15"):
             # CC-07/08/12/14 producer_output은 디렉토리. 존재 여부만 경고로 확인.
             if not producer_output.exists():
                 warnings.append({
