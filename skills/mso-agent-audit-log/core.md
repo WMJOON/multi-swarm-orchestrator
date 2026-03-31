@@ -77,6 +77,30 @@ status_model: "success | fail | in_progress"
 }
 ```
 
+## Harness Convention v0.1.2 (MUST)
+
+### compression_event 수용 (MUST)
+
+`compression_events` 테이블에 v0.1.2 스키마를 준수하는 이벤트를 기록한다.
+상세 스키마: [module.schema-contract.md](modules/module.schema-contract.md)
+
+필수 필드: `event_id`, `run_id`, `timestamp`, `agent_id`, `phase`, `message_count`
+선택 필드: `vertex_sequence`, `compression_at_vertex`, `estimated_context_ratio`
+사후 채움(optimizer): `quality_degraded`, `reasoning_broken`
+
+### audit_ref 포인터 지원 (MUST)
+
+- 에이전트 context에 audit 원문을 포함하지 않는다
+- `audit_ref: "{run_id}#{step}"` 포인터만 지원한다
+- 포맷: `run-20260331-001#step12`
+
+### 4개 기본 테이블 관리 (MUST)
+
+`execution_events`, `compression_events`, `guard_events`, `handoff_events`
+상세: [module.schema-contract.md](modules/module.schema-contract.md)
+
+---
+
 ## 계약 우선순위
 1. SoT 스키마
 2. 본 스킬 `SKILL.md`

@@ -10,12 +10,22 @@
 - `rsv_target`은 0.0~1.0 범위 추정치.
 
 ## Output Pattern
+
 ```json
 {
   "id": "T1",
   "label": "Goal decomposition",
   "theta_gt_band": "moderate",
   "rsv_target": 0.42,
-  "assigned_dqs": ["DQ1"]
+  "assigned_dqs": ["DQ1"],
+  "execution_model": "single_instance",
+  "optimizer_hint": {
+    "suggested_split_after": null,
+    "compression_rate": null,
+    "last_optimized": null
+  }
 }
 ```
+
+`execution_model`은 모든 노드에 필수(MUST). `optimizer_hint`는 설계 시 반드시 null로 초기화(MUST).
+`bus` 선택 시 `bus.pattern`, `bus.merge_policy`, `bus.merge_agent` 추가 필요.

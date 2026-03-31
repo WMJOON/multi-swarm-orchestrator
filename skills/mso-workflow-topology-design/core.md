@@ -33,12 +33,47 @@ Optional 키 (스키마에서 허용, 생성 시 권장):
 - `handoff_strategy` — hand-off 지점 및 컨텍스트 손실 최소화 규칙 (fan_out/fan_in/dag 전용)
 - `execution_policy` — continue/reframe/stop 규칙, estimator 연동, human gate 노드
 
+## Execution Model 선언 규약 (MUST — v0.1.2)
+
+모든 노드에 `execution_model`을 선언한다. 런타임에 변경하지 않는다.
+
+| Model | 구조 | 사용 조건 |
+|-------|------|---------|
+| `single_instance` | 하나의 에이전트가 여러 vertex를 순서대로 처리 | 순차 의존, 병렬 불필요 |
+| `bus` | fan-out + 병렬 worker 에이전트 | 에이전트 간 조율 필요 |
+| `direct_spawn` | 독립 에이전트들을 병렬 소환, merge에서 결과 수집 | 완전 독립 병렬 |
+
+### 노드 선언 포맷 (MUST)
+
+```yaml
+node:
+  id: <node_id>
+  execution_model: single_instance   # single_instance | bus | direct_spawn
+
+  # bus 선택 시 필수
+  bus:
+    pattern: fan_out                 # fan_out | pipeline | broadcast
+    merge_policy: quorum             # quorum | first | all
+    merge_agent: critic
+
+  # optimizer가 채우는 영역 — 설계 시 반드시 null로 비워둔다 (MUST NOT 직접 채움)
+  optimizer_hint:
+    suggested_split_after: null
+    compression_rate: null
+    last_optimized: null
+```
+
+- `bus` 선택 시 `merge_policy` 필수 (MUST)
+- `eval_point: true` 노드 명시 권장 (SHOULD)
+- `optimizer_hint`는 `mso-workflow-optimizer` 실행 후 HITL 승인 시에만 갱신
+
 ## Processing Rules
 1. 입력을 정제한 뒤 DQ를 생성하고 `rsv_total` 산출.
 2. 목표 성격에 따라 topology 유형 선택( `linear` / `fan_out` / `fan_in` / `dag` / `loop`).
 3. 각 Node의 `theta_gt_band`를 `wide`/`moderate`/`narrow`로 할당.
-4. 노드에 `assigned_dqs`, `rsv_target`, `explicit_output` 성격 부여.
-5. `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` 생성.
+4. 노드에 `assigned_dqs`, `rsv_target`, `explicit_output`, **`execution_model`** 부여 (MUST).
+5. `optimizer_hint`는 null로 초기화 (MUST).
+6. `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json` 생성.
 
 ## Registry 해석 규칙 (Mode B)
 
