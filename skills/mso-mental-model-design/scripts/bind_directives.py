@@ -208,7 +208,7 @@ def main() -> int:
         directives = _load_registry_multi(registry_paths)
         result = bind(topology, directives, args.domain)
         result["run_id"] = result["run_id"] or str(paths["run_id"])
-        result["metadata"]["registry_path"] = [str(p) for p in registry_paths]
+        result["metadata"]["registry_path"] = ", ".join(str(p) for p in registry_paths)
 
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
