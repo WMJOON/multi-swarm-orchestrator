@@ -66,13 +66,53 @@ LLM API ENV( `llm-as-a-judge` 실행 시):
 
 ---
 
+## Harness Convention v0.1.2 (MUST)
+
+### Compression Feed 분석
+
+optimizer는 `audit_global.db`의 두 테이블을 기반으로 분할 제안을 생성한다.
+
+```sql
+-- compression_events: 압축 발생 이력
+SELECT phase, vertex_sequence, compression_at_vertex, message_count
+FROM compression_events
+WHERE run_id = ?
+
+-- guard_events: Guard 판정 이력
+SELECT phase, guard_result, reason
+FROM guard_events
+WHERE run_id = ?
+```
+
+### optimization_proposal 출력 포맷 (MUST)
+
+```yaml
+optimization_proposal:
+  target_node: <node_id>
+  workflow: <workflow_yaml_path>
+  current_vertex_sequence: [...]
+  proposed_split:
+    - group_1: [...]
+    - group_2: [...]
+  rationale: "<분할 근거 1~2줄>"
+  compression_rate_before: <float>
+  compression_rate_projected: <float>
+  requires_human_approval: true       # 항상 true (MUST)
+```
+
+- optimizer 제안은 **자동으로 topology를 변경하지 않는다** (MUST NOT)
+- 설계자의 HITL 승인 후 `workflow.yaml`의 `optimizer_hint`를 갱신한다
+- `requires_human_approval`는 항상 `true` (MUST)
+
 ## Processing Rules
 
 1. Phase 1에서 `docs/usage/{workflow_name}.md`와 audit_global.db를 반드시 조회한다.
-2. Phase 2 agent-decision은 3-Signal(A: 데이터 가용성, B: KPI 지표, C: HITL 피드백 이력)로 레벨을 결정한다.
-3. Signal 충돌 시 보수적 레벨(낮은 값) 선택 + `escalation_needed: true`.
-4. Phase 3 실행 후 반드시 Phase 4 audit-log 기록을 완료해야 Phase 5로 진행한다.
-5. Phase 5 HITL 타임아웃 시 현재 레벨 유지 + `carry_over_issues`에 "HITL 미응답" 기록.
+2. Phase 1에서 `compression_events`, `guard_events` 테이블을 추가로 조회한다 (MUST).
+3. Phase 2 agent-decision은 3-Signal(A: 데이터 가용성, B: KPI 지표, C: HITL 피드백 이력)로 레벨을 결정한다.
+4. Signal 충돌 시 보수적 레벨(낮은 값) 선택 + `escalation_needed: true`.
+5. Phase 3 실행 후 반드시 Phase 4 audit-log 기록을 완료해야 Phase 5로 진행한다.
+6. Phase 5 HITL 타임아웃 시 현재 레벨 유지 + `carry_over_issues`에 "HITL 미응답" 기록.
+7. compression_events 분석 결과 분할 필요 시 `optimization_proposal` 포맷으로 출력한다 (MUST).
 
 ---
 
