@@ -1,7 +1,6 @@
-# Multi-Swarm Orchestrator (v0.1.1)
+# Multi-Swarm Orchestrator (v0.1.2)
 
 > ⚠️ **v0.1.x는 개인 업무 환경에서의 검증 단계입니다. 외부 프로덕션 사용은 권장하지 않습니다.** v0.2.0부터 다른 사람들도 실질적인 도구로 활용할 수 있는 상태를 목표로 합니다.
-
 > *A Companion of Agent Swarm* — Agent Swarm은 뒤에서 일하는 도구가 아니라, 믿을 수 있는 동료다.
 
 사람과 Agent Swarm이 동료로서 함께 일하는 오케스트레이션 시스템.
@@ -139,7 +138,24 @@ graph LR
 | [시작하기](docs/getting-started.md)        | 디렉토리 구조, 설계·운영·검증 명령어                         |
 | [스킬 사용 매트릭스](docs/usage_matrix.md) | Phase × Swarm × Role 매트릭스                                |
 | [KO 매핑](docs/knowledge-object-mapping.md) | 기존 산출물의 명시지 분류 매핑표                             |
-| [변경 이력](docs/changelog.md)             | v0.0.3~v0.1.1 변경 이력 및 하위 호환 노트                    |
+| [변경 이력](docs/changelog.md)             | v0.0.3~v0.1.2 변경 이력 및 하위 호환 노트                    |
+
+---
+
+## v0.1.2 변경 이력
+
+> 에이전트 런타임 협업 규약(Harness Convention v0.1.2)을 전체 스킬셋에 반영한 릴리스. Execution Model 표준화, compression_event 감지·기록 체계, audit_ref 포인터 패턴, optimizer 제안 포맷을 정의하고 4개 핵심 스킬에 통합.
+
+| 개선 영역 | v0.1.1 | v0.1.2 |
+|-----------|--------|--------|
+| Execution Model | 없음 | **single_instance / bus / direct_spawn** — 노드별 실행 전략 명시, `optimizer_hint` null 초기화 MUST |
+| 에이전트 소환 | dispatch_mode만 | **initial_context / handoff_context 포맷** — 5개 트리거 + bus 패턴 규약 |
+| Compression 감지 | 없음 | **compression_event 스키마** — 감지 시 실행 중단 금지, `audit_global.db` 기록 |
+| Audit 포인터 | 직접 포함 | **audit_ref 포인터 패턴** — `{run_id}#{step}` 포인터만 유지, 원문 context 제외 |
+| Optimizer 제안 | 없음 | **optimization_proposal 포맷** — `requires_human_approval: true` 항상 |
+| 버그 수정 | `registry_path` list 저장 | **bind_directives.py** — `", ".join(...)` 문자열로 변환 (jsonschema string 타입 준수) |
+
+상세: [docs/changelog.md](docs/changelog.md)
 
 ---
 

@@ -8,7 +8,7 @@ description: |
 
 # mso-agent-collaboration
 
-## 에이전트 역할 참조 (v0.0.3)
+## 에이전트 역할 참조
 
 | Agent Role | Phase | 핵심 업무 |
 |---|---|---|
