@@ -133,7 +133,7 @@ def bind(topology: Dict, directives: List[Dict], default_domain: str = "general"
         domain = default_domain
 
         candidates = _find_best(directives, vtype, motif, domain)
-        if not candidates:
+        if not candidates and domain != "general":
             candidates = _find_best(directives, vtype, motif, "general")
 
         if candidates:

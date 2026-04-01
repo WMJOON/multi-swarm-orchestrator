@@ -1,5 +1,49 @@
 # 변경 이력
 
+## v0.1.2 (2026-03-31)
+
+### 핵심 변경: Harness Convention v0.1.2 — 에이전트 런타임 협업 규약 전면 통합
+
+에이전트 간 협업 규약을 표준화하고 4개 핵심 스킬에 통합. Execution Model 3종, compression_event 감지 체계, audit_ref 포인터 패턴, optimizer 제안 포맷 정의.
+
+| 변경 | 내용 |
+|------|------|
+| **Execution Model** | `single_instance` / `bus` / `direct_spawn` 3종 표준 정의. 모든 topology 노드에 `execution_model` 필수, `optimizer_hint` null 초기화 MUST. |
+| **initial_context 포맷** | 에이전트 소환 시 표준 포맷 확정. `run_id`, `phase`, `role`, `objective`, `policy`, `state_summary`, `handoff_from` 구조. 전체 히스토리 포함 금지(MUST NOT). |
+| **handoff_context 포맷** | 에이전트 완료 시 표준 포맷 확정. `agent_id`, `phase_completed`, `status`, `output`, `state_updates`, `next_phase_suggestion` 구조. |
+| **소환 트리거 5종** | `phase_enter`, `eval_point`, `drift_detected`, `guard_escalate`, `fan_out`. |
+| **compression_event 스키마** | 압축 감지 이벤트 스키마 정의. 감지 시 실행 중단 금지(MUST NOT). `message_count`만으로도 기록 충분. |
+| **audit_ref 포인터 패턴** | `{run_id}#{step}` 포인터만 에이전트 context에 유지. 원문은 `audit_global.db`에만 보관. |
+| **optimization_proposal 포맷** | optimizer 제안 YAML 포맷 확정. `requires_human_approval: true` 항상(MUST). 자동 topology 변경 금지(MUST NOT). |
+| **compression_events / guard_events 쿼리** | optimizer의 Phase 1 필수 조회 SQL 규약 추가. |
+| **버그 수정** | `bind_directives.py` line 211: `registry_path`를 list가 아닌 `", ".join(...)` 문자열로 저장 (jsonschema `string` 타입 준수). |
+
+### 수정 파일
+
+**수정**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-workflow-topology-design/core.md` | Execution Model 섹션 추가 (3종 정의 + 노드 YAML 포맷) |
+| `skills/mso-workflow-topology-design/modules/module.node_design.md` | Output Pattern에 `execution_model`, `optimizer_hint` 필드 추가 |
+| `skills/mso-agent-collaboration/core.md` | initial_context / handoff_context 포맷, 5개 소환 트리거, dispatch_mode:swarm=bus 규약 추가 |
+| `skills/mso-workflow-optimizer/core.md` | compression_events / guard_events SQL 쿼리, optimization_proposal 포맷, `requires_human_approval: true` 규약 추가 |
+| `skills/mso-agent-audit-log/core.md` | Harness Convention v0.1.2 섹션 추가 (compression_event 수용, audit_ref 포인터, 4개 기본 테이블) |
+| `skills/mso-agent-audit-log/modules/module.schema-contract.md` | 4개 기본 테이블 정의, compression_event YAML 스키마, audit_ref 포인터 패턴 추가 |
+| `skills/mso-mental-model-design/scripts/bind_directives.py` | `registry_path` 저장 방식 list → 문자열 변환 버그 수정 |
+| `docs/architecture.md` | Execution Model 섹션 추가 |
+| `docs/changelog.md` | v0.1.2 변경 이력 추가 |
+| `README.md` | v0.1.2 반영 |
+
+### 하위 호환
+
+- **Execution Model**: 기존 노드 YAML에 `execution_model` 미포함 시 기본값 `single_instance`로 해석. 기존 topology 파일 변경 불필요.
+- **compression_event**: 신규 테이블. 기존 audit 흐름에 영향 없음.
+- **optimization_proposal**: 신규 출력 포맷. 기존 레벨 리포트와 병행 출력 가능.
+- **bind_directives.py**: 버그 수정. 기존에 list로 저장하던 `registry_path`를 문자열로 변환 — jsonschema 검증 통과.
+
+---
+
 ## v0.1.1 (2026-03-28)
 
 ### 핵심 변경: Infrastructure Completion + Explicit Knowledge Foundation

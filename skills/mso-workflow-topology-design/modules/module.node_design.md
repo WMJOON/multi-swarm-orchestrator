@@ -27,5 +27,5 @@
 }
 ```
 
-`execution_model`은 모든 노드에 필수(MUST). `optimizer_hint`는 설계 시 반드시 null로 초기화(MUST).
 `bus` 선택 시 `bus.pattern`, `bus.merge_policy`, `bus.merge_agent` 추가 필요.
+`execution_model` 및 `optimizer_hint` 규약: [core.md — Execution Model](../core.md)
