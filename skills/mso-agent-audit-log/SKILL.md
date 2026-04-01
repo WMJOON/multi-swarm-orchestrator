@@ -19,7 +19,7 @@ description: |
 |------|------|
 | **SoT** | `{workspace}/.mso-context/audit_global.db` (SQLite). 모든 감사 데이터의 단일 진실 원천 |
 | **audit payload** | `run_id`, `artifact_uri`, `status`, `errors`, `warnings`, `next_actions`, `metadata` |
-| **schema_version** | 현재 `1.5.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references`, `user_feedback`, `node_snapshots`, `suggestion_history` |
+| **schema_version** | 현재 `1.6.0`. 테이블: `audit_logs`, `decisions`, `evidence`, `impacts`, `document_references`, `user_feedback`, `node_snapshots`, `suggestion_history` |
 
 ---
 
@@ -43,7 +43,7 @@ description: |
 ### Phase 2b: 스냅샷 기록
 
 1. 입력에 `node_type`, `parent_refs`, `tree_hash_ref` 필드가 포함된 경우 스냅샷 기록
-2. `node_snapshots` 테이블에 INSERT: `id`(SNAP-*), `run_id`, `node_id`, `node_type`, `parent_refs`(JSON), `tree_hash_type`, `tree_hash_ref`, `agent_role`, `phase`, `status`
+2. `node_snapshots` 테이블에 INSERT: `id`(SNAP-*), `run_id`, `node_id`, `node_type`, `parent_refs`(JSON), `tree_hash_type`, `tree_hash_ref`, `agent_role`, `phase`, `status`, `trace_id`(TEXT, optional — OTel exporter 비활성 시 NULL)
 3. merge 노드인 경우 `merge_policy` JSON도 저장
 4. 폴백 대상이 있으면 `fallback_target`에 절대 SHA 참조 저장
 
@@ -67,7 +67,7 @@ description: |
 
 | 연결 | 스킬 | 설명 |
 |------|------|------|
-| ← | `mso-execution-design` | CC-06: execution_graph 노드 → 스냅샷 기록 |
+| ← | `mso-task-execution` | CC-06: execution_graph 노드 → 스냅샷 기록 |
 | ← | `mso-agent-collaboration` | CC-04: dispatch 결과를 audit payload로 수신 |
 | ← | `mso-workflow-optimizer` | CC-08: decision_output + HITL 피드백을 audit_logs/user_feedback에 기록 |
 | → | `mso-observability` | CC-05: audit DB를 읽기 전용으로 제공 |

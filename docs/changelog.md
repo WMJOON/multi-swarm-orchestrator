@@ -1,5 +1,76 @@
 # 변경 이력
 
+## v0.1.3 (2026-04-01)
+
+### 핵심 변경: 스킬 구조 전면 개편 + Agent Lightning 통합 (spec)
+
+v0.1.x 시리즈 최대 규모의 구조 변경. 스킬 명칭 개편, 실행 책임 레이어 재설계, Agent Lightning 기능(OTel/Guardrails/NHI/APO) spec 수준 통합.
+
+#### Part A: 스킬 명칭 개편
+
+| 변경 | 내용 |
+|------|------|
+| **mso-mental-model-design → mso-vertex-design** | 디렉티브(Vertex) 설계 역할을 더 정확히 반영하는 명칭으로 변경. deprecated symlink(`mso-mental-model-design` → `mso-vertex-design`) v0.1.4에서 제거 예정 |
+| **mso-execution-design → mso-task-execution** | 오케스트레이션 실행 역할 명칭 명확화. deprecated symlink(`mso-execution-design` → `mso-task-execution`) v0.1.4에서 제거 예정 |
+| **global_links symlink 신규** | `00_agents_global_links/skills/mso-vertex-design`, `00_agents_global_links/skills/mso-task-execution` 추가 (repository 외부). `~/.claude/skills/`가 이 경로를 경유하여 글로벌 접근 |
+
+#### Part B: 실행 책임 레이어 재설계
+
+| 변경 | 내용 |
+|------|------|
+| **2레이어 분리** | mso-task-execution을 **Orchestration Core**(스킬 본체)와 **Runtime Wrapper Modules**(`_shared/` 하위)로 분리. 역할 과부하 해소 |
+| **폴백 정책 SoT 이전** | 에러 유형·severity·max_retry 정책 정의가 mso-task-execution → **mso-process-template 소유**로 이전. task-execution은 참조·트리거만 담당 |
+| **Runtime Role Registry 신설** | mso-process-template에 에이전트 역할 매핑 테이블 추가 (Provisioning/Execution/Handoff/Branching/Critic·Judge/Sentinel) |
+| **Fallback Policy Registry 신설** | mso-process-template에 에러 유형별 severity·action·max_retry 테이블 추가 |
+| **execution_graph.json 신설** | mso-workflow-topology-design Phase A6 산출물. `graph_id`, `schema_version("1.0")`, `nodes[]` 필수. CC-01 계약에 추가 |
+
+#### Part C: Agent Lightning 통합 [spec-only]
+
+| 변경 | 내용 |
+|------|------|
+| **wrapper.otel** | LLM 호출 전후 OTel Span 생성·종료. 로컬 OTLP stdout 출력 (opt-in: Phoenix). `trace_id` Core에 반환 후 node_snapshots optional 저장 |
+| **wrapper.guardrails** | pre-snapshot JSON Schema 검증 + PII 스캔. 실패 시 auto-reprompt. v0.1.4+에서 외부 SDK 교체 검토 |
+| **NHI Attestation** | mso-skill-governance Phase 5 추가. `nhi_policy.json` 정의, 위반 시 mso-task-execution으로 에스컬레이션 신호 전송. fail-open 정책 |
+| **APO 피드** | mso-workflow-optimizer Phase 6 추가. Macro-loop(Run 단위) vs Micro-loop(프롬프트 단위) 경계 정의 |
+| **trace_id 컬럼** | node_snapshots 테이블에 `trace_id TEXT` optional 컬럼 추가. DB schema v1.5.0 → **v1.6.0** |
+
+### 수정 파일
+
+**수정**
+
+| 파일 | 변경 |
+|------|------|
+| `skills/mso-vertex-design/SKILL.md` | 명칭 변경 반영. 자기 참조 및 Pack 내 관계 업데이트 |
+| `skills/mso-task-execution/SKILL.md` | 전면 재작성. 2레이어 구조(Orchestration Core + Wrapper Modules), 폴백 정책 참조형 에러 라우팅, 4단계 실행 프로세스 |
+| `skills/mso-workflow-topology-design/SKILL.md` | Phase A6 추가 (execution_graph.json 산출). Pack 관계 명칭 업데이트. scoring_weights 자동 정규화 통일 |
+| `skills/mso-agent-audit-log/SKILL.md` | schema_version 1.5.0 → 1.6.0. node_snapshots에 trace_id 컬럼 추가. Pack 관계 명칭 업데이트 |
+| `skills/mso-skill-governance/SKILL.md` | Phase 5 NHI Attestation [spec-only] 추가. nhi_policy.json 구조 정의 |
+| `skills/mso-workflow-optimizer/SKILL.md` | Phase 6 APO 피드 [spec-only] 추가. Macro-loop / Micro-loop 경계 정의 |
+| `skills/mso-process-template/SKILL.md` | Runtime Role Registry + Fallback Policy Registry 추가. Pack 내 관계 신설 |
+| `skills/mso-observability/SKILL.md` | Pack 내 관계 명칭 업데이트 (mso-vertex-design) |
+| `README.md` | v0.1.3 반영. 스킬 아키텍처 테이블·다이어그램 업데이트 |
+| `docs/changelog.md` | v0.1.3 변경 이력 추가 |
+
+**신규**
+
+| 파일 | 설명 |
+|------|------|
+| `skills/mso-vertex-design/` | mso-mental-model-design 디렉토리 명칭 변경 (신규 디렉토리로 이전) |
+| `skills/mso-task-execution/` | mso-execution-design 디렉토리 명칭 변경 (신규 디렉토리로 이전) |
+| `skills/mso-mental-model-design` | deprecated symlink → `mso-vertex-design` |
+| `skills/mso-execution-design` | deprecated symlink → `mso-task-execution` |
+| `00_agents_global_links/skills/mso-vertex-design` | 글로벌 링크 신규 (repository 외부 경로) |
+| `00_agents_global_links/skills/mso-task-execution` | 글로벌 링크 신규 (repository 외부 경로) |
+
+### 하위 호환
+
+- **스킬 명칭**: deprecated symlink로 기존 참조 유지. **v0.1.4에서 symlink 제거** 예정.
+- **execution_graph.json**: CC-01 추가 입력. 미제공 시 mso-task-execution이 경고 후 실행 계속.
+- **trace_id**: node_snapshots nullable 컬럼. 기존 INSERT 쿼리 영향 없음.
+- **`[spec-only]` 기능**: SKILL.md 규약 정의 완료, 스크립트 구현은 v0.1.4에서 진행.
+
+---
+
 ## v0.1.2 (2026-03-31)
 
 ### 핵심 변경: Harness Convention v0.1.2 — 에이전트 런타임 협업 규약 전면 통합
@@ -30,7 +101,7 @@
 | `skills/mso-workflow-optimizer/core.md` | compression_events / guard_events SQL 쿼리, optimization_proposal 포맷, `requires_human_approval: true` 규약 추가 |
 | `skills/mso-agent-audit-log/core.md` | Harness Convention v0.1.2 섹션 추가 (compression_event 수용, audit_ref 포인터, 4개 기본 테이블) |
 | `skills/mso-agent-audit-log/modules/module.schema-contract.md` | 4개 기본 테이블 정의, compression_event YAML 스키마, audit_ref 포인터 패턴 추가 |
-| `skills/mso-mental-model-design/scripts/bind_directives.py` | `registry_path` 저장 방식 list → 문자열 변환 버그 수정 |
+| `skills/mso-vertex-design/scripts/bind_directives.py` | `registry_path` 저장 방식 list → 문자열 변환 버그 수정 (v0.1.3에서 mso-mental-model-design → mso-vertex-design 명칭 변경) |
 | `docs/architecture.md` | Execution Model 섹션 추가 |
 | `docs/changelog.md` | v0.1.2 변경 이력 추가 |
 | `README.md` | v0.1.2 반영 |

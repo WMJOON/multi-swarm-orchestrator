@@ -62,6 +62,28 @@ description: |
 
 **산출물**: `governance_report.md` + JSON summary
 
+### Phase 5: NHI Attestation 검증 `[spec-only]`
+
+> Non-Human Identity Attestation — 티켓 컨텍스트 기반 동적 스킬 권한 검증
+
+1. `mso-task-context-management`의 활성 티켓에서 `ticket_id`, `template_id`를 읽는다
+2. 스킬 권한 화이트리스트(`nhi_policy.json`)와 대조하여 현재 실행 컨텍스트에서 호출 가능한 스킬 목록 확인
+3. 허용 범위 초과 스킬 호출 시 → `finding: fail` + `mso-task-execution`에 에스컬레이션 신호
+
+**nhi_policy.json 기본 구조:**
+```json
+{
+  "template_id": "<template>",
+  "allowed_skills": ["mso-vertex-design", "mso-workflow-topology-design"],
+  "allowed_data_access": ["read:workspace", "write:mso-context"],
+  "denied_skills": []
+}
+```
+
+**when_unsure**: 화이트리스트 미존재 시 → 경고 기록 후 실행 허용 (fail-open). v0.1.4에서 fail-closed로 전환 예정.
+
+**산출물**: `nhi_attestation_result { ticket_id, allowed, denied[], findings[] }` `[spec-only, impl: v0.1.4]`
+
 ---
 
 ## Pack 내 관계
