@@ -1,5 +1,5 @@
 ---
-name: mso-mental-model-design
+name: mso-vertex-design
 description: |
   Vertex Registry — 도메인별 directive(framework/instruction/prompt)를 택소노미로 관리하고
   topology vertex에 바인딩한다. 워크플로우 레지스트리(mso-workflow-topology-design Mode B)와 상호보완.
@@ -7,7 +7,7 @@ description: |
   or when new directives need to be registered, searched, or taxonomized.
 ---
 
-# mso-mental-model-design
+# mso-vertex-design
 
 > Vertex Registry. Topology가 **구조**(Motif + Vertex 타입)를 정의하면, 이 스킬이 각 Vertex에
 > **도메인 지식**(directive)을 바인딩한다.
@@ -74,7 +74,7 @@ applicable_motifs: [fork_join, diamond]
 | `~/.mso-registry/<domain>/chart.json` | 도메인 Local Chart (축 정의 + vertex 좌표 캐시) |
 | `~/.mso-registry/<domain>/orthogonality.json` | 직교성 검증 결과 + similarity_matrix |
 | `{workspace}/.mso-context/active/<run_id>/20_mental-model/ontology.json` | Run별 범주론적 온톨로지 (explicit morphisms + composition_table) |
-| `{mso-mental-model-design}/directives/` | 스킬 내장 seed Directive (초기값) |
+| `{mso-vertex-design}/directives/` | 스킬 내장 seed Directive (초기값) |
 | `{workspace}/.mso-context/active/<run_id>/20_mental-model/directive_binding.json` | Run별 노드↔directive 바인딩 (워크스페이스 로컬) |
 
 ### Registry 해석 순서
@@ -83,7 +83,7 @@ applicable_motifs: [fork_join, diamond]
 |------|------|------|
 | 1 | `~/.mso-registry/<domain>/` | 글로벌 — 프로젝트 간 공유 |
 | 2 | `{workspace}/.mso-context/vertex_registry/<domain>/` | 워크스페이스 로컬 fallback |
-| 3 | `{mso-mental-model-design}/directives/` | 스킬 내장 seed |
+| 3 | `{mso-vertex-design}/directives/` | 스킬 내장 seed |
 
 머지 전략: UNION (글로벌 우선, id 충돌 시 글로벌 우선)
 
@@ -105,7 +105,7 @@ applicable_motifs: [fork_join, diamond]
 
 **스크립트:**
 ```
-python3 {mso-mental-model-design}/scripts/search_directives.py \
+python3 {mso-vertex-design}/scripts/search_directives.py \
   --registry ~/.mso-registry \
   --vertex-type agent --motif chain --domain analysis
 ```
@@ -143,7 +143,7 @@ python3 {mso-mental-model-design}/scripts/search_directives.py \
 
 **스크립트:**
 ```
-python3 {mso-mental-model-design}/scripts/register_directive.py \
+python3 {mso-vertex-design}/scripts/register_directive.py \
   --file <directive.md> \
   --registry ~/.mso-registry
 ```
@@ -351,7 +351,7 @@ python3 {mso-mental-model-design}/scripts/register_directive.py \
 | 연결 | 스킬 | 설명 |
 |------|------|------|
 | ← | `mso-workflow-topology-design` | topology spec의 nodes[].vertex_type, motif를 소비하여 directive 검색 |
-| → | `mso-execution-design` | CC-02: directive_binding.json의 bindings[]를 execution_graph 노드에 매핑 |
+| → | `mso-task-execution` | CC-02: directive_binding.json의 bindings[]를 execution_graph 노드에 매핑 |
 | ↔ | `mso-process-template` | 참조: process-template의 templates/는 `domain: "mso-governance"` directive로 인식 가능 (합치지 않음) |
 | ← | `mso-observability` | 환류: directive 효과 분석 결과 반영 (사용자 승인 필요) |
 
@@ -365,9 +365,9 @@ python3 {mso-mental-model-design}/scripts/register_directive.py \
 | Vertex Binding 상세 | [modules/module.vertex-binding.md](modules/module.vertex-binding.md) |
 | 출력 스키마 검증 | [schemas/directive_binding.schema.json](schemas/directive_binding.schema.json) |
 | Directive frontmatter 스키마 | [schemas/directive.frontmatter.schema.json](schemas/directive.frontmatter.schema.json) |
-| Registry 검색 | `python3 {mso-mental-model-design}/scripts/search_directives.py --registry <path> --vertex-type <type>` |
-| Directive 등록 | `python3 {mso-mental-model-design}/scripts/register_directive.py --file <path> --registry <path>` |
-| Directive Binding 생성 | `python3 {mso-mental-model-design}/scripts/bind_directives.py --topology <path> --registry <path> --output <path>` |
+| Registry 검색 | `python3 {mso-vertex-design}/scripts/search_directives.py --registry <path> --vertex-type <type>` |
+| Directive 등록 | `python3 {mso-vertex-design}/scripts/register_directive.py --file <path> --registry <path>` |
+| Directive Binding 생성 | `python3 {mso-vertex-design}/scripts/bind_directives.py --topology <path> --registry <path> --output <path>` |
 | **[Mode C] 신규 vertex 투영** | `python3 scripts/project_vertex.py --domain <domain> --id <id> --name "<이름>" --axis <축> --coords '<[...]>'` |
 | **[Mode D] 차트 최초 생성** | `python3 scripts/bootstrap_chart.py --domain <domain> --purpose "<목적>" --axes '<[{id,label,semantic}]>'` |
 | **[Mode D] 온톨로지 생성/쿼리** | `python3 scripts/build_ontology.py --chart <chart.json> --output <ontology.json>` (생성) / `--query "A→?"` (lazy composition 쿼리) |

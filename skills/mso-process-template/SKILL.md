@@ -36,3 +36,46 @@ description: |
 | HITL Escalation Brief | [templates/HITL_ESCALATION_BRIEF.md](templates/HITL_ESCALATION_BRIEF.md) | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 판단 요청서 |
 | Run Retrospective | [templates/RUN_RETROSPECTIVE.md](templates/RUN_RETROSPECTIVE.md) | Run 완료 후 메트릭·교훈·이월 항목 회고 문서 |
 | Design Handoff Summary | [templates/DESIGN_HANDOFF_SUMMARY.md](templates/DESIGN_HANDOFF_SUMMARY.md) | Design Swarm → Ops Swarm 인수인계 요약 문서 |
+
+---
+
+## Pack 내 관계
+
+| 연결 | 스킬 | 설명 |
+|------|------|------|
+| → | `mso-task-execution` | Runtime Role Registry + Fallback Policy Registry 제공 (정책 SoT) |
+
+---
+
+## 에이전트 역할 매핑 (Runtime Role Registry)
+
+> `mso-task-execution`이 실행 중 에이전트 역할을 참조하는 SoT.
+
+| Agent Role | Phase | 핵심 업무 |
+|---|---|---|
+| Provisioning | 1 | Worktree 초기화, Base Commit 생성 |
+| Execution | 2 | 태스크 수행, 산출물 해싱(SHA-256) |
+| Handoff | 2-3 | 노드 간 상태/해시 전달 |
+| Branching | 3 | 분기 탐지/생성, 실험 경로 포크 |
+| Critic/Judge | 3 | 머지 합의, 품질 평가 |
+| Sentinel | 4 | 에러 식별, Checkout 복구, HITL 에스컬레이션 |
+
+---
+
+## 폴백 규칙 분류 체계 (Fallback Policy Registry)
+
+> `mso-task-execution`이 에러 처리 시 참조하는 SoT. 정책 정의는 이 스킬이 소유하며, 실행 트리거는 `mso-task-execution`이 담당한다.
+
+| 에러 유형 | severity | action | max_retry | requires_human |
+|-----------|----------|--------|-----------|----------------|
+| `schema_validation_error` | medium | retry | 3 | false |
+| `hallucination` | high | retry → escalate | 2 | true (retry 소진 시) |
+| `timeout` | low | retry | 2 | false |
+| `hitl_block` | critical | escalate | 0 | true |
+
+**action 정의:**
+- `retry`: 동일 프롬프트 + 에러 메시지 첨부 후 재요청
+- `escalate`: Sentinel Agent에 `hitl_request` 이벤트 전달
+- `checkout`: 마지막 정상 커밋으로 워크스페이스 복구
+
+`max_retry` 소진 후에도 해소되지 않으면 severity 한 단계 상향 후 `escalate`로 전환.

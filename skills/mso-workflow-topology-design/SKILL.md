@@ -230,14 +230,52 @@ Phase 1~4를 통합하여 `{workspace}/.mso-context/active/<run_id>/10_topology/
 
 **산출물 경로**: `{workspace}/.mso-context/active/<run_id>/10_topology/workflow_topology_spec.json`
 
+### Phase A6: Execution Graph 구성
+
+Phase 5의 `workflow_topology_spec.json`을 기반으로 `execution_graph.json`을 생성한다.
+
+**처리:**
+1. `nodes[]`와 `edges[]` 분석 → 노드 타입 분류
+   - incoming edges ≥ 2 → `merge`
+   - outgoing edges ≥ 2 → `branch`
+   - 그 외 → `commit`
+2. 각 노드에 필수 필드 할당:
+   - `parent_refs`: 선행 노드 ID 목록
+   - `bundle_ref`: 해당 노드의 스킬/에이전트 참조
+   - `handoff_contract`: 수신 측 최소 충분 조건
+3. `merge` 노드에 `merge_policy` 기본값 삽입
+4. `scoring_weights` 합계 = 1.0 검증 (불일치 시 자동 정규화 후 경고 기록)
+
+**execution_graph.json 필수 필드:**
+
+| 필드 | 필수/선택 | 설명 |
+|------|-----------|------|
+| `graph_id` | 필수 | Run ID와 동일 |
+| `schema_version` | 필수 | `"1.0"` (v0.1.3) |
+| `nodes[]` | 필수 | 노드 목록 |
+| `nodes[].node_id` | 필수 | topology spec의 node_id와 동일 |
+| `nodes[].type` | 필수 | `commit` \| `branch` \| `merge` |
+| `nodes[].parent_refs[]` | 필수 | 선행 노드 ID 목록 |
+| `nodes[].bundle_ref` | 필수 | 실행 스킬/툴 참조 |
+| `nodes[].handoff_contract` | 필수 | 수신 측 최소 충분 조건 |
+| `nodes[].merge_policy` | 선택 | type=merge 노드에만 적용 |
+| `nodes[].merge_policy.scoring_weights` | 조건부 필수 | merge_policy 존재 시 합계=1.0. 불일치 시 자동 정규화 |
+| `nodes[].model_selection` | 선택 | 미지정 시 `"default"` |
+
+**when_unsure**: `scoring_weights` 합이 1.0 아닌 경우 `w'_i = w_i / Σ(w)`로 정규화 후 경고 기록. 파이프라인 중단 없음.
+
+**산출물**: `{workspace}/.mso-context/active/<run_id>/10_topology/execution_graph.json`
+
+**스크립트**: `python3 {mso-workflow-topology-design}/scripts/build_plan.py --topology <workflow_topology_spec.json> --output <execution_graph.json>`
+
 ---
 
 ## Pack 내 관계
 
 | 연결 | 스킬 | 설명 |
 |------|------|------|
-| ↔ | `mso-mental-model-design` | 상호보완: topology가 노드 구조를 결정하면 mental-model이 chart를 매핑하고, 반대로 domain constraint가 노드 경계를 정제 |
-| → | `mso-execution-design` | CC-01: topology_spec.nodes[].id가 exec의 node_chart_map key로 사용됨 |
+| ↔ | `mso-vertex-design` | 상호보완: topology가 노드 구조를 결정하면 vertex-design이 chart를 매핑하고, 반대로 domain constraint가 노드 경계를 정제 |
+| → | `mso-task-execution` | CC-01: execution_graph.json(Phase A6 산출물) + topology_spec 전달 |
 | ← | `mso-observability` | 환류: loop risk 개선 제안 반영 대상 (사용자 승인 필요) |
 | ← | `mso-task-context-management` | 선택적 참조: 반복/가시화 필요 시 topology 참조 |
 | ← | `mso-workflow-optimizer` | Level 변경 시 Mode B 레지스트리 execution_metrics 갱신 |

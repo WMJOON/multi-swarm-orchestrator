@@ -212,6 +212,31 @@ HITL 운영 상세는 [modules/module.hitl-feedback.md](modules/module.hitl-feed
 
 **when_unsure**: HITL 응답 없음(타임아웃) → 현재 automation_level 유지 + `carry_over_issues`에 "HITL 미응답" 기록.
 
+### Phase 6: APO 피드 — Micro-Loop 최적화 `[spec-only]`
+
+> Automatic Prompt Optimization — OTel Trace 기반 개별 노드 성능 분석
+
+**Macro-loop vs Micro-loop 경계:**
+
+| 레이어 | 단위 | 데이터 소스 |
+|--------|------|-------------|
+| Macro-loop (기존 Phase 1~5) | Run 전체 | `audit_global.db` |
+| Micro-loop (APO, 이 Phase) | 개별 노드 프롬프트 | OTel Trace + `audit_global.db` |
+
+**처리 (OTel exporter 활성 시):**
+
+1. `mso-task-execution`이 기록한 `trace_id`를 `node_snapshots`에서 조회
+2. OTel 수집기(로컬 또는 Phoenix)에서 해당 Trace의 메트릭 조회:
+   - LLM 호출 수, latency_p95, 토큰 사용량, auto-reprompt 발생 횟수
+3. 노드별 성능 이상값 탐지 (auto-reprompt 빈도 > threshold → 프롬프트 개선 후보)
+4. 개선 후보를 기존 Macro-loop 최적화 리포트에 `apo_suggestions[]`로 추가
+
+**전제 조건**: `mso-task-execution`의 `wrapper.otel` 구현 완료 후 사용 가능. `trace_id`가 NULL인 경우 이 Phase 스킵.
+
+**when_unsure**: OTel 데이터 없으면 Macro-loop 결과만으로 리포트 생성 후 APO 섹션 "데이터 미수집" 표시.
+
+**산출물**: `apo_suggestions[]` (기존 optimization_report에 병합) `[spec-only, impl: v0.1.4]`
+
 ---
 
 ## Tier Escalation 메커니즘
@@ -334,7 +359,7 @@ flowchart TD
 | ←    | `mso-observability`            | audit DB 패턴 분석 결과를 Signal C (피드백 이력)로 소비        |
 | ←    | `mso-workflow-topology-design` | topology 변경 후 최적화 재평가 트리거 발생 시 Phase 1 진입     |
 | →    | `mso-task-context-management`  | goal 산출 후 다음 주기 최적화 작업을 티켓으로 등록             |
-| ←    | `mso-execution-design`         | execution_graph 실행 완료 신호 수신 시 트리거                  |
+| ←    | `mso-task-execution`           | execution_graph 실행 완료 신호 수신 시 트리거                  |
 | →    | `mso-agent-collaboration`      | Phase 0 (멀티 에이전트 모드): teammates를 티켓으로 dispatch (provider-free Jewels 패턴) |
 | →    | `mso-model-optimizer`          | Tier Escalation 시 Handoff Payload 전달 → Label Strategy + 경량 모델 생성 트리거 |
 | ↔    | `mso-model-optimizer`          | llm-as-a-judge를 서브프로세스로 공유 (Phase 1 데이터 품질 검증) |
