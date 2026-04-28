@@ -30,17 +30,18 @@ python3 ~/.claude/skills/mso-skill-governance/scripts/validate_gov.py \
 
 ## 서브스킬 On-Demand 로딩
 
-`~/.claude/skills/`에 서브스킬이 없을 때(minimal 설치 상태), 아래 명령으로 실제 경로를 확인 후 Read한다.
+서브스킬은 `~/.skill-modules/mso-skills/`에 위치한다. 아래 경로를 Read 도구로 읽으면 해당 스킬이 로드된다.
 
-```bash
-python3 -c "
-import pathlib
-p = pathlib.Path('~/.claude/skills/mso-orchestration').expanduser().resolve().parent
-print(p / 'SKILL_NAME' / 'SKILL.md')
-"
+```
+~/.skill-modules/mso-skills/SKILL_NAME/SKILL.md
 ```
 
-`SKILL_NAME`을 아래 라우팅 테이블의 스킬명으로 교체하면 절대 경로가 반환된다. 반환된 경로를 Read 도구로 읽으면 해당 스킬이 로드된다.
+예시:
+```
+~/.skill-modules/mso-skills/mso-mental-model/SKILL.md
+```
+
+`SKILL_NAME`을 아래 라우팅 테이블의 스킬명으로 교체한다.
 
 ## 스킬 라우팅
 
