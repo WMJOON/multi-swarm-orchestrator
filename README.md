@@ -145,6 +145,29 @@ graph LR
 
 ---
 
+## 설치
+
+```bash
+git clone https://github.com/WMJOON/multi-swarm-orchestrator.git
+cd multi-swarm-orchestrator
+./install.sh
+```
+
+`install.sh`는 `skills/` 하위 스킬을 `~/.claude/skills/`에 심볼릭 링크로 연결한다. 이미 같은 이름의 디렉토리가 존재하면 건너뛰고 경고를 출력한다.
+
+**설치 확인**
+
+```bash
+python3 skills/mso-skill-governance/scripts/validate_gov.py \
+  --pack-root ~/.claude \
+  --pack mso \
+  --json
+```
+
+`"status": "ok"`, `"findings": []`이면 정상.
+
+---
+
 ## v0.2.0 변경 이력 — 스킬 통합 재편
 
 > **스킬을 얇게 많이 두는 방식에서 굵게 적게 두는 방식으로 전환.** 역할이 겹치거나 단독으로는 워크플로우 완결성이 낮았던 스킬을 흡수·병합해 각 스킬이 더 넓은 범위를 컨텍스트 전환 없이 스스로 해결할 수 있도록 두텁게 만들었다.
