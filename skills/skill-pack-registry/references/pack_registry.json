@@ -20,11 +20,19 @@
       ]
     },
     "msm": {
-      "description": "Multi-Swarm Manager",
+      "description": "Markdown Scaffolding Multihop",
       "prefix": "msm-",
-      "version": "v0.0.1",
+      "version": "v0.2.0",
       "overload_threshold": 10,
-      "required_skills": []
+      "required_skills": [
+        "msm-data-analysis",
+        "msm-kb-graph",
+        "msm-kb-rewrite",
+        "msm-mece-validator",
+        "msm-obsidian-cli",
+        "msm-ralph-etl",
+        "msm-rdf-owl-bridge"
+      ]
     }
   }
 }
