@@ -153,7 +153,13 @@ cd multi-swarm-orchestrator
 ./install.sh
 ```
 
-`install.sh`는 `skills/` 하위 스킬을 `~/.claude/skills/`에 심볼릭 링크로 연결한다. 이미 같은 이름의 디렉토리가 존재하면 건너뛰고 경고를 출력한다.
+기본값은 `mso-orchestration`만 링크하는 **minimal 모드**다. 서브스킬은 orchestration 스킬이 on-demand로 로드한다.
+
+```bash
+./install.sh --full   # 전체 스킬 개별 설치
+```
+
+이미 같은 이름의 디렉토리가 존재하면 건너뛰고 경고를 출력한다.
 
 **설치 확인**
 
