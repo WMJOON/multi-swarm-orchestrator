@@ -11,16 +11,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_MAX_SKILLS = 8
+REGISTRY_PATH = ROOT / "skills" / "skill-pack-registry" / "references" / "pack_registry.json"
+DEFAULT_MAX_SKILLS = 10
 REQUIRED_SKILLS = [
     "mso-workflow-topology-design",
-    "mso-mental-model-design",
+    "mso-mental-model",
     "mso-execution-design",
-    "mso-task-context-management",
+    "mso-task-execution",
     "mso-agent-collaboration",
     "mso-agent-audit-log",
     "mso-observability",
     "mso-skill-governance",
+    "mso-workflow-optimizer",
+    "mso-model-optimizer",
 ]
 REQUIRED_CONTRACT_FIELDS = [
     "id",
@@ -44,13 +47,23 @@ from skills._shared.runtime_workspace import (  # noqa: E402
 from _cc_defaults import get_default_contracts
 
 
-def collect_skills(skills_root: Path) -> Dict[str, Path]:
+def load_pack_config(pack_id: str) -> "Dict[str, Any] | None":
+    if not REGISTRY_PATH.exists():
+        return None
+    with open(REGISTRY_PATH, encoding="utf-8") as f:
+        data = json.load(f)
+    return data.get("packs", {}).get(pack_id)
+
+
+def collect_skills(skills_root: Path, prefix: str = "") -> Dict[str, Path]:
     out: Dict[str, Path] = {}
     if not skills_root.exists():
         return {}
 
     for skill_dir in sorted(skills_root.iterdir()):
         if not skill_dir.is_dir() or skill_dir.name.startswith(".") or skill_dir.name.startswith("_"):
+            continue
+        if prefix and not skill_dir.name.startswith(prefix):
             continue
         out[skill_dir.name] = skill_dir
     return out
@@ -67,11 +80,21 @@ def has_aaos_string(path: Path) -> bool:
     return any(n in txt for n in needles)
 
 
-def validate_skill_structure(skills: Dict[str, Path], skills_root: Path) -> Tuple[List[dict], List[dict]]:
+def validate_skill_structure(
+    skills: Dict[str, Path],
+    skills_root: Path,
+    required_skills: "List[str] | None" = None,
+    max_skills: "int | None" = None,
+) -> Tuple[List[dict], List[dict]]:
+    if required_skills is None:
+        required_skills = REQUIRED_SKILLS
+    if max_skills is None:
+        max_skills = DEFAULT_MAX_SKILLS
+
     warnings: List[dict] = []
     errors: List[dict] = []
 
-    for sid in REQUIRED_SKILLS:
+    for sid in required_skills:
         path = skills.get(sid)
         if path is None:
             errors.append(
@@ -130,12 +153,12 @@ def validate_skill_structure(skills: Dict[str, Path], skills_root: Path) -> Tupl
                     }
                 )
 
-    if len(skills) > DEFAULT_MAX_SKILLS:
+    if len(skills) > max_skills:
         warnings.append(
             {
                 "id": "skill-overload",
                 "severity": "warn",
-                "finding": f"skill count={len(skills)} exceeds threshold={DEFAULT_MAX_SKILLS}",
+                "finding": f"skill count={len(skills)} exceeds threshold={max_skills}",
                 "evidence": str(skills_root),
             }
         )
@@ -236,6 +259,7 @@ def write_report(warnings: List[dict], errors: List[dict], skill_pack_version: s
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate runtime skill governance")
     parser.add_argument("--pack-root", default=str(ROOT), help="Pack root path")
+    parser.add_argument("--pack", default="", help="Pack ID to filter via skill-pack-registry (e.g. mso, msm)")
     parser.add_argument("--report-dir", default=None, help="Governance report output directory")
     parser.add_argument("--json", action="store_true", help="Print JSON summary")
     parser.add_argument("--run-id", default="", help="Run ID override")
@@ -270,19 +294,31 @@ def main() -> int:
 
         report_dir.mkdir(parents=True, exist_ok=True)
 
-        skills = collect_skills(skills_dir)
-        w1, e1 = validate_skill_structure(skills, skills_dir)
+        req_skills = REQUIRED_SKILLS
+        max_sk = DEFAULT_MAX_SKILLS
+        prefix_filter = ""
+        if args.pack:
+            pack_cfg = load_pack_config(args.pack)
+            if pack_cfg:
+                req_skills = pack_cfg["required_skills"]
+                max_sk = pack_cfg["overload_threshold"]
+                prefix_filter = pack_cfg["prefix"]
+            else:
+                print(f"WARNING: pack '{args.pack}' not found in registry, using defaults")
+
+        skills = collect_skills(skills_dir, prefix=prefix_filter)
+        w1, e1 = validate_skill_structure(skills, skills_dir, required_skills=req_skills, max_skills=max_sk)
         w2, e2 = validate_contracts(get_default_contracts())
 
         warnings = w1 + w2
         errors = e1 + e2
         report_path = report_dir / "governance_check_report.md"
-        write_report(warnings, errors, "v0.0.2", report_path)
+        write_report(warnings, errors, "v0.0.5", report_path)
 
         if args.json:
             payload = {
                 "status": "fail" if any(f["severity"] == "fail" for f in errors) else "warn" if warnings else "ok",
-                "skill_pack_version": "v0.0.2",
+                "skill_pack_version": "v0.0.5",
                 "run_id": paths["run_id"],
                 "required_skill_ids": REQUIRED_SKILLS,
                 "cc_coupling_id": "CC-00",
