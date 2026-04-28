@@ -4,6 +4,43 @@
 
 ---
 
+## Level Decision Rubric
+
+> 루브릭은 4개 차원에서 각 레벨의 적합 조건을 정의한다. Signal A·B·C는 이 루브릭을 기준으로 점수를 산정한다.
+> **유효 조건**: `run_count ≥ 10` (audit_global.db 기준). 미달 시 Level 30 기본값 — Data Sufficiency Gate 참조.
+
+| 차원 | Level 10 (리포팅) | Level 20 (스크립트 분석) | Level 30 (자동화 평가) |
+|------|-----------------|----------------------|-------------------|
+| **스크립트 가용성** | raw data만 존재 | analysis.script 존재 | evaluation.py 존재 |
+| **KPI 달성률** | ≥ gate_threshold + 5% | gate_threshold ±5% | < gate_threshold − 5% |
+| **pattern_stability** | ≥ 80 | 30 ≤ x < 80 | < 30 |
+| **HITL 방향** | "유지" 또는 "하향" | 중립 / 이력 없음 | "상향" 요청 |
+
+**gate_threshold 기본값**: `85` (precision 기준). `docs/usage/{workflow_name}.md`에 `kpi.gate_threshold` 명시 시 override.
+
+---
+
+## Data Sufficiency Gate
+
+Phase 2 진입 전 아래 쿼리로 run_count를 확인한다.
+
+```sql
+SELECT COUNT(*) AS run_count
+FROM audit_logs
+WHERE workflow_name = '{workflow_name}' AND status = 'completed'
+```
+
+| run_count | 처리 |
+|-----------|------|
+| < 10 | **루브릭 평가 스킵.** Level 30 기본값 + `data_insufficient: true` 플래그. rationale에 "데이터 불충분" 명시. |
+| 10 ~ 49 | 루브릭 평가 진행. pattern_stability 신뢰도 낮음 — rationale에 `"low_confidence: run_count={n}"` 명시. |
+| ≥ 50 | 루브릭 평가 전결. pattern_stability 충분한 신뢰도. |
+
+> **설계 의도**: `milestone` 트리거의 첫 발화 시점(run_count=10)과 루브릭 유효 시점이 일치한다.
+> `observability_alert` 트리거도 동일한 audit_global.db에서 pattern_stability를 감지하므로, 모든 트리거는 audit-log 기반으로 수렴한다.
+
+---
+
 ## Signal A — 데이터·스크립트 가용성
 
 | 상태 | 판정 레벨 |
