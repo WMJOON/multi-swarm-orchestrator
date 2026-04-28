@@ -1,0 +1,20 @@
+{
+  "pack_id": "mso",
+  "description": "Multi-Swarm Orchestrator",
+  "prefix": "mso-",
+  "version": "v0.2.0",
+  "repo_url": "https://github.com/WMJOON/multi-swarm-orchestrator",
+  "overload_threshold": 11,
+  "required_skills": [
+    "mso-workflow-topology-design",
+    "mso-mental-model",
+    "mso-execution-design",
+    "mso-task-execution",
+    "mso-agent-collaboration",
+    "mso-agent-audit-log",
+    "mso-observability",
+    "mso-skill-governance",
+    "mso-workflow-optimizer",
+    "mso-model-optimizer"
+  ]
+}
