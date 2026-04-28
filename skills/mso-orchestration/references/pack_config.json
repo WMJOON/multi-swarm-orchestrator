@@ -15,6 +15,7 @@
     "mso-observability",
     "mso-skill-governance",
     "mso-workflow-optimizer",
-    "mso-model-optimizer"
+    "mso-model-optimizer",
+    "mso-apo-prompt-optimization"
   ]
 }
