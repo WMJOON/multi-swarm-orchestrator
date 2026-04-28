@@ -1,9 +1,13 @@
 ---
 name: mso-workflow-optimizer
 description: |
-  워크플로우/분석 결과를 평가하고 Automation Level(10/20/30)을 선택하여 최적화 리포트를 생성.
-  Use when an existing workflow or analysis pipeline needs performance assessment, optimization suggestions,
-  Tier Escalation (Agentic→Light Model→Logical) 판단, or pattern_stability 기반 자동화 수준 결정.
+  워크플로우의 Automation Level(10/20/30)을 결정하고 최적화 리포트를 생성한다.
+  다음 세 가지 중 하나일 때만 사용한다:
+  (1) 사용자가 특정 워크플로우의 최적화·Level 결정을 명시적으로 요청할 때
+      ("X 워크플로우 최적화 검토", "이 워크플로우 Level 낮출 수 있어?")
+  (2) mso-observability가 pattern_stability 임계값 초과 또는 Tier Escalation 후보를 알림으로 전달할 때
+  (3) 누적 실행 횟수 마일스톤(첫 10회/50회/100회)에 도달해 주기적 리뷰가 필요할 때
+  단순 실행 완료, 오류 처리, 워크플로우 설계 변경은 이 스킬을 호출하지 않는다.
 ---
 
 # mso-workflow-optimizer
@@ -103,12 +107,16 @@ Lead stays in delegate mode.
 
 ### Phase 1: 트리거 수신 + 컨텍스트 로드
 
-1. 트리거 유형을 확인한다: 외부 트리거(operation-agent 경유) 또는 직접 트리거(workflow/analysis 재평가 요청)
+1. 트리거 유형을 확인한다:
+   - `direct` — 사용자 명시적 요청
+   - `observability_alert` — mso-observability의 pattern_stability 알림 (payload에 `alert_type`, `threshold_crossed` 포함)
+   - `milestone` — 누적 실행 횟수 마일스톤 (payload에 `run_count` 포함)
 2. `docs/usage/{workflow_name}.md` 또는 지정된 문서를 읽어 현재 워크플로우 설계 의도를 파악한다
 3. `{workspace}/.mso-context/audit_global.db`에서 해당 워크플로우의 최근 실행 이력을 조회한다
-4. 입력 컨텍스트 확정: `workflow_name`, `current_metrics`, `last_run_id`, `optimization_goal`
+4. `run_count`(완료 실행 횟수)를 확인한다 — `run_count < 10`이면 `data_insufficient: true` 플래그 후 Level 30 기본값으로 Phase 3 진행. Phase 2 루브릭 평가는 스킵.
+5. 입력 컨텍스트 확정: `workflow_name`, `current_metrics`, `last_run_id`, `optimization_goal`, `run_count`
 
-**when_unsure**: 트리거 유형이 불명확하면 최근 audit-log의 `work_type` 필드로 유추하고 사용자에게 확인 요청.
+**when_unsure**: 트리거 유형이 셋 중 어디에도 해당하지 않으면 사용자에게 명시적 요청인지 확인 후 진행. 단순 실행 완료만으로는 진입하지 않는다.
 
 **산출물**: `trigger_context { trigger_type, workflow_name, current_metrics, audit_snapshot }`
 
@@ -358,8 +366,8 @@ flowchart TD
 | →    | `mso-agent-audit-log`          | Phase 4: decision 결과 및 HITL 피드백을 audit_global.db에 기록 |
 | ←    | `mso-observability`            | audit DB 패턴 분석 결과를 Signal C (피드백 이력)로 소비        |
 | ←    | `mso-workflow-topology-design` | topology 변경 후 최적화 재평가 트리거 발생 시 Phase 1 진입     |
-| →    | `mso-task-context-management`  | goal 산출 후 다음 주기 최적화 작업을 티켓으로 등록             |
-| ←    | `mso-task-execution`           | execution_graph 실행 완료 신호 수신 시 트리거                  |
+| →    | `mso-agent-collaboration`      | goal 산출 후 다음 주기 최적화 작업을 티켓으로 등록             |
+| ←    | `mso-task-execution`           | execution_graph의 run_count 마일스톤 도달 시에만 트리거 (매 실행 완료마다 발동하지 않음) |
 | →    | `mso-agent-collaboration`      | Phase 0 (멀티 에이전트 모드): teammates를 티켓으로 dispatch (provider-free Jewels 패턴) |
 | →    | `mso-model-optimizer`          | Tier Escalation 시 Handoff Payload 전달 → Label Strategy + 경량 모델 생성 트리거 |
 | ↔    | `mso-model-optimizer`          | llm-as-a-judge를 서브프로세스로 공유 (Phase 1 데이터 품질 검증) |
