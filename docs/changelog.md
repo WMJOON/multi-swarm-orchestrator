@@ -1,5 +1,26 @@
 # 변경 이력
 
+## v0.2.0 (2026-04-28)
+
+> 스킬 13개 → 10개 통합 재편. 얇게 많이 → 굵게 적게. 프로세스 규약과 티켓 관리를 실제 소유자 스킬로 흡수하고, 전체 cross-reference 정합을 완료했다.
+
+### Changed — 스킬 구조 재편
+
+| 변경 | 내용 |
+|------|------|
+| **mso-vertex-design + mso-mental-model-design → `mso-mental-model`** | Directive Registry + Local Chart + mental_model_bundle 생성 + GT Angle Policy를 단일 진입점으로 통합 |
+| **mso-process-template 배포** | Fallback Policy Registry → `mso-task-execution` 인라인. Hand-off 템플릿 6종(PRD/SPEC/ADR/HITL/Retrospective/Design Handoff) → `mso-agent-collaboration/templates/` |
+| **mso-task-context-management → `mso-agent-collaboration` 흡수** | 티켓 lifecycle 스크립트 5개 + 모듈 3개(node-bootstrap/ticket-lifecycle/validation-archive) 통합. 티켓 생성·상태 전이·dispatch 단일 진입점 |
+
+### Fixed — Cross-reference 정합
+
+- `CLAUDE.md` MSO 정책 참조 경로 갱신 (`mso-process-template` → `mso-task-execution`/`mso-agent-collaboration`)
+- `mso-skill-governance` registry-scan 필수 스킬 목록 10개 반영, `governance_baseline.json` v0.0.5 갱신
+- `mso-mental-model/core.md` 제목·경로 참조 정합
+- `mso-task-execution` 입력 출처 `mso-vertex-design` → `mso-mental-model` 갱신
+
+---
+
 ## v0.1.3 (2026-04-01)
 
 ### 핵심 변경: 스킬 구조 전면 개편 + Agent Lightning 통합 (spec)

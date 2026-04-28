@@ -1,4 +1,4 @@
-# mso-mental-model-design — Core Rules
+# mso-mental-model — Core Rules
 
 ## Terminology
 
@@ -15,7 +15,7 @@
 - Directive Registry (해석 순서):
   1. `~/.mso-registry/<domain>/` (글로벌)
   2. `{workspace}/.mso-context/vertex_registry/<domain>/` (워크스페이스 fallback)
-  3. `{mso-mental-model-design}/directives/` (seed fallback)
+  3. `{mso-mental-model}/directives/` (seed fallback)
 
 ## Output Interface
 

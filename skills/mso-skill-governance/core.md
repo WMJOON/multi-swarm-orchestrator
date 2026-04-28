@@ -1,13 +1,13 @@
 ---
 name: mso-skill-governance
-version: 0.0.2
+version: 0.0.5
 layer: operational
 ---
 
 # Core
 
 ## 목적
-00~07 스킬의 구조, 계약(CC), 레지스트리 정합을 검증해 파이프라인 안정성을 확보한다.
+10개 MSO 스킬의 구조, 계약(CC), 레지스트리 정합을 검증해 파이프라인 안정성을 확보한다.
 
 ## 검사 범위
 - 필수 파일 존재 (`core.md`, `modules/modules_index.md`, `references/source_map.md`, `{mso-skill-governance}/scripts/...`)

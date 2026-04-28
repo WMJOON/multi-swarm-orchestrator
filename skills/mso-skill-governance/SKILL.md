@@ -66,7 +66,7 @@ description: |
 
 > Non-Human Identity Attestation — 티켓 컨텍스트 기반 동적 스킬 권한 검증
 
-1. `mso-task-context-management`의 활성 티켓에서 `ticket_id`, `template_id`를 읽는다
+1. `mso-agent-collaboration`의 활성 티켓에서 `ticket_id`, `template_id`를 읽는다
 2. 스킬 권한 화이트리스트(`nhi_policy.json`)와 대조하여 현재 실행 컨텍스트에서 호출 가능한 스킬 목록 확인
 3. 허용 범위 초과 스킬 호출 시 → `finding: fail` + `mso-task-execution`에 에스컬레이션 신호
 
@@ -74,7 +74,7 @@ description: |
 ```json
 {
   "template_id": "<template>",
-  "allowed_skills": ["mso-vertex-design", "mso-workflow-topology-design"],
+  "allowed_skills": ["mso-mental-model", "mso-workflow-topology-design"],
   "allowed_data_access": ["read:workspace", "write:mso-context"],
   "denied_skills": []
 }
