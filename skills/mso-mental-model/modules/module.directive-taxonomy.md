@@ -50,5 +50,5 @@ vertex_registry/
 
 | domain | 소유자 | 설명 |
 |--------|--------|------|
-| `mso-governance` | `mso-process-template` | MSO 내부 프로세스 규약 (직접 등록하지 않음, 참조만) |
+| `mso-governance` | `mso-skill-governance` | MSO 내부 프로세스 규약 (직접 등록하지 않음, 참조만) |
 | `general` | system | fallback directive. 도메인 특화 없이 범용 적용 |

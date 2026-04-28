@@ -1,9 +1,10 @@
 ---
 name: mso-agent-collaboration
 description: |
-  Dispatches tickets for multi-agent execution and integrates run output.
-  Use when a ticket requires multi-agent execution, 6-agent role model dispatch,
-  branching/merge orchestration, or Jewels-pattern teammate coordination.
+  Manages ticket lifecycle and dispatches tickets for multi-agent execution.
+  Use when tasks need to be created/tracked (TKT-xxxx), state transitions are required
+  (todo → in_progress → done/blocked/cancelled), or multi-agent dispatch,
+  branching/merge orchestration, or Jewels-pattern teammate coordination is needed.
 ---
 
 # mso-agent-collaboration
@@ -19,7 +20,35 @@ description: |
 | Critic/Judge | 3 | 머지 합의, 품질 평가 |
 | Sentinel | 4 | 에러 식별, Checkout 복구, HITL 에스컬레이션 |
 
-## 실행 프로세스
+## 티켓 관리 (Ticket Lifecycle)
+
+### Bootstrap
+- `{workspace}/.mso-context/active/<run_id>/40_collaboration/task-context/`가 없으면 생성
+- `tickets/` 폴더와 `rules.md` 생성
+- `python3 {mso-agent-collaboration}/scripts/bootstrap_node.py --path {workspace}/.mso-context/active/<run_id>/40_collaboration/task-context`
+
+### 티켓 작성 / 상태 전이
+- ID 정규화: `TKT-xxxx`
+- 상태 enum: `todo → in_progress → done | blocked → in_progress`; `done`/`cancelled`는 terminal
+- `python3 {mso-agent-collaboration}/scripts/create_ticket.py "..." --path <task-context-root>`
+- `python3 {mso-agent-collaboration}/scripts/update_status.py --ticket TKT-xxxx --status in_progress`
+- `python3 {mso-agent-collaboration}/scripts/validate_task_node.py --path <task-context-root>`
+- `python3 {mso-agent-collaboration}/scripts/archive_tasks.py --path <task-context-root>`
+
+### 템플릿
+
+| 템플릿 | 파일 | 용도 |
+|--------|------|------|
+| PRD | [templates/PRD.md](templates/PRD.md) | "왜 지금 이 방식인가" — Scenario 단위 요구사항 |
+| SPEC | [templates/SPEC.md](templates/SPEC.md) | 실행 계획 + 정책 + 티켓 리스트 |
+| ADR | [templates/ADR.md](templates/ADR.md) | 아키텍처 의사결정 기록 |
+| HITL Escalation Brief | [templates/HITL_ESCALATION_BRIEF.md](templates/HITL_ESCALATION_BRIEF.md) | H1/H2 Gate 에스컬레이션 판단 요청서 |
+| Run Retrospective | [templates/RUN_RETROSPECTIVE.md](templates/RUN_RETROSPECTIVE.md) | Run 완료 후 회고 문서 |
+| Design Handoff Summary | [templates/DESIGN_HANDOFF_SUMMARY.md](templates/DESIGN_HANDOFF_SUMMARY.md) | Design → Ops Swarm 인수인계 요약 |
+
+---
+
+## 멀티에이전트 디스패치
 
 ### Phase 1) Ticket ingestion
 - ticket frontmatter를 파싱한다.

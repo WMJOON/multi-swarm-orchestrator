@@ -1,14 +1,16 @@
 {
-  "skill_pack_version": "v0.0.1",
+  "skill_pack_version": "v0.0.5",
   "required_skill_ids": [
     "mso-workflow-topology-design",
-    "mso-mental-model-design",
+    "mso-mental-model",
     "mso-execution-design",
-    "mso-task-context-management",
+    "mso-task-execution",
     "mso-agent-collaboration",
     "mso-agent-audit-log",
     "mso-observability",
-    "mso-skill-governance"
+    "mso-skill-governance",
+    "mso-workflow-optimizer",
+    "mso-model-optimizer"
   ],
-  "registry_overload_threshold": 8
+  "registry_overload_threshold": 10
 }

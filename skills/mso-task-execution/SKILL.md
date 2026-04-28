@@ -10,7 +10,7 @@ description: |
 # mso-task-execution
 
 > 이 스킬은 설계 산출물을 소비하여 실제 실행을 조율하는 **Runtime Orchestrator**다.
-> 무엇을 어떤 순서로 실행할지 결정하고, wrapper module을 명시적으로 호출하며, 에러 발생 시 `mso-process-template`의 폴백 규칙을 참조하여 대응 행동을 트리거한다.
+> 무엇을 어떤 순서로 실행할지 결정하고, wrapper module을 명시적으로 호출하며, 에러 발생 시 내장 폴백 규칙(Fallback Policy Registry)을 참조하여 대응 행동을 트리거한다.
 
 ---
 
@@ -31,15 +31,19 @@ description: |
 | `wrapper.otel` | LLM 호출 전후 OTel Span 생성·종료. 로컬 OTLP stdout 출력 (opt-in: Phoenix). trace_id를 Core에 반환, node_snapshots에 optional 저장 | spec-only |
 | `wrapper.guardrails` | pre-snapshot JSON Schema 검증 + PII 스캔. 실패 시 auto-reprompt. v0.1.3: 자체 구현, v0.1.4+: 외부 SDK 교체 검토 | spec-only |
 
-### retry/error routing — 정책 참조형
+### retry/error routing — 폴백 규칙 (Fallback Policy Registry)
 
-`mso-task-execution`은 에러 분류·severity·max_retry 값을 직접 정의하지 않는다.
-**폴백 정책 정의는 `mso-process-template` 소유**이며, `mso-task-execution`은 이를 참조하여 실행 트리거만 담당한다.
+| 에러 유형 | severity | action | max_retry | requires_human |
+|-----------|----------|--------|-----------|----------------|
+| `schema_validation_error` | high | checkout | 2 | false |
+| `hallucination` | medium | retry | 1 | false |
+| `timeout` | low | retry | 3 | false |
+| `hitl_block` | critical | escalate | 0 | true |
 
-| 단계 | 소유 | 내용 |
-|------|------|------|
-| 정책 정의 | `mso-process-template` | 에러 유형별 severity·action·max_retry |
-| 실행 트리거 | `mso-task-execution` Core | 정책 조회 → retry 실행 / Sentinel 에스컬레이션 / checkout 복구 트리거 |
+- `retry`: 동일 프롬프트 + 에러 메시지 첨부 후 재요청
+- `escalate`: Sentinel Agent에 `hitl_request` 이벤트 전달
+- `checkout`: 절대 SHA 참조로 마지막 정상 커밋 복구
+- `max_retry` 소진 후 미해소 시 severity 한 단계 상향 후 `escalate` 전환
 
 ---
 
@@ -48,7 +52,7 @@ description: |
 | 파일 | 출처 | 필수 여부 |
 |------|------|-----------|
 | `execution_graph.json` | `mso-workflow-topology-design` (Phase A6) | 필수 |
-| `directive_binding.json` | `mso-vertex-design` | 필수 |
+| `directive_binding.json` | `mso-mental-model` | 필수 |
 
 **소비 전 검증:** `graph_id`, `schema_version`, `nodes[]` 필수 필드 존재 확인. `schema_version` 불일치 시 실행 중단.
 
@@ -87,7 +91,7 @@ description: |
 
 ### Phase 4: 에러 처리
 
-1. 발생한 에러 유형을 `mso-process-template`의 폴백 규칙과 대조
+1. 발생한 에러 유형을 위의 폴백 규칙(Fallback Policy Registry)과 대조
 2. action 결정: `retry` / `checkout` / `escalate`
 3. `escalate` 시 → Sentinel Agent에 `hitl_request` 이벤트 전달
 
@@ -107,9 +111,9 @@ description: |
 | 연결 | 스킬 | 설명 |
 |------|------|------|
 | ← | `mso-workflow-topology-design` | CC-01: execution_graph.json + topology_spec 소비 |
-| ← | `mso-vertex-design` | CC-02: directive_binding.json 소비 |
+| ← | `mso-mental-model` | CC-02: directive_binding.json 소비 |
 | → | `mso-agent-audit-log` | CC-06: node_snapshots 적재 (trace_id optional 포함) |
-| ↔ | `mso-process-template` | 폴백 규칙 참조 (정책 정의는 process-template 소유) |
+| ↔ | Fallback Policy Registry | 폴백 규칙 인라인 정의 (위 표 참조) |
 | ← | `mso-skill-governance` | NHI 정책 위반 시 에스컬레이션 신호 수신 `[spec-only]` |
 
 ---
