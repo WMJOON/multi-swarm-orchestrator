@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
-REGISTRY_PATH = ROOT / "skills" / "skill-pack-registry" / "references" / "pack_registry.json"
 DEFAULT_MAX_SKILLS = 10
 REQUIRED_SKILLS = [
     "mso-workflow-topology-design",
@@ -47,12 +46,12 @@ from skills._shared.runtime_workspace import (  # noqa: E402
 from _cc_defaults import get_default_contracts
 
 
-def load_pack_config(pack_id: str) -> "Dict[str, Any] | None":
-    if not REGISTRY_PATH.exists():
+def load_pack_config(pack_id: str, skills_dir: Path) -> "Dict[str, Any] | None":
+    config_path = skills_dir / f"{pack_id}-orchestration" / "references" / "pack_config.json"
+    if not config_path.exists():
         return None
-    with open(REGISTRY_PATH, encoding="utf-8") as f:
-        data = json.load(f)
-    return data.get("packs", {}).get(pack_id)
+    with open(config_path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def collect_skills(skills_root: Path, prefix: str = "") -> Dict[str, Path]:
@@ -298,7 +297,7 @@ def main() -> int:
         max_sk = DEFAULT_MAX_SKILLS
         prefix_filter = ""
         if args.pack:
-            pack_cfg = load_pack_config(args.pack)
+            pack_cfg = load_pack_config(args.pack, skills_dir)
             if pack_cfg:
                 req_skills = pack_cfg["required_skills"]
                 max_sk = pack_cfg["overload_threshold"]
