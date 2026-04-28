@@ -1,54 +1,54 @@
 #!/bin/bash
-# MSO Skill Pack — install skills as symlinks into ~/.claude/skills/
-# Default: minimal (orchestration skill only)
-# Full:    ./install.sh --full
+# MSO Skill Pack — install symlinks into ~/.{claude,codex}/skills/ and ~/.skill-modules/
+# Targets: CLAUDE_CODE (default), CODEX, ALL
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILLS_SRC="$REPO_DIR/skills"
-SKILLS_DST="${HOME}/.claude/skills"
+SKILL_MODULES_SRC="$REPO_DIR/.skill-modules"
+ORCHESTRATION_SRC="$REPO_DIR/skills/mso-orchestration"
+MODULES_DST="${HOME}/.skill-modules"
 
-FULL=false
+# Parse args
+TARGETS=()
 for arg in "$@"; do
-    [[ "$arg" == "--full" ]] && FULL=true
+    case "$arg" in
+        --codex)      TARGETS+=(codex) ;;
+        --all)        TARGETS+=(claude codex) ;;
+        *)            ;;
+    esac
 done
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(claude)
 
-mkdir -p "$SKILLS_DST"
-
-echo "MSO Skill Pack Install ($( $FULL && echo 'full' || echo 'minimal — orchestration only' ))"
-echo "  Source : $SKILLS_SRC"
-echo "  Target : $SKILLS_DST"
+echo "MSO Skill Pack Install"
+echo "  Targets : ${TARGETS[*]}"
 echo ""
 
-installed=0
-skipped=0
-
-for skill_dir in "$SKILLS_SRC"/*/; do
-    skill_name="$(basename "$skill_dir")"
-    [[ "$skill_name" == _* || "$skill_name" == .* ]] && continue
-
-    # minimal mode: only install *-orchestration skills
-    if ! $FULL && [[ "$skill_name" != *"-orchestration" ]]; then
-        continue
-    fi
-
-    target="$SKILLS_DST/$skill_name"
-
-    if [ -L "$target" ]; then
-        echo "  SKIP  $skill_name  (symlink already exists)"
-        ((skipped++)) || true
-    elif [ -d "$target" ]; then
-        echo "  SKIP  $skill_name  (directory exists — remove manually to re-link)"
-        ((skipped++)) || true
+link_target() {
+    local src="$1" dst="$2" label="$3"
+    if [ -L "$dst" ]; then
+        echo "  SKIP  $label  (symlink already exists)"
+    elif [ -e "$dst" ]; then
+        echo "  SKIP  $label  (path exists — remove manually to re-link)"
     else
-        ln -s "$skill_dir" "$target"
-        echo "  LINK  $skill_name"
-        ((installed++)) || true
+        ln -s "$src" "$dst"
+        echo "  LINK  $label"
     fi
+}
+
+# 1) ~/.skill-modules/mso-skills → .skill-modules/
+mkdir -p "$MODULES_DST"
+link_target "$SKILL_MODULES_SRC" "$MODULES_DST/mso-skills" "~/.skill-modules/mso-skills"
+
+echo ""
+
+# 2) orchestration skill → each target
+for target in "${TARGETS[@]}"; do
+    SKILLS_DST="${HOME}/.${target}/skills"
+    mkdir -p "$SKILLS_DST"
+    echo "  [$target]"
+    link_target "$ORCHESTRATION_SRC" "$SKILLS_DST/mso-orchestration" "mso-orchestration"
 done
 
 echo ""
-echo "Done: $installed linked, $skipped skipped."
-if ! $FULL; then
-    echo "Tip: run './install.sh --full' to install all individual skills."
-fi
+echo "Done. Sub-skills are available at ~/.skill-modules/mso-skills/"
+echo "Tip: run with --codex or --all to also install for Codex."

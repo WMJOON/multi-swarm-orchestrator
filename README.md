@@ -159,30 +159,29 @@ graph LR
 ```bash
 git clone https://github.com/WMJOON/multi-swarm-orchestrator.git
 cd multi-swarm-orchestrator
-./install.sh
+./install.sh          # Claude Code만
+./install.sh --codex  # Codex만
+./install.sh --all    # Claude Code + Codex
 ```
 
-기본값은 `mso-orchestration`만 링크하는 **minimal 모드**다. 서브스킬은 orchestration 스킬이 on-demand로 로드한다.
+`install.sh`는 두 가지를 생성한다:
 
-```bash
-./install.sh --full   # 전체 스킬 개별 설치
-```
+| 생성 경로 | 내용 |
+|----------|------|
+| `~/.claude/skills/mso-orchestration` | 진입점 스킬 심링크 |
+| `~/.skill-modules/mso-skills/` | 서브스킬 디렉토리 심링크 |
 
-이미 같은 이름의 디렉토리가 존재하면 건너뛰고 경고를 출력한다.
+이미 같은 경로가 존재하면 건너뛰고 출력한다.
 
 ### 서브스킬 On-Demand 로딩
 
-minimal 모드에서는 `~/.claude/skills/`에 `mso-orchestration`만 존재한다. 서브스킬이 필요할 때는 아래 명령으로 실제 경로를 확인한 뒤 Read한다:
+서브스킬은 `~/.skill-modules/mso-skills/`에 위치한다. 필요할 때 아래 경로를 Read 도구로 직접 읽으면 로드된다:
 
-```bash
-python3 -c "
-import pathlib
-p = pathlib.Path('~/.claude/skills/mso-orchestration').expanduser().resolve().parent
-print(p / 'SKILL_NAME' / 'SKILL.md')
-"
+```
+~/.skill-modules/mso-skills/SKILL_NAME/SKILL.md
 ```
 
-`SKILL_NAME`을 아래 라우팅 테이블의 스킬명으로 교체하면 절대 경로가 반환된다.
+`SKILL_NAME`을 아래 라우팅 테이블의 스킬명으로 교체한다.
 
 ### 스킬 라우팅
 
