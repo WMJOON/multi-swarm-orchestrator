@@ -56,4 +56,5 @@ python3 ~/.claude/skills/mso-skill-governance/scripts/validate_gov.py \
 | 패턴 분석 · HITL 체크포인트 | `mso-observability` |
 | Automation Level 판단 · 최적화 | `mso-workflow-optimizer` |
 | 경량 모델 학습 · 배포 | `mso-model-optimizer` |
+| LLM 라벨 vs 인간 라벨 불일치 분석 · 프롬프트 APO | `mso-apo-prompt-optimization` |
 | 스킬 구조 · CC 계약 검증 | `mso-skill-governance` |
