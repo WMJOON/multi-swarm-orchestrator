@@ -8,7 +8,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MAX_SKILLS = 10
@@ -54,6 +54,18 @@ def load_pack_config(pack_id: str, skills_dir: Path) -> "Dict[str, Any] | None":
         return json.load(f)
 
 
+def find_module_root(pack_root: Path, pack_id: str) -> Optional[Path]:
+    candidates = [
+        Path.home() / ".skill-modules" / f"{pack_id}-skills",
+        pack_root / ".skill-modules",
+    ]
+    for candidate in candidates:
+        expanded = candidate.expanduser()
+        if expanded.is_dir():
+            return expanded.resolve()
+    return None
+
+
 def collect_skills(skills_root: Path, prefix: str = "") -> Dict[str, Path]:
     out: Dict[str, Path] = {}
     if not skills_root.exists():
@@ -84,6 +96,9 @@ def validate_skill_structure(
     skills_root: Path,
     required_skills: "List[str] | None" = None,
     max_skills: "int | None" = None,
+    orchestration_path: Optional[Path] = None,
+    module_root: Optional[Path] = None,
+    pack_id: str = "",
 ) -> Tuple[List[dict], List[dict]]:
     if required_skills is None:
         required_skills = REQUIRED_SKILLS
@@ -92,6 +107,37 @@ def validate_skill_structure(
 
     warnings: List[dict] = []
     errors: List[dict] = []
+
+    if orchestration_path is not None:
+        if not orchestration_path.exists():
+            errors.append(
+                {
+                    "id": f"{pack_id or 'pack'}-orchestration",
+                    "severity": "fail",
+                    "finding": "missing orchestration entrypoint",
+                    "evidence": str(orchestration_path),
+                }
+            )
+        elif not (orchestration_path / "SKILL.md").exists():
+            errors.append(
+                {
+                    "id": f"{pack_id or 'pack'}-orchestration",
+                    "severity": "fail",
+                    "finding": "missing orchestration SKILL.md",
+                    "evidence": str(orchestration_path / 'SKILL.md'),
+                }
+            )
+
+    if module_root is None or not module_root.exists():
+        errors.append(
+            {
+                "id": f"{pack_id or 'pack'}-modules",
+                "severity": "fail",
+                "finding": "missing skill module root",
+                "evidence": str(module_root) if module_root else '(none)',
+            }
+        )
+        return warnings, errors
 
     for sid in required_skills:
         path = skills.get(sid)
@@ -107,32 +153,42 @@ def validate_skill_structure(
             continue
 
         checks = {
+            "skill": path / "SKILL.md",
             "core": path / "core.md",
             "modules": path / "modules" / "modules_index.md",
             "references": path / "references",
             "scripts": path / "scripts",
         }
-        if not checks["core"].exists():
+        if not checks["skill"].exists():
             errors.append(
                 {
                     "id": sid,
                     "severity": "fail",
-                    "finding": "missing core.md",
-                    "evidence": str(checks["core"]),
+                    "finding": "missing SKILL.md",
+                    "evidence": str(checks["skill"]),
+                }
+            )
+        if not checks["core"].exists() and not checks["skill"].exists():
+            errors.append(
+                {
+                    "id": sid,
+                    "severity": "fail",
+                    "finding": "missing core.md and SKILL.md",
+                    "evidence": str(path),
                 }
             )
         if not checks["modules"].exists():
-            errors.append(
+            warnings.append(
                 {
                     "id": sid,
-                    "severity": "fail",
+                    "severity": "warn",
                     "finding": "missing modules/modules_index.md",
                     "evidence": str(checks["modules"]),
                 }
             )
         for key in ("references", "scripts"):
             if not checks[key].exists():
-                errors.append(
+                warnings.append(
                     {
                         "id": sid,
                         "severity": "warn",
@@ -296,17 +352,32 @@ def main() -> int:
         req_skills = REQUIRED_SKILLS
         max_sk = DEFAULT_MAX_SKILLS
         prefix_filter = ""
-        if args.pack:
-            pack_cfg = load_pack_config(args.pack, skills_dir)
+        pack_id = args.pack.strip()
+        orchestration_path: Optional[Path] = None
+        module_root: Optional[Path] = None
+        if pack_id:
+            pack_cfg = load_pack_config(pack_id, skills_dir)
             if pack_cfg:
                 req_skills = pack_cfg["required_skills"]
                 max_sk = pack_cfg["overload_threshold"]
                 prefix_filter = pack_cfg["prefix"]
             else:
-                print(f"WARNING: pack '{args.pack}' not found in registry, using defaults")
+                print(f"WARNING: pack '{pack_id}' not found in registry, using defaults")
+            orchestration_path = skills_dir / f"{pack_id}-orchestration"
+            module_root = find_module_root(pack_root, pack_id)
+        else:
+            module_root = skills_dir
 
-        skills = collect_skills(skills_dir, prefix=prefix_filter)
-        w1, e1 = validate_skill_structure(skills, skills_dir, required_skills=req_skills, max_skills=max_sk)
+        skills = collect_skills(module_root if module_root is not None else skills_dir, prefix=prefix_filter)
+        w1, e1 = validate_skill_structure(
+            skills,
+            module_root if module_root is not None else skills_dir,
+            required_skills=req_skills,
+            max_skills=max_sk,
+            orchestration_path=orchestration_path,
+            module_root=module_root,
+            pack_id=pack_id,
+        )
         w2, e2 = validate_contracts(get_default_contracts())
 
         warnings = w1 + w2
