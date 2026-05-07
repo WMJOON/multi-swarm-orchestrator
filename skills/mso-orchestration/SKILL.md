@@ -1,17 +1,102 @@
 ---
 name: mso-orchestration
-description: |
-  MSO(Multi-Swarm Orchestrator) 스킬 팩의 진입점.
-  다음 상황에 사용한다:
-  (1) MSO 스킬 팩 설치·설치 상태 확인
-  (2) 특정 요청을 어떤 MSO 스킬이 처리해야 하는지 판단
-  (3) MSO 팩 거버넌스 검증 실행
-  팩 정의(required_skills, version 등)는 references/pack_config.json이 단일 소스.
+description: |-
+  MSO(Multi-Swarm Orchestrator) 스킬 팩 오케스트레이터. 상시 로드 스킬.
+  워크플로우 설계·실행·최적화·거버넌스 관련 모든 요청의 진입점.
+  트리거: "워크플로우 설계", "태스크 그래프", "실행 설계", "Goal→Task",
+  "멀티에이전트 협업", "에이전트 디스패치", "티켓 관리",
+  "워크플로우 최적화", "automation level 판단", "프로세스 최적화",
+  "APO", "프롬프트 튜닝", "경량 모델", "llm-as-a-judge",
+  "MSO", "mso", "거버넌스 검증", "감사 로그", "CC 계약".
 ---
 
 # mso-orchestration
 
 팩 정의: [references/pack_config.json](references/pack_config.json)
+
+---
+
+## 오케스트레이터 역할
+
+라우터 + 파이프라인 제어기다. 서브스킬 내부 로직(Fallback Policy, OTel 등)은 복제하지 않고 서브스킬에 위임한다.  
+컨텍스트 전달은 파일 기반: `.mso-context/active/<run_id>/`
+
+---
+
+## 1. 요청 분석 — 인텐트 → 파이프라인 매핑
+
+| 인텐트 | 신호 키워드 | 파이프라인 |
+|--------|-----------|----------|
+| 신규 워크플로우 설계 | "워크플로우 만들어", "태스크 그래프", "Goal→", "새 자동화" | [A] |
+| 기존 워크플로우 최적화 | "병목", "automation level", "최적화", "느려" | [B] |
+| 모델·프롬프트 개선 | "APO", "프롬프트 튜닝", "라벨 불일치", "경량 모델" | [C] |
+| 거버넌스·감사 | "검증", "governance", "감사 로그", "CC 계약" | [D] |
+
+특정 서브스킬이 직접 언급된 경우: 해당 스킬만 로드하여 위임.
+
+---
+
+## 2. 서브스킬 로드 절차
+
+```
+1. 인텐트 → 파이프라인 결정
+2. Read: ~/.skill-modules/mso-skills/{SKILL_NAME}/SKILL.md
+3. 입력 스펙 확인 → context 파일 경로 파악
+4. 스킬 워크플로우 실행 위임
+5. 완료 아티팩트 경로 사용자에게 보고
+```
+
+---
+
+## 3. 캐노니컬 파이프라인
+
+### [A] 신규 워크플로우 설계
+
+```
+mso-workflow-topology-design  →  workflow_topology_spec.json
+mso-mental-model              →  directive_binding.json
+mso-execution-design          →  execution_graph.json
+mso-task-execution            →  node_snapshots + 실행 결과
+```
+
+각 스킬은 이전 스킬의 출력 파일을 입력으로 소비한다.
+
+### [B] 기존 워크플로우 최적화
+
+```
+mso-observability      →  병목 리포트
+mso-workflow-optimizer →  최적화 제안 / Automation Level 판정
+```
+
+### [C] 모델·프롬프트 개선
+
+```
+mso-apo-prompt-optimization  →  불일치 분석 + 프롬프트 후보
+mso-model-optimizer          →  경량 모델 학습 계획 (선택)
+```
+
+### [D] 거버넌스·감사
+
+| 목적 | 스킬 |
+|------|------|
+| CC 계약 검증 | `mso-skill-governance` |
+| 실행 로그 조회 | `mso-agent-audit-log` |
+| 멀티에이전트 디스패치 | `mso-agent-collaboration` |
+
+---
+
+## 4. 실행 종료 조건
+
+| 파이프라인 | 종료 조건 |
+|-----------|---------|
+| [A] 신규 설계 | `execution_graph.json` 존재 + 모든 node_snapshot 완료 상태 |
+| [B] 최적화 | 최적화 보고서 생성 + 사용자 승인 |
+| [C] APO | 프롬프트 후보 출력 완료 |
+| [D] 거버넌스 | 검증 결과 출력 |
+
+결과 요약을 사용자에게 보고하고 아티팩트 경로를 명시한다.
+
+---
 
 ## 설치
 
@@ -27,34 +112,3 @@ cd multi-swarm-orchestrator
 python3 ~/.claude/skills/mso-skill-governance/scripts/validate_gov.py \
   --pack-root ~/.claude --pack mso --json
 ```
-
-## 서브스킬 On-Demand 로딩
-
-서브스킬은 `~/.skill-modules/mso-skills/`에 위치한다. 아래 경로를 Read 도구로 읽으면 해당 스킬이 로드된다.
-
-```
-~/.skill-modules/mso-skills/SKILL_NAME/SKILL.md
-```
-
-예시:
-```
-~/.skill-modules/mso-skills/mso-mental-model/SKILL.md
-```
-
-`SKILL_NAME`을 아래 라우팅 테이블의 스킬명으로 교체한다.
-
-## 스킬 라우팅
-
-| 요청 유형 | 담당 스킬 |
-|----------|----------|
-| Goal → Task Graph 설계 | `mso-workflow-topology-design` |
-| Mental Model · Directive 바인딩 | `mso-mental-model` |
-| Execution Graph 설계 | `mso-execution-design` |
-| 워크플로우 실행 · Fallback | `mso-task-execution` |
-| 티켓 관리 · 멀티에이전트 Dispatch | `mso-agent-collaboration` |
-| 실행 로그 · SQLite SoT | `mso-agent-audit-log` |
-| 패턴 분석 · HITL 체크포인트 | `mso-observability` |
-| Automation Level 판단 · 최적화 | `mso-workflow-optimizer` |
-| 경량 모델 학습 · 배포 | `mso-model-optimizer` |
-| LLM 라벨 vs 인간 라벨 불일치 분석 · 프롬프트 APO | `mso-apo-prompt-optimization` |
-| 스킬 구조 · CC 계약 검증 | `mso-skill-governance` |
