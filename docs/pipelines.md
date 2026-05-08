@@ -175,6 +175,35 @@ flowchart LR
 
 ---
 
+## 멀티 프로바이더 실행 (E)
+
+`mso-agent-collaboration`의 `collaborate.py`를 통해 Codex·Claude·Gemini CLI를 직접 실행한다.
+워크플로우 내 second opinion이 필요하거나 프로바이더별 역할을 분리할 때 사용한다.
+
+```mermaid
+flowchart LR
+    REQ["요청<br/>(second opinion / 멀티 프로바이더)"]
+    COLLAB["mso-agent-collaboration<br/>collaborate.py"]
+    CODEX["Codex CLI"]
+    CLAUDE["Claude CLI"]
+    GEMINI["Gemini CLI"]
+    OUT["provider별 응답 JSON"]
+
+    REQ --> COLLAB
+    COLLAB -->|run --all| CODEX & CLAUDE & GEMINI
+    CODEX & CLAUDE & GEMINI --> OUT
+```
+
+| 실행 방식 | 명령 | 용도 |
+|----------|------|------|
+| `run --all` | 전체 프로바이더 동시 전송 | second opinion, 결과 비교 |
+| `run --tasks` | 프로바이더별 역할 분리 | arch/risk/feasibility 분업 |
+| `swarm start` | tmux 장기 실행 세션 | bus 기반 멀티 에이전트 |
+
+Provider 설정: `~/.skill-modules/mso-skills/mso-agent-collaboration/config/providers.yaml`
+
+---
+
 ## Hand-off Templates
 
 | 템플릿 | 소속 스킬 | 용도 |

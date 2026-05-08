@@ -161,7 +161,55 @@ python3 {mso-task-context-management}/scripts/archive_tasks.py \
 
 ---
 
-## 3. 검증 (Validation)
+## 3. 멀티 프로바이더 실행 (Multi-Provider)
+
+Codex·Claude·Gemini CLI로 동일 프롬프트를 동시에 전송하거나, 프로바이더별 역할을 분리하여 실행한다.
+`mso-agent-collaboration` 스킬에 포함된 `collaborate.py`를 사용한다.
+
+```bash
+COLLAB=~/.skill-modules/mso-skills/mso-agent-collaboration/scripts
+
+# 프로바이더 상태 확인
+python3 "$COLLAB/collaborate.py" status
+
+# 전체 프로바이더에 동일 프롬프트 전송 (second opinion)
+python3 "$COLLAB/collaborate.py" run --all \
+  --context ./PRD.md \
+  -m "PRD를 시니어 리뷰어 관점에서 비평해줘" \
+  --format json
+
+# 프로바이더별 역할 분리
+python3 "$COLLAB/collaborate.py" run --context ./PRD.md --tasks \
+  "codex@gpt-5:아키텍처 가정 검토:arch" \
+  "claude@sonnet:구현 리스크 식별:risk" \
+  "gemini@gemini-2.5-pro:실현 가능성 확인:feasibility" \
+  --format json
+
+# Swarm 세션 (tmux 기반 장기 실행)
+python3 "$COLLAB/collaborate.py" swarm init --db ./.ai-collab/swarm.db
+python3 "$COLLAB/collaborate.py" swarm start \
+  --db ./.ai-collab/swarm.db \
+  --session team-a \
+  --agents planner:claude,coder:codex,reviewer:gemini
+```
+
+티켓에서 swarm을 자동 실행하려면 frontmatter에 추가:
+
+```yaml
+---
+id: TKT-0001
+title: 멀티 에이전트 분석
+status: todo
+tags: [swarm]
+swarm_db: ./.ai-collab/swarm.db
+swarm_session: team-a
+swarm_agents: planner:claude,coder:codex,reviewer:gemini
+---
+```
+
+---
+
+## 4. 검증 (Validation)
 
 ```bash
 # 스키마 정합성 확인

@@ -7,7 +7,9 @@ description: |-
   "멀티에이전트 협업", "에이전트 디스패치", "티켓 관리",
   "워크플로우 최적화", "automation level 판단", "프로세스 최적화",
   "APO", "프롬프트 튜닝", "경량 모델", "llm-as-a-judge",
-  "MSO", "mso", "거버넌스 검증", "감사 로그", "CC 계약".
+  "MSO", "mso", "거버넌스 검증", "감사 로그", "CC 계약",
+  "멀티 프로바이더", "second opinion", "provider 비교", "collaborate",
+  "codex 비교", "gemini 비교", "여러 모델", "ai-collaborator".
 ---
 
 # mso-orchestration
@@ -31,6 +33,7 @@ description: |-
 | 기존 워크플로우 최적화 | "병목", "automation level", "최적화", "느려" | [B] |
 | 모델·프롬프트 개선 | "APO", "프롬프트 튜닝", "라벨 불일치", "경량 모델" | [C] |
 | 거버넌스·감사 | "검증", "governance", "감사 로그", "CC 계약" | [D] |
+| 멀티 프로바이더 실행 | "second opinion", "멀티 프로바이더", "여러 모델 비교", "collaborate", "codex/gemini 비교" | [E] |
 
 특정 서브스킬이 직접 언급된 경우: 해당 스킬만 로드하여 위임.
 
@@ -83,6 +86,17 @@ mso-model-optimizer          →  경량 모델 학습 계획 (선택)
 | 실행 로그 조회 | `mso-agent-audit-log` |
 | 멀티에이전트 디스패치 | `mso-agent-collaboration` |
 
+### [E] 멀티 프로바이더 실행
+
+```
+mso-agent-collaboration (collaborate.py)  →  provider별 응답 JSON
+```
+
+`mso-agent-collaboration` 스킬 로드 후 `collaborate.py` 사용:
+- `run --all`: 전체 프로바이더에 동일 프롬프트 전송 (second opinion)
+- `run --tasks "provider@model:prompt:id"`: 프로바이더별 역할 분리
+- `swarm start`: tmux 기반 장기 실행 swarm 세션
+
 ---
 
 ## 4. 실행 종료 조건
@@ -93,6 +107,7 @@ mso-model-optimizer          →  경량 모델 학습 계획 (선택)
 | [B] 최적화 | 최적화 보고서 생성 + 사용자 승인 |
 | [C] APO | 프롬프트 후보 출력 완료 |
 | [D] 거버넌스 | 검증 결과 출력 |
+| [E] 멀티 프로바이더 | provider별 응답 JSON 출력 완료 |
 
 결과 요약을 사용자에게 보고하고 아티팩트 경로를 명시한다.
 

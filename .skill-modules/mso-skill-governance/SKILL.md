@@ -46,6 +46,26 @@ description: |
    - CC-14(observability → model-optimizer): 배포된 모델 미존재 시 warn 처리
 3. 불일치 → `finding: fail` + evidence 기록
 
+### Phase 2.5: 민감정보 스캔
+
+1. 스킬 팩 전체 소스에서 민감정보 패턴 탐색:
+   - 개인 경로 하드코딩 (`/Users/<name>/...`)
+   - API 키 패턴 (OpenAI `sk-*`, Google `AIza*`, Anthropic `sk-ant-*`)
+   - 하드코딩된 시크릿 (`api_key = "..."` 형태)
+2. 발견 시 → `finding: fail` (릴리스 차단)
+
+```bash
+python3 {mso-skill-governance}/scripts/scan_sensitive.py
+python3 {mso-skill-governance}/scripts/scan_sensitive.py --json  # JSON 출력
+python3 {mso-skill-governance}/scripts/scan_sensitive.py /path/to/dir  # 특정 경로만
+```
+
+**허용 패턴**: `os.environ`, `os.getenv`, `expanduser`, `YOUR_KEY`, `placeholder` 등 동적 참조·예시는 false positive로 건너뜀.
+
+**when_unsure**: 허용 여부가 불명확한 경우 `fail`로 처리하고 수동 확인 권장.
+
+---
+
 ### Phase 3: 레거시 참조 탐지
 
 1. 전체 소스에서 레거시 패턴 탐색:
@@ -104,5 +124,6 @@ description: |
 | 스키마 검증 | `python3 {mso-skill-governance}/scripts/validate_schemas.py --json` |
 | 외부 의존성 확인 | `python3 {mso-skill-governance}/scripts/check_deps.py` |
 | 거버넌스 규칙 상세 | `python3 {mso-skill-governance}/scripts/validate_gov.py` |
+| 민감정보 스캔 | `python3 {mso-skill-governance}/scripts/scan_sensitive.py [경로]` |
 | 상세 규칙 | [core.md](core.md) |
 | 모듈 목록 | [modules/modules_index.md](modules/modules_index.md) |

@@ -1,5 +1,40 @@
 # 변경 이력
 
+## v0.2.1 (2026-05-08)
+
+> **ai-collaborator 완전 흡수.** 별도 스킬로 운영되던 ai-collaborator(Codex·Claude·Gemini 멀티 프로바이더 CLI)를 `mso-agent-collaboration`으로 통합. 외부 의존성 제거, 라우팅 테이블에 [E] 파이프라인 추가.
+
+### Changed — mso-agent-collaboration 기능 확장
+
+| 변경 | 내용 |
+|------|------|
+| **ai_collaborator 패키지 이전** | `executor.py`·`swarm.py`·`bus.py`·`cli.py`·`providers.py`·`schemas.py`·`utils.py` 전체를 `scripts/ai_collaborator/`로 이전 |
+| **collaborate.py 통합** | 멀티 프로바이더 CLI 진입점을 `scripts/collaborate.py`로 통합 |
+| **보조 스크립트 이전** | `discover_models.py`·`normalize_results.py`·`embed_prd_to_tasks.py` → `scripts/` |
+| **config/providers.yaml 이전** | Codex·Claude·Gemini 프로바이더 기본 설정을 `config/providers.yaml`로 이전 |
+| **dispatch.py swarm 실행 구현** | `execute_dispatch`의 `swarm` 모드에서 티켓 `swarm_db`+`swarm_agents` 필드가 있을 때 `ai_collaborator.swarm.start_swarm_session` 직접 호출 |
+| **SKILL.md 멀티 프로바이더 섹션 추가** | `collaborate.py` 빠른 시작, swarm 티켓 필드, 보조 유틸리티 명세 |
+
+### Changed — mso-orchestration 라우팅 확장
+
+| 변경 | 내용 |
+|------|------|
+| **[E] 멀티 프로바이더 실행 파이프라인 추가** | 트리거: "second opinion", "멀티 프로바이더", "여러 모델 비교", "collaborate" 등 |
+| **description 트리거 키워드 추가** | "멀티 프로바이더", "second opinion", "provider 비교", "ai-collaborator" 등 |
+
+### Deprecated
+
+| 항목 | 내용 |
+|------|------|
+| **ai-collaborator 스킬 (v0.0.2)** | SKILL.md에 deprecated 표시. 동일 기능을 `mso-agent-collaboration`에서 사용 |
+
+### 하위 호환
+
+- `dispatch.py` `run`/`batch` 모드 동작 변경 없음. swarm 모드만 확장 실행 추가.
+- `config/providers.yaml` 미수정 시 기본 프로바이더(codex/claude/gemini) 그대로 동작.
+
+---
+
 ## v0.2.0 (2026-04-28)
 
 > 스킬 13개 → 10개 통합 재편. 얇게 많이 → 굵게 적게. 프로세스 규약과 티켓 관리를 실제 소유자 스킬로 흡수하고, 전체 cross-reference 정합을 완료했다.

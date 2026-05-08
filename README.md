@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (v0.2.0)
+# Multi-Swarm Orchestrator (v0.2.1)
 
 > *A Companion of Agent Swarm* — Agent Swarm은 뒤에서 일하는 도구가 아니라, 믿을 수 있는 동료다.
 사람과 Agent Swarm이 동료로서 함께 일하는 오케스트레이션 시스템.
@@ -192,6 +192,7 @@ cd multi-swarm-orchestrator
 | Execution Graph 설계 | `mso-execution-design` |
 | 워크플로우 실행 · Fallback | `mso-task-execution` |
 | 티켓 관리 · 멀티에이전트 Dispatch | `mso-agent-collaboration` |
+| 멀티 프로바이더 실행 (Codex·Claude·Gemini) | `mso-agent-collaboration` → `collaborate.py` |
 | 실행 로그 · SQLite SoT | `mso-agent-audit-log` |
 | 패턴 분석 · HITL 체크포인트 | `mso-observability` |
 | Automation Level 판단 · 최적화 | `mso-workflow-optimizer` |
@@ -211,95 +212,15 @@ python3 skills/mso-skill-governance/scripts/validate_gov.py \
 
 ---
 
-## v0.2.0 변경 이력 — 스킬 통합 재편
+## v0.2.1 변경 이력 — ai-collaborator 완전 흡수
 
-> **스킬을 얇게 많이 두는 방식에서 굵게 적게 두는 방식으로 전환.** 역할이 겹치거나 단독으로는 워크플로우 완결성이 낮았던 스킬을 흡수·병합해 각 스킬이 더 넓은 범위를 컨텍스트 전환 없이 스스로 해결할 수 있도록 두텁게 만들었다.
+> **멀티 프로바이더 CLI 통합.** 별도 스킬로 운영되던 ai-collaborator(Codex·Claude·Gemini)를 `mso-agent-collaboration`으로 완전 흡수. `collaborate.py`와 `ai_collaborator` 패키지가 이제 `~/.skill-modules/mso-skills/mso-agent-collaboration/scripts/`에 위치한다.
 
-| 개선 영역 | v0.1.x | v0.2.0 |
+| 개선 영역 | v0.2.0 | v0.2.1 |
 |-----------|--------|--------|
-| **스킬 수** | 13개 | **10개** — 중복·단독 완결성 낮은 스킬 통합 |
-| **Mental Model** | `mso-vertex-design` + `mso-mental-model-design` 분리 | **`mso-mental-model`** 단일화 — Directive Registry + bundle 생성 + GT Angle Policy 통합 |
-| **프로세스 규약** | `mso-process-template` 별도 스킬 | Fallback Policy → `mso-task-execution` 인라인, 템플릿 6종 → `mso-agent-collaboration/templates/` |
-| **티켓 관리** | `mso-task-context-management` 별도 스킬 | **`mso-agent-collaboration`** 흡수 — 스크립트 5개 + 모듈 3개 통합, 티켓 lifecycle 단일 진입점 |
-| **Cross-reference** | 삭제된 스킬 참조 다수 잔존 | 전체 정합 완료 — CLAUDE.md·governance registry·module 문서 일괄 갱신 |
-
----
-
-## v0.1.3 변경 이력 ⚡ 대대적 구조 개편
-
-> **가장 큰 구조적 변화 릴리스.** 스킬 명칭 전면 개편, 책임 레이어 재설계, Agent Lightning 기능(OTel 트레이싱·인라인 가드레일·NHI Attestation·APO)을 spec 수준으로 통합.
-> Agent를 이름만 바꾼 게 아니라, 각 스킬의 역할 경계를 명확히 재정의했다.
-
-| 개선 영역 | v0.1.2 | v0.1.3 |
-|-----------|--------|--------|
-| **스킬 명칭** | `mso-mental-model-design`, `mso-execution-design` | **`mso-vertex-design`**, **`mso-task-execution`** — 역할을 더 정확히 반영하는 명칭으로 전면 개편 |
-| **실행 책임 분리** | mso-task-execution이 오케스트레이션·래퍼·정책을 모두 소유 | **Orchestration Core + Runtime Wrapper Modules** 2레이어로 분리. 정책 정의는 mso-process-template 소유 |
-| **execution_graph.json** | 없음 | mso-workflow-topology-design Phase A6 산출물로 신설. `graph_id`, `schema_version("1.0")`, `nodes[]` 필수 |
-| **OTel 트레이싱** | 없음 | `_shared/wrapper.otel` — LLM 호출 전후 span 생성, 로컬 OTLP stdout, opt-in Phoenix `[spec-only]` |
-| **인라인 가드레일** | 없음 | `_shared/wrapper.guardrails` — JSON Schema + PII 스캔, auto-reprompt `[spec-only]` |
-| **NHI Attestation** | 없음 | mso-skill-governance Phase 5에 추가. `nhi_policy.json` 기반, fail-open `[spec-only]` |
-| **APO 피드** | 없음 | mso-workflow-optimizer Phase 6에 추가. Macro-loop(Run 단위) 개선 제안 `[spec-only]` |
-| **trace_id** | 없음 | node_snapshots 테이블에 optional 컬럼 추가 (DB schema v1.6.0) |
-| **폴백 정책 SoT** | mso-task-execution 내부 정의 | **mso-process-template 소유** — 에러 유형·severity·max_retry 정의. task-execution은 트리거만 담당 |
-| **에이전트 역할 레지스트리** | 없음 | mso-process-template에 Runtime Role Registry + Fallback Policy Registry 신설 |
-
-**마이그레이션 노트:**
-- `mso-mental-model-design` / `mso-execution-design` → deprecated symlink로 유지. **v0.1.4에서 제거** 예정.
-- `execution_graph.json`이 CC-01 계약에 추가됨. 기존 topology 산출물과 병행 소비.
-- `[spec-only]` 태그 기능은 SKILL.md에 규약 정의 완료, 스크립트 구현은 v0.1.4에서 진행.
-
-상세: [docs/changelog.md](docs/changelog.md)
-
----
-
-## v0.1.2 변경 이력
-
-> 에이전트 런타임 협업 규약(Harness Convention v0.1.2)을 전체 스킬셋에 반영한 릴리스. Execution Model 표준화, compression_event 감지·기록 체계, audit_ref 포인터 패턴, optimizer 제안 포맷을 정의하고 4개 핵심 스킬에 통합.
-
-| 개선 영역 | v0.1.1 | v0.1.2 |
-|-----------|--------|--------|
-| Execution Model | 없음 | **single_instance / bus / direct_spawn** — 노드별 실행 전략 명시, `optimizer_hint` null 초기화 MUST |
-| 에이전트 소환 | dispatch_mode만 | **initial_context / handoff_context 포맷** — 5개 트리거 + bus 패턴 규약 |
-| Compression 감지 | 없음 | **compression_event 스키마** — 감지 시 실행 중단 금지, `audit_global.db` 기록 |
-| Audit 포인터 | 직접 포함 | **audit_ref 포인터 패턴** — `{run_id}#{step}` 포인터만 유지, 원문 context 제외 |
-| Optimizer 제안 | 없음 | **optimization_proposal 포맷** — `requires_human_approval: true` 항상 |
-| 버그 수정 | `registry_path` list 저장 | **bind_directives.py** — `", ".join(...)` 문자열로 변환 (jsonschema string 타입 준수) |
-
-상세: [docs/changelog.md](docs/changelog.md)
-
----
-
-## v0.1.1 변경 이력
-
-> v0.0.10 Phase 3 미착수 항목(Tool Registry, Observability 연동, Tool Lifecycle)을 완성하면서, v0.2.0의 Explicit Knowledge Architecture 기초를 도입한 브릿지 릴리스.
-
-| 개선 영역 | v0.1.0 | v0.1.1 |
-|-----------|--------|--------|
-| Tool 재사용 | Tool Registry 없음 | **tool_registry.json** — KO 구조(결정형/실행형/연결형) 포함 레지스트리 |
-| Tool Lifecycle | 개념만 존재 | **module.tool-lifecycle** — 승격/강등/Symlink 규약 공식화 + **CC-15** |
-| 모델 모니터링 | Observability spec만 | **module.model-monitoring** — rolling_f1/latency_p95/error_rate 수집 + 신호 |
-| 명시지/암묵지 분리 | 모든 산출물이 `.mso-context/` 혼재 | **Workspace Convention** — `mso-outputs/`(명시지) vs `.mso-context/`(암묵지) 파일시스템 분리 |
-| HITL Gate | 단순 알림 | **Gate Output Schema** — situation/evidence/options 3블록 구조화 |
-| Handoff 품질 | required 필드 검증만 | **self_assessment** 블록 — 행동 가능성 자기 진단 |
-
-상세: [docs/changelog.md](docs/changelog.md)
-
----
-
-## v0.1.0 변경 이력
-
-> `mso-model-optimizer`에 Label Strategy(LS-0~3)와 PEFT(SetFit/LoRA/QLoRA)를 통합하여, 소량 라벨 환경에서도 Automation Escalation이 가능하도록 했다.
-
-| 개선 영역      | v0.0.10                           | v0.1.0                                                                                    |
-| -------------- | --------------------------------- | ----------------------------------------------------------------------------------------- |
-| 라벨 부족 대응 | 없음 (수작업 라벨링 전제)         | **Label Strategy (LS-0~3)** — Zero-shot/Clustering/Active Learning/Augmentation 자동 선택 |
-| 학습 방식      | TL-20: 표준 Fine-tuning 단일 경로 | **TL-20 3경로** — SetFit(8개/class) / LoRA·QLoRA / 표준 FT 자동 라우팅                    |
-| 데이터 증강    | 없음                              | **Data Augmentation** — EDA, Back-Translation, LLM Paraphrase                             |
-| Signal A 기준  | `total_count` 단일                | `effective_count` + 라벨 소스 품질 가중치 (인간=1.0, 증강=0.7, 합성=0.5)                  |
-| 최소 라벨      | 100건 미만 → TL-10 강제           | **라벨 0건에서도 학습 가능** (Zero-shot → HITL → SetFit)                                  |
-| NER 라우팅     | effective_count 기준              | **per-entity 오버라이드** (entity별 < 500 → LoRA 강제)                                    |
-
-v0.0.10 Roadmap의 "Processing Tier 최소 환경" 조건을 충족: Label Strategy가 소량 데이터에서도 TL-20 파인튜닝 진입을 가능하게 했다.
+| **멀티 프로바이더 실행** | ai-collaborator 별도 스킬 | **`mso-agent-collaboration`** 흡수 — `collaborate.py` + `ai_collaborator` 패키지 통합 |
+| **파이프라인** | [A]~[D] 4개 | **[E] 멀티 프로바이더 실행** 추가 |
+| **swarm 실행** | dispatch_mode enum만 | 티켓 `swarm_db`+`swarm_agents` 필드로 tmux swarm 직접 실행 |
 
 상세: [docs/changelog.md](docs/changelog.md)
 
@@ -328,6 +249,7 @@ v1.0.0  A Companion of Agent Swarm
 | 작업 영역 | 내용 |
 |-----------|------|
 | 스킬 통합 (완료) | 13개 → 10개 재편, 크로스 레퍼런스 전체 정합 |
+| ai-collaborator 흡수 (완료) | Codex·Claude·Gemini 멀티 프로바이더 CLI → `mso-agent-collaboration` |
 | Runtime 구현 | `wrapper.otel`·`wrapper.guardrails` 실구현 `[spec-only → impl]` |
 | NHI Attestation | `nhi_policy.json` 기반 fail-closed 전환 `[spec-only → impl]` |
 

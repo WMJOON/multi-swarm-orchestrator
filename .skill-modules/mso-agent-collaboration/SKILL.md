@@ -5,6 +5,8 @@ description: |
   Use when tasks need to be created/tracked (TKT-xxxx), state transitions are required
   (todo → in_progress → done/blocked/cancelled), or multi-agent dispatch,
   branching/merge orchestration, or Jewels-pattern teammate coordination is needed.
+  Also provides multi-provider CLI execution (Codex/Claude/Gemini) via collaborate.py —
+  use when you need second opinions from multiple AI providers or swarm bus orchestration.
 ---
 
 # mso-agent-collaboration
@@ -87,10 +89,75 @@ description: |
 
 ---
 
+## 멀티 프로바이더 CLI 실행 (ai-collaborator 통합)
+
+`scripts/collaborate.py` 와 `scripts/ai_collaborator/` 패키지로 Codex·Claude·Gemini CLI를 직접 실행할 수 있다.
+
+### Provider 설정
+- 기본 설정: `config/providers.yaml`
+- 환경변수 오버라이드: `AI_COLLABORATOR_CLAUDE_DEFAULT_MODEL`, `AI_COLLABORATOR_CODEX_DEFAULT_MODEL`, `AI_COLLABORATOR_GEMINI_DEFAULT_MODEL`
+
+### 빠른 시작
+
+```bash
+# 프로바이더 상태 확인
+python3 {mso-agent-collaboration}/scripts/collaborate.py status
+
+# 등록된 모델 목록
+python3 {mso-agent-collaboration}/scripts/collaborate.py models
+
+# 모델 검증
+python3 {mso-agent-collaboration}/scripts/collaborate.py models check
+
+# 동일 프롬프트를 전체 프로바이더에 전송 (second opinion)
+python3 {mso-agent-collaboration}/scripts/collaborate.py run --all \
+  --context ./PRD.md \
+  -m "PRD를 시니어 리뷰어 관점에서 비평해줘" \
+  --format json
+
+# 프로바이더별 역할 분리
+python3 {mso-agent-collaboration}/scripts/collaborate.py run --context ./PRD.md --tasks \
+  "codex@gpt-5:아키텍처 가정 검토:arch" \
+  "claude@sonnet:구현 리스크 식별:risk" \
+  "gemini@gemini-2.5-pro:실현 가능성·지표 확인:feasibility" \
+  --format json
+```
+
+### Swarm 모드 (tmux 기반 버스 오케스트레이션)
+
+```bash
+python3 {mso-agent-collaboration}/scripts/collaborate.py swarm init --db ./.ai-collab/swarm.db
+python3 {mso-agent-collaboration}/scripts/collaborate.py swarm start \
+  --db ./.ai-collab/swarm.db \
+  --session team-a \
+  --agents planner:claude,coder:codex,reviewer:gemini
+```
+
+티켓에서 swarm을 자동 실행하려면 frontmatter에 추가:
+
+```yaml
+tags: [swarm]
+swarm_db: ./.ai-collab/swarm.db
+swarm_session: team-a
+swarm_agents: planner:claude,coder:codex,reviewer:gemini
+```
+
+### 보조 유틸리티
+
+| 스크립트 | 용도 |
+|----------|------|
+| `discover_models.py <provider>` | 프로바이더 모델 목록 조회 |
+| `normalize_results.py` | collaborate.py 출력 정규화 |
+| `embed_prd_to_tasks.py --context PRD.md tasks.json` | PRD 컨텍스트를 tasks.json 프롬프트에 삽입 |
+
+---
+
 ## 상세 파일 참조
 
 | 상황 | 파일 |
 |------|------|
 | dispatch 실행 | `python3 {mso-agent-collaboration}/scripts/dispatch.py --ticket <ticket.md>` |
+| 멀티 프로바이더 실행 | `python3 {mso-agent-collaboration}/scripts/collaborate.py run --all ...` |
+| 프로바이더 설정 | `config/providers.yaml` |
 | 상세 규칙 | [core.md](core.md) |
 | 모듈 목록 | [modules/modules_index.md](modules/modules_index.md) |

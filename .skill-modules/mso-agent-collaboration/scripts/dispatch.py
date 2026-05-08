@@ -11,9 +11,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[3]
+SCRIPTS_DIR = Path(__file__).resolve().parent
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 from skills._shared.runtime_workspace import (  # noqa: E402
     resolve_runtime_paths,
@@ -124,13 +127,50 @@ def build_payload(fm: Dict[str, str], mode: str, artifact_uri: str, run_id: str)
 
 
 def execute_dispatch(mode: str, task_spec: str, handoff_payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute dispatch directly within mso-agent-collaboration.
+    """Execute dispatch within mso-agent-collaboration.
 
-    This is the core execution point. In the current document-guided orchestration
-    model, dispatch records the handoff payload and marks the task as ready for
-    agent execution. Actual agent invocation is coordinated by the orchestrator.
+    - run/batch: records handoff payload; orchestrator drives collaborate.py
+    - swarm: launches tmux-based swarm session via ai_collaborator.swarm when
+      ticket provides swarm_db + swarm_agents fields.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if mode == "swarm":
+        swarm_db = handoff_payload.get("swarm_db", "").strip()
+        swarm_agents = handoff_payload.get("swarm_agents", "").strip()
+        swarm_session = handoff_payload.get("swarm_session", "mso-swarm").strip()
+        if swarm_db and swarm_agents:
+            try:
+                from ai_collaborator import swarm as _swarm  # noqa: PLC0415
+
+                _swarm.start_swarm_session(
+                    db_path=swarm_db,
+                    session=swarm_session,
+                    agents_spec=swarm_agents,
+                    strict_schema=False,
+                    poll_seconds=2.0,
+                    lease_seconds=60,
+                    max_attempts=3,
+                    inspect_interval=5,
+                )
+                return {
+                    "status": "dispatched",
+                    "mode": mode,
+                    "task_spec": task_spec,
+                    "dispatched_at": now,
+                    "handoff_payload": handoff_payload,
+                    "swarm_session": swarm_session,
+                }
+            except Exception as exc:
+                return {
+                    "status": "error",
+                    "mode": mode,
+                    "task_spec": task_spec,
+                    "dispatched_at": now,
+                    "handoff_payload": handoff_payload,
+                    "error": str(exc),
+                }
+
     return {
         "status": "dispatched",
         "mode": mode,

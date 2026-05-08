@@ -1,0 +1,78 @@
+providers:
+  - name: codex
+    description: OpenAI Codex CLI
+    env_var: CODEX_BIN
+    binary_names:
+      - codex
+    alt_paths:
+      - /opt/homebrew/bin/codex
+      - /usr/local/bin/codex
+    cmd:
+      - exec
+      - --skip-git-repo-check
+    stdin_cmd:
+      - exec
+      - --skip-git-repo-check
+    model_flag: -m
+    model_position: after_subcommand
+    model_env_vars:
+      - CODEX_MODEL
+      - OPENAI_MODEL
+    default_model: gpt-5-codex
+    models:
+      - gpt-5-codex
+      - gpt-5
+      - gpt-5-mini
+      - o4-mini
+      - o3
+    discover_timeout: 20
+    discover_models_cmd: "python3 scripts/discover_models.py codex"
+
+  - name: claude
+    description: Anthropic Claude Code CLI
+    env_var: CLAUDE_BIN
+    binary_names:
+      - claude
+    alt_paths:
+      - /opt/homebrew/bin/claude
+      - /usr/local/bin/claude
+    cmd:
+      - -p
+    stdin_cmd: []
+    model_flag: --model
+    model_position: append
+    model_env_vars:
+      - CLAUDE_MODEL
+      - ANTHROPIC_MODEL
+    default_model: sonnet
+    models:
+      - sonnet
+      - opus
+      - claude-sonnet-4-5-20250929
+      - claude-opus-4-1-20250805
+    discover_timeout: 20
+    discover_models_cmd: "python3 scripts/discover_models.py claude"
+
+  - name: gemini
+    description: Google Gemini CLI
+    env_var: GEMINI_BIN
+    binary_names:
+      - gemini
+    alt_paths:
+      - /opt/homebrew/bin/gemini
+      - /usr/local/bin/gemini
+    cmd: []
+    stdin_cmd: []
+    model_flag: -m
+    model_position: append
+    model_env_vars:
+      - GEMINI_MODEL
+      - GOOGLE_MODEL
+    default_model: gemini-2.5-pro
+    models:
+      - gemini-2.5-pro
+      - gemini-2.5-flash
+      - gemini-2.0-flash
+      - gemini-2.0-flash-lite
+    discover_timeout: 20
+    discover_models_cmd: "python3 scripts/discover_models.py gemini"

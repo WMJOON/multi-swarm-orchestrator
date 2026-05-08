@@ -143,6 +143,28 @@ def main() -> int:
     print("[validate_all] banned text scan")
     failures.extend(check_prohibited_text())
 
+    print("[validate_all] sensitive data scan")
+    sensitive_cmd = [
+        "python3",
+        "skills/mso-skill-governance/scripts/scan_sensitive.py",
+        "--json",
+    ]
+    proc = subprocess.run(sensitive_cmd, cwd=str(ROOT), capture_output=True, text=True)
+    if proc.stdout:
+        try:
+            import json as _json
+            result = _json.loads(proc.stdout)
+            for finding in result.get("findings", []):
+                failures.append(
+                    f"SENSITIVE:{finding['pattern']}:{finding['file']}:{finding['line']}"
+                )
+                print(f"  [{finding['severity'].upper()}] {finding['file']}:{finding['line']} — {finding['description']}")
+                print(f"         {finding['excerpt']}")
+        except Exception:
+            print(proc.stdout)
+    if proc.returncode != 0 and not proc.stdout:
+        failures.append("sensitive-scan-failed")
+
     print(f"[validate_all] findings={len(failures)}")
     if failures:
         for finding in failures:
