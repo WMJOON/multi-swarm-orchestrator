@@ -1,0 +1,113 @@
+runtime:
+  harness_version: "0.2.2"
+  provider: codex
+  mode: govern
+
+adapters:
+  - provider: claude_code
+    enabled: true
+    native_events:
+      - PreToolUse
+      - PostToolUse
+      - Stop
+  - provider: codex
+    enabled: true
+    native_events:
+      - tool_call
+      - tool_result
+      - apply_patch
+      - shell_command
+  - provider: openclaw
+    enabled: true
+    native_events:
+      - computer_use_action
+      - channel_event
+  - provider: hermes
+    enabled: false
+    native_events:
+      - task_event
+      - agent_message
+
+policies:
+  - id: filesystem_execute_high_risk
+    match:
+      capability: filesystem.execute
+      risk_level: high
+    pre_action:
+      inject_context:
+        - security_policy
+        - repository_constraints
+      decision: review
+    post_action:
+      evaluate:
+        - topology_stability
+        - semantic_entropy
+      audit: true
+
+  - id: filesystem_write_medium_risk
+    match:
+      capability: filesystem.write
+      risk_level: medium
+    pre_action:
+      inject_context:
+        - editing_constraints
+      decision: allow
+    post_action:
+      checkpoint: true
+      evaluate:
+        - relevance_score
+      audit: true
+
+  - id: graph_traversal_loop_guard
+    match:
+      capability: workflow.transition
+    post_action:
+      evaluate:
+        - loop_risk
+        - ontology_boundary
+      escalation:
+        trigger:
+          loop_risk_gt: 0.7
+        route_to:
+          class: human_review
+
+evaluators:
+  - name: semantic_entropy
+    enabled: true
+    thresholds:
+      warn_gt: 0.2
+      escalate_gt: 0.3
+  - name: topology_stability
+    enabled: true
+    thresholds:
+      unstable_transitions_gt: 2
+  - name: relevance_score
+    enabled: true
+    thresholds:
+      terminate_lt: 0.35
+  - name: loop_risk
+    enabled: true
+    thresholds:
+      stop_gt: 0.8
+
+escalation:
+  default_route:
+    class: stronger_reasoning_model
+  routes:
+    - class: stronger_reasoning_model
+      provider_policy: same_provider_preferred
+    - class: human_review
+      requires_checkpoint: true
+
+checkpointing:
+  enabled: true
+  on_phases:
+    - execution.post
+    - checkpoint.created
+    - escalation.triggered
+  store: sqlite
+
+audit:
+  enabled: true
+  sink: sqlite
+  preserve_native_payload: true

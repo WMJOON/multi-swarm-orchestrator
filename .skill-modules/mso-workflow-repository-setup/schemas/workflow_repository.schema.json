@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mso.local/schemas/workflow_repository.schema.json",
+  "title": "MSO Workflow Repository",
+  "type": "object",
+  "required": ["workflow", "scaffolding", "memory", "governance", "harness_input"],
+  "additionalProperties": true,
+  "properties": {
+    "workflow": {
+      "type": "object",
+      "required": ["id", "objective", "scope", "lifecycle_states"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "objective": { "type": "string" },
+        "scope": { "type": "string", "enum": ["project_local", "reusable", "global_candidate"] },
+        "lifecycle_states": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "scaffolding": {
+      "type": "object",
+      "required": ["directories", "artifact_slots"],
+      "additionalProperties": true,
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "artifact_slots": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "required": ["classes"],
+      "additionalProperties": true,
+      "properties": {
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["runtime_state", "audit_memory", "retrieval_memory", "optimizer_memory"]
+          }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "required": ["hooks", "state_triggers"],
+      "additionalProperties": true,
+      "properties": {
+        "hooks": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["PreCompact", "Stop"] }
+        },
+        "state_triggers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "harness_input": {
+      "type": "object",
+      "required": ["required_inputs"],
+      "additionalProperties": true,
+      "properties": {
+        "required_inputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "optional_inputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

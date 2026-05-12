@@ -1,0 +1,25 @@
+workflow_repository:
+  path: workflow_repository.yaml
+
+required_inputs:
+  - workflow-design
+  - scaffolding-design
+
+optional_inputs:
+  - mental-model
+
+memory:
+  classes:
+    - runtime_state
+    - audit_memory
+    - retrieval_memory
+    - optimizer_memory
+
+governance_hooks:
+  - PreCompact
+  - Stop
+
+state_triggers:
+  - audit_log_updated
+  - stability_signal_changed
+  - optimizer_threshold_crossed

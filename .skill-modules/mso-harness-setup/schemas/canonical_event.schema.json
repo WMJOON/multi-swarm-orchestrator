@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mso.local/schemas/canonical_event.schema.json",
+  "title": "MSO Runtime Harness Canonical Event",
+  "type": "object",
+  "required": ["event", "provider", "capability", "governance"],
+  "additionalProperties": false,
+  "properties": {
+    "event": {
+      "type": "object",
+      "required": ["id", "timestamp", "lifecycle"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "lifecycle": {
+          "type": "object",
+          "required": ["phase"],
+          "additionalProperties": false,
+          "properties": {
+            "phase": {
+              "type": "string",
+              "enum": [
+                "session.start",
+                "intent.received",
+                "planning.start",
+                "planning.complete",
+                "execution.pre",
+                "execution.post",
+                "observation.received",
+                "evaluation.start",
+                "evaluation.complete",
+                "checkpoint.created",
+                "escalation.triggered",
+                "termination"
+              ]
+            },
+            "state_transition": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "required": ["name", "native_event"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "runtime_id": { "type": ["string", "null"] },
+        "native_event": { "type": "string", "minLength": 1 },
+        "native_payload_ref": { "type": ["string", "null"] },
+        "native_payload": { "type": ["object", "null"] }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "required": ["category", "risk_level"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "filesystem.read",
+            "filesystem.write",
+            "filesystem.execute",
+            "ui.interaction",
+            "network.fetch",
+            "memory.read",
+            "memory.write",
+            "model.invoke",
+            "workflow.transition",
+            "governance.review",
+            "unknown"
+          ]
+        },
+        "operation": { "type": ["string", "null"] },
+        "target": { "type": ["string", "null"] },
+        "risk_level": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical", "unknown"]
+        }
+      }
+    },
+    "execution": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "tool_name": { "type": ["string", "null"] },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "status": { "type": ["string", "null"], "enum": ["success", "failure", "skipped", "unknown", null] },
+        "error_type": { "type": ["string", "null"] },
+        "error_message": { "type": ["string", "null"] }
+      }
+    },
+    "semantic": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "entropy_delta": { "type": ["number", "null"] },
+        "relevance_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "topology_stability": { "type": ["string", "null"], "enum": ["stable", "degraded", "unstable", "not_evaluated", null] },
+        "loop_risk": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "boundary_status": { "type": ["string", "null"], "enum": ["inside", "near_boundary", "violation", "not_evaluated", null] }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "required": ["policy_decision", "requires_review", "escalation_triggered"],
+      "additionalProperties": false,
+      "properties": {
+        "policy_decision": { "type": "string", "enum": ["allow", "review", "block", "escalate"] },
+        "requires_review": { "type": "boolean" },
+        "escalation_triggered": { "type": "boolean" },
+        "policy_ids": { "type": "array", "items": { "type": "string" } },
+        "review_reason": { "type": ["string", "null"] }
+      }
+    },
+    "audit": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "run_id": { "type": ["string", "null"] },
+        "correlation_id": { "type": ["string", "null"] },
+        "trace_id": { "type": ["string", "null"] },
+        "checkpoint_id": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

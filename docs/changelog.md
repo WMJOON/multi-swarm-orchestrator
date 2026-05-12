@@ -1,5 +1,38 @@
 # 변경 이력
 
+## v0.2.2 (2026-05-12)
+
+> **Runtime Harness Toolkit planning 추가.** provider runtime 위에 올라가는 semantic runtime governance layer를 `mso-harness-setup` 스킬로 정의했다. 목표는 새 agent framework가 아니라, provider-native event를 canonical runtime event로 정규화하고 policy/evaluation/escalation/audit을 provider-free 방식으로 설계하는 것이다.
+
+### Added — mso-harness-setup
+
+| 추가 | 내용 |
+|------|------|
+| **신규 스킬** | `repository/.skill-modules/mso-harness-setup/` 추가 |
+| **Workflow Repository Setup 스킬** | `repository/.skill-modules/mso-workflow-repository-setup/` 추가. workflow-design + scaffolding-design을 repository setup 계약으로 승격 |
+| **Canonical Event Schema** | provider/native/capability/execution/semantic/governance/audit block을 분리한 `canonical_event.schema.json` 추가 |
+| **YAML Runtime Spec** | adapter, policy, evaluator, escalation, checkpointing, audit 설정을 담는 `runtime_harness_config.schema.json` 및 예시 YAML 추가 |
+| **Provider Adapter 명세** | Claude Code, Codex, OpenClaw, Hermes, LangGraph, OpenAI Agents SDK, Google ADK, MCP-based systems의 native event를 canonical lifecycle로 매핑하는 adapter contract 초안 |
+| **Policy/Evaluator 명세** | capability/risk/lifecycle 기반 policy engine, semantic entropy/topology stability/loop risk evaluator 설계 |
+
+### Changed — mso-orchestration 라우팅 확장
+
+| 변경 | 내용 |
+|------|------|
+| **[F] Runtime Harness 설계 파이프라인 추가** | 트리거: "harness-setup", "runtime harness", "canonical event", "provider adapter", "event ontology", "semantic runtime" |
+| **[F-0] Workflow Repository Setup 파이프라인 추가** | `workflow_repository.yaml`, `scaffolding_contract.md`, `memory_layer.md`, `harness_setup_input.yaml` 산출 |
+| **mso-execution-design alias 제거** | deprecated symlink를 제거하고 `mso-task-execution` 본체만 유지 |
+| **pack_config version 갱신** | `v0.2.2`, required skill에 `mso-harness-setup`, `mso-workflow-repository-setup` 추가 |
+
+### 하위 호환
+
+- 기존 [A]~[E] 파이프라인 동작 변경 없음.
+- `mso-harness-setup`은 planning/spec 스킬이며 runtime 실행 경로에 자동 삽입되지 않는다.
+- provider-native payload는 canonical event 내부에서 별도 block으로 격리하는 방향만 정의했다.
+- `mso-execution-design` 이름은 더 이상 required skill이 아니다. 실행 본체는 `mso-task-execution`이다.
+
+---
+
 ## v0.2.1 (2026-05-08)
 
 > **ai-collaborator 완전 흡수.** 별도 스킬로 운영되던 ai-collaborator(Codex·Claude·Gemini 멀티 프로바이더 CLI)를 `mso-agent-collaboration`으로 통합. 외부 의존성 제거, 라우팅 테이블에 [E] 파이프라인 추가.

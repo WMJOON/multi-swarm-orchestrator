@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mso.local/schemas/runtime_harness_config.schema.json",
+  "title": "MSO Runtime Harness YAML Config",
+  "type": "object",
+  "required": ["runtime", "adapters", "policies", "audit"],
+  "additionalProperties": false,
+  "properties": {
+    "runtime": {
+      "type": "object",
+      "required": ["harness_version", "provider"],
+      "additionalProperties": true,
+      "properties": {
+        "harness_version": { "type": "string" },
+        "provider": { "type": "string" },
+        "mode": { "type": "string", "enum": ["observe", "govern", "enforce"] }
+      }
+    },
+    "adapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["provider", "enabled"],
+        "additionalProperties": true,
+        "properties": {
+          "provider": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "native_events": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "match"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "match": { "type": "object" },
+          "pre_action": { "type": "object" },
+          "post_action": { "type": "object" }
+        }
+      }
+    },
+    "evaluators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "enabled"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "enabled": { "type": "boolean" }
+        }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "checkpointing": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "audit": {
+      "type": "object",
+      "required": ["enabled", "sink"],
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sink": { "type": "string", "enum": ["sqlite", "jsonl", "stdout"] }
+      }
+    }
+  }
+}

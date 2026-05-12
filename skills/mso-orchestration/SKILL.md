@@ -9,7 +9,11 @@ description: |-
   "APO", "프롬프트 튜닝", "경량 모델", "llm-as-a-judge",
   "MSO", "mso", "거버넌스 검증", "감사 로그", "CC 계약",
   "멀티 프로바이더", "second opinion", "provider 비교", "collaborate",
-  "codex 비교", "gemini 비교", "여러 모델", "ai-collaborator".
+  "codex 비교", "gemini 비교", "여러 모델", "ai-collaborator",
+  "harness-setup", "runtime harness", "canonical event", "provider adapter",
+  "event ontology", "semantic runtime", "runtime governance",
+  "workflow-repository-setup", "workflow repository", "scaffolding-design",
+  "memory layer".
 ---
 
 # mso-orchestration
@@ -34,6 +38,8 @@ description: |-
 | 모델·프롬프트 개선 | "APO", "프롬프트 튜닝", "라벨 불일치", "경량 모델" | [C] |
 | 거버넌스·감사 | "검증", "governance", "감사 로그", "CC 계약" | [D] |
 | 멀티 프로바이더 실행 | "second opinion", "멀티 프로바이더", "여러 모델 비교", "collaborate", "codex/gemini 비교" | [E] |
+| Runtime Harness 설계 | "harness-setup", "runtime harness", "canonical event", "provider adapter", "event ontology", "semantic runtime" | [F] |
+| Workflow Repository Setup | "workflow-repository-setup", "workflow repository", "scaffolding-design", "memory layer" | [F-0] |
 
 특정 서브스킬이 직접 언급된 경우: 해당 스킬만 로드하여 위임.
 
@@ -57,12 +63,12 @@ description: |-
 
 ```
 mso-workflow-topology-design  →  workflow_topology_spec.json
-mso-mental-model              →  directive_binding.json
-mso-execution-design          →  execution_graph.json
+mso-workflow-repository-setup →  workflow_repository.yaml + harness_setup_input.yaml
+mso-harness-setup             →  canonical runtime config
 mso-task-execution            →  node_snapshots + 실행 결과
 ```
 
-각 스킬은 이전 스킬의 출력 파일을 입력으로 소비한다.
+`mso-mental-model`은 필수 경로에서 제외한다. 필요하면 `mso-workflow-repository-setup` 또는 `mso-harness-setup`의 optional semantic enrichment로 소비한다.
 
 ### [B] 기존 워크플로우 최적화
 
@@ -97,17 +103,44 @@ mso-agent-collaboration (collaborate.py)  →  provider별 응답 JSON
 - `run --tasks "provider@model:prompt:id"`: 프로바이더별 역할 분리
 - `swarm start`: tmux 기반 장기 실행 swarm 세션
 
+### [F-0] Workflow Repository Setup
+
+```
+mso-workflow-repository-setup  →  workflow_repository.yaml + scaffolding_contract.md + memory_layer.md + harness_setup_input.yaml
+```
+
+workflow-design과 scaffolding-design을 결합해 repository-level setup 계약을 만든다. memory layer를 명시하고, governance hook(`PreCompact`, `Stop`)과 audit-log 기반 optimizer state-trigger를 정의한다.
+
+### [F] Runtime Harness 설계
+
+```
+mso-workflow-repository-setup  →  mso-harness-setup
+mso-harness-setup              →  canonical_event.schema.json + runtime_harness_config.schema.json + adapter/policy/evaluator spec
+```
+
+v0.2.2 planning 파이프라인이다. provider runtime 자체를 대체하지 않고, provider-native event를 canonical runtime event로 정규화하는 harness layer를 설계한다.
+
+주요 산출:
+- canonical event ontology
+- YAML runtime spec
+- provider adapter interface
+- capability taxonomy
+- policy engine / runtime evaluator / escalation router 계약
+- audit-log · observability · task-execution 연결면
+
 ---
 
 ## 4. 실행 종료 조건
 
 | 파이프라인 | 종료 조건 |
 |-----------|---------|
-| [A] 신규 설계 | `execution_graph.json` 존재 + 모든 node_snapshot 완료 상태 |
+| [A] 신규 설계 | `workflow_repository.yaml` + `runtime_harness_config` 존재 + node_snapshot 완료 상태 |
 | [B] 최적화 | 최적화 보고서 생성 + 사용자 승인 |
 | [C] APO | 프롬프트 후보 출력 완료 |
 | [D] 거버넌스 | 검증 결과 출력 |
 | [E] 멀티 프로바이더 | provider별 응답 JSON 출력 완료 |
+| [F-0] Workflow Repository Setup | workflow repository + scaffolding + memory layer 계약 작성 |
+| [F] Runtime Harness 설계 | canonical schema + YAML config + adapter/policy/evaluator spec 작성 |
 
 결과 요약을 사용자에게 보고하고 아티팩트 경로를 명시한다.
 
