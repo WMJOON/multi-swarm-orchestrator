@@ -16,8 +16,9 @@ memory:
     - optimizer_memory
 
 governance_hooks:
+  - SessionStart
   - PreCompact
-  - Stop
+  - SessionEnd
 
 state_triggers:
   - audit_log_updated

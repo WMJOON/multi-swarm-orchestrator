@@ -1,8 +1,34 @@
 # 변경 이력
 
-## v0.2.2 (2026-05-12)
+## v0.2.3 (2026-05-13)
 
-> **Runtime Harness Toolkit planning 추가.** provider runtime 위에 올라가는 semantic runtime governance layer를 `mso-harness-setup` 스킬로 정의했다. 목표는 새 agent framework가 아니라, provider-native event를 canonical runtime event로 정규화하고 policy/evaluation/escalation/audit을 provider-free 방식으로 설계하는 것이다.
+> **mso-task-execution → mso-harness-setup 흡수 + 리포지토리 구조 정리.** 실행 조율(execution_graph 소비, Fallback Policy, node snapshot)을 `mso-harness-setup`에 통합하여 스킬 수를 11 → 10개로 줄였다. 더불어 폐기된 훅, 중복 스크립트, 고아 마이그레이션 파일 등 15건을 정리했다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| **mso-task-execution 흡수** | 실행 조율·Fallback Policy Registry·wrapper module 명세를 `mso-harness-setup` Phase 6–7로 통합. `mso-task-execution` 스킬 삭제 |
+| **mso-harness-setup 역할 확장** | 기존 Harness Design(Phase 1–5)에 Execution Orchestration(Phase 6–7) 추가. `build_plan.py`, `execution_plan.schema.json`, execution 관련 모듈 5개 이전 |
+| **docs 전면 반영** | usage_matrix, getting-started, pipelines, README, architecture에서 `mso-task-execution` 참조를 `mso-harness-setup`으로 교체 |
+
+### Removed
+
+| 항목 | 이유 |
+|------|------|
+| `mso-task-execution` 스킬 | `mso-harness-setup`에 흡수 |
+| `skills/mso-agent-audit-log/hooks/` (Python/sh 스크립트) | `.skill-modules/`에 정본 존재. `skills/`는 참조 문서 레이어 |
+| `skills/mso-agent-audit-log/hooks/stop_hook.sh` | Stop hook 폐기 (v0.2.2에서 3-hook 체계로 대체) |
+| `.skill-modules/mso-agent-audit-log/schema/migrate_*.sql` (3개) | 마이그레이션 완료. 스냅샷은 `history/`에서 관리 |
+| `docs/diagrams/` | 빈 디렉토리 |
+| `docs/knowledge-object-mapping.md` | v0.1.1 시대 산출물 |
+| `.skill-modules/mso-workflow-optimizer/.env.local` | `.env.example` 중복 |
+
+---
+
+## v0.2.2 (2026-05-12 ~ 2026-05-13)
+
+> **Runtime Harness Toolkit planning 추가 + audit-log 인프라 재설계.** provider runtime 위에 올라가는 semantic runtime governance layer를 `mso-harness-setup` 스킬로 정의했다. 동시에 `mso-agent-audit-log`를 감사 인프라의 단일 소유자로 재정의하고, 세션 훅을 스크립트 기반으로 전환하여 토큰 소비를 0으로 줄였다.
 
 ### Added — mso-harness-setup
 
@@ -24,12 +50,47 @@
 | **mso-execution-design alias 제거** | deprecated symlink를 제거하고 `mso-task-execution` 본체만 유지 |
 | **pack_config version 갱신** | `v0.2.2`, required skill에 `mso-harness-setup`, `mso-workflow-repository-setup` 추가 |
 
-### 하위 호환
+### 하위 호환 — Harness
 
 - 기존 [A]~[E] 파이프라인 동작 변경 없음.
 - `mso-harness-setup`은 planning/spec 스킬이며 runtime 실행 경로에 자동 삽입되지 않는다.
 - provider-native payload는 canonical event 내부에서 별도 block으로 격리하는 방향만 정의했다.
 - `mso-execution-design` 이름은 더 이상 required skill이 아니다. 실행 본체는 `mso-task-execution`이다.
+
+---
+
+### Added — mso-agent-audit-log 세션 훅 재설계 (2026-05-13)
+
+| 추가 | 내용 |
+|------|------|
+| **`setup.py`** | DB 생성 + worklog 디렉터리 생성 + 세션 훅 주입을 한 번에 처리. `--target claude\|codex\|all`, `--dry-run` 지원 |
+| **`session_start_hook.py`** | 최근 worklog 3개의 마지막 `##` 블록을 요약해 SessionStart 시 컨텍스트로 주입. Claude Code / Codex 런타임 자동 감지 |
+| **`pre_compact_hook.py`** | transcript JSONL 파싱 → Write/Edit 파일 목록 + 마지막 assistant 메시지를 worklog에 직접 기록. Claude 호출 없음 |
+| **`session_end_hook.py`** | `pre_compact_hook.py`와 동일 로직, `SessionEnd` 레이블로 기록 |
+| **Codex 지원** | `.codex/hooks.json`에 `SessionStart`만 등록. `session_start_hook.py`가 stdin의 `model` 필드로 런타임 감지 → `{"systemMessage": "..."}` 출력 |
+| **`inject_hooks.py` 리팩터** | `inject_claude` / `inject_codex` / `inject(unified)` 세 함수로 분리. `--target` 플래그로 대상 선택 |
+
+### Changed — mso-agent-audit-log 역할 재정의
+
+| 변경 | 내용 |
+|------|------|
+| **단일 소유자(SoT)** | DB 생성, 세션 훅 설정, 실행 로그 기록 세 책임을 통합. 다른 스킬은 읽기 전용 |
+| **훅 이벤트 변경** | `Stop` hook 폐기 → `SessionStart · PreCompact · SessionEnd` 3-hook 체계로 전환 |
+| **토큰 소비 0** | 기존: `additionalContext`를 통해 Claude가 worklog 작성(토큰 소비). 변경: 스크립트가 transcript를 직접 파싱해 worklog 기록 |
+| **`mso-workflow-repository-setup` 연동** | Phase 4 거버넌스 훅 목록을 `SessionStart · PreCompact · SessionEnd`로 갱신. `setup.py` 호출로 일괄 초기화 |
+
+### Deprecated
+
+| 항목 | 내용 |
+|------|------|
+| **`Stop` hook** | `SessionEnd`로 대체. `Stop`은 더 이상 등록하지 않는다 |
+| **`additionalContext` 방식 worklog 기록** | 스크립트 직접 파싱 방식으로 전환. Claude 호출 불필요 |
+
+### 하위 호환 — 세션 훅
+
+- 기존에 `Stop` hook이 등록된 프로젝트는 수동 제거 후 `setup.py --project-root <path> --target claude`로 재설정한다.
+- `session_start_hook.py`는 `WORKLOG_DIR` 미설정 또는 worklog 파일 없으면 `exit(0)`으로 조용히 종료한다.
+- Codex는 `PreCompact`/`SessionEnd`를 지원하지 않으므로 `SessionStart`만 등록한다.
 
 ---
 

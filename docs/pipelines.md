@@ -6,11 +6,12 @@
 
 **Mode B (Graph Search Loader)**: 레지스트리에 유사 워크플로우가 있으면 Intent 기반 검색으로 기존 Topology를 로딩한다. 6가지 Topology Motif(Chain/Star/Fork-Join/Loop/Diamond/Switch)와 Vertex(agent/skill/tool/model) 바인딩을 통해 즉시 실행 가능한 워크플로우를 반환한다.
 
-**Mode A (신규 설계)**: 레지스트리에 유사 워크플로우가 없으면 다음의 세 단계로 설계한다.
+**Mode A (신규 설계)**: 레지스트리에 유사 워크플로우가 없으면 다음의 네 단계로 설계한다.
 
 1. **Topology Design** — 목표를 노드(Node)와 엣지(Edge)로 구조화. Motif 식별 → `topology_type` 선택 → Vertex Composition.
 2. **Mental Model Design (Vertex Registry)** — 각 노드에 적절한 directive(framework/instruction/prompt)를 바인딩한다.
-3. **Execution Design** — 두 가지를 통합하여 최종 실행 계획(execution_graph DAG)을 수립한다.
+3. **Workflow Repository Setup** — 두 결과를 repository contract로 변환. `workflow_repository.yaml`, `scaffolding_contract.md`, `memory_layer.md` 생성.
+4. **Harness Setup** — runtime harness spec 생성. canonical event 정규화, policy/evaluator/escalation 설계.
 
 Topology와 Mental Model은 상호보완적이다. 어느 쪽에서 시작하든, 서로의 출력이 상대방을 정제하고 보완한다.
 
@@ -18,7 +19,7 @@ Topology와 Mental Model은 상호보완적이다. 어느 쪽에서 시작하든
 
 ## 운영 (Ops)
 
-`Task Context Management`가 티켓을 발행하고 상태를 관리한다. `todo → in_progress → done`으로 이어지는 상태 전이는 상태 머신에 의해 엄격하게 관리되며, 완료된 티켓은 로그에 기록된 후 정리된다.
+`Agent Collaboration`이 티켓을 발행하고 상태를 관리한다. `todo → in_progress → done`으로 이어지는 상태 전이는 상태 머신에 의해 엄격하게 관리되며, 완료된 티켓은 로그에 기록된 후 정리된다.
 
 멀티에이전트 협업이 필요한 경우 `Agent Collaboration`으로 작업을 분배(Dispatch)한다. 브랜치 노드의 포크와 머지 노드의 집계가 6개 에이전트 역할(Provisioning/Execution/Handoff/Branching/Critic-Judge/Sentinel)에 의해 수행된다.
 
@@ -47,6 +48,8 @@ stateDiagram-v2
 
 `Audit Log`가 모든 실행 기록을 SQLite DB에 남긴다(v0.0.4: Global DB, `node_snapshots` + `suggestion_history` 테이블 포함). `Observability`가 저장된 로그를 분석하여 패턴을 도출한다.
 
+`mso-agent-audit-log`는 DB 생성, 세션 훅 주입, 실행 로그 기록 세 가지를 단독으로 소유한다. 세션 훅은 `SessionStart · PreCompact · SessionEnd` 3-hook 체계로 운영되며, 스크립트가 transcript를 직접 파싱해 worklog에 기록한다(Claude 호출 없음). 프로젝트 초기화는 `setup.py --project-root <path>`로 한 번에 처리한다.
+
 반복적인 실패, 비정상적인 비용 발생, 병목 구간, work_type 편중, 에러 핫스팟 등이 감지되면, 개선 제안을 설계 파이프라인으로 다시 전달한다. 이 피드백 루프(Feedback Loop)가 동일한 실패의 반복을 끊어내는 핵심 메커니즘이다.
 
 ---
@@ -57,25 +60,26 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    Topology -- CC-01 --> Execution
-    MentalModel["Mental Model"] -- CC-02 --> Execution
-    Execution -- CC-06 --> AuditLog["Audit Log"]
+    Topology -- CC-01 --> TaskExec["Task Execution"]
+    MentalModel["Mental Model"] -- CC-02 --> TaskExec
+    TaskExec -- CC-06 --> AuditLog["Audit Log"]
 
-    TaskContext["Task Context"] -- CC-03 --> Collaboration
     Collaboration -- CC-04 --> AuditLog
     AuditLog -- CC-05 --> Observability
 
     Observability -- CC-07 --> Optimizer["Workflow Optimizer"]
     Optimizer -- CC-08 --> AuditLog
-    Optimizer -- CC-09 --> TaskContext
+    Optimizer -- CC-09 --> Collaboration
     Optimizer -- CC-10 --> Collaboration
 
     Optimizer -- CC-11 --> ModelOpt["Model Optimizer"]
     ModelOpt -- CC-12 --> AuditLog
-    ModelOpt -- CC-13 --> TaskContext
+    ModelOpt -- CC-13 --> Collaboration
     Observability -- CC-14 --> ModelOpt
     Observability -- CC-15 --> Governance["Skill Governance"]
 ```
+
+> **CC-03 비고**: 티켓 관리(`create_ticket.py` / `archive_tasks.py`)는 `mso-agent-collaboration` 내부 흐름으로 통합되었다. 외부 스킬 간 계약이 아니므로 다이어그램에서 제거함.
 
 `Governance`가 이 계약을 자동으로 검증한다. 필수 필드가 누락되거나 스키마가 일치하지 않으면 파이프라인 진입 전에 즉시 차단한다.
 
@@ -99,12 +103,12 @@ flowchart LR
 | **필수 키** | Phase 4: `run_id`, `artifact_uri`, `status`, `work_type="workflow_optimization"`. Phase 5: `feedback_text`(JSON), `impact_domain="workflow_optimization"`, `related_audit_id` |
 | **전달 방식** | `append_from_payload.py` 스크립트 호출 |
 
-### CC-09: mso-workflow-optimizer → mso-task-context-management
+### CC-09: mso-workflow-optimizer → mso-agent-collaboration
 
 | 항목 | 내용 |
 |------|------|
 | **생산자** | `mso-workflow-optimizer` (Phase 5: goal 산출 후) |
-| **소비자** | `mso-task-context-management` |
+| **소비자** | `mso-agent-collaboration` |
 | **전달 데이터** | `goal.json`의 `optimization_directives[]` → 개별 TKT 티켓으로 등록 |
 | **필수 키** | 티켓: `id`(TKT-xxxx), `status`(todo), `priority`, `owner`, `tags`(workflow_optimization 포함) |
 | **전달 방식** | `create_ticket.py` CLI 호출 또는 티켓 Markdown frontmatter 직접 생성 |
@@ -141,12 +145,12 @@ flowchart LR
 | **필수 키** | `run_id`, `artifact_uri`, `status`, `work_type` |
 | **전달 방식** | `mso-agent-audit-log` 스킬 표준 인터페이스 |
 
-### CC-13: mso-model-optimizer → mso-task-context-management
+### CC-13: mso-model-optimizer → mso-agent-collaboration
 
 | 항목 | 내용 |
 |------|------|
 | **생산자** | `mso-model-optimizer` (Phase 5: deploy_spec 생성 후) |
-| **소비자** | `mso-task-context-management` |
+| **소비자** | `mso-agent-collaboration` |
 | **전달 데이터** | `deploy_spec.json`의 배포 지시 → TKT 티켓 등록 |
 | **필수 키** | 티켓: `id`(TKT-xxxx), `status`(todo), `priority`, `owner`, `tags`(model_deployment 포함) |
 | **전달 방식** | deploy_spec 기반 티켓 Markdown 생성 |
@@ -208,9 +212,9 @@ Provider 설정: `~/.skill-modules/mso-skills/mso-agent-collaboration/config/pro
 
 | 템플릿 | 소속 스킬 | 용도 |
 |--------|----------|------|
-| **PRD** | mso-task-context-management | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
-| **SPEC** | mso-task-context-management | 실행 계획 + Execution Policy + Ticket List + Check List |
-| **ADR** | mso-task-context-management | 아키텍처 의사결정 기록. 결정·대안·기각 사유·영향을 독립 문서로 추적 |
+| **PRD** | mso-agent-collaboration | "왜 지금 이 방식이어야 하는가"를 설명. Scenarios 단위로 SPEC과 1:1 또는 1:N 매핑 |
+| **SPEC** | mso-agent-collaboration | 실행 계획 + Execution Policy + Ticket List + Check List |
+| **ADR** | mso-agent-collaboration | 아키텍처 의사결정 기록. 결정·대안·기각 사유·영향을 독립 문서로 추적 |
 | **HITL Escalation Brief** | mso-observability | H1/H2 Gate 에스컬레이션 시 사람에게 전달하는 구조화된 판단 요청서 |
 | **Run Retrospective** | mso-observability | Run 완료 후 메트릭·교훈·이월 항목을 종합하는 회고 문서 |
-| **Design Handoff Summary** | mso-execution-design | Design Swarm 산출물을 Ops Swarm에 전달하는 요약 문서 |
+| **Design Handoff Summary** | mso-harness-setup | Design Swarm 산출물을 Ops Swarm에 전달하는 요약 문서 |

@@ -3,16 +3,17 @@
 ## 디렉토리 구조
 
 ```
-skills/
+.skill-modules/                      ← 설치 후 ~/.skill-modules/mso-skills/ 심링크
 ├── mso-skill-governance/            ← 계약 검증, 구조 점검
 ├── mso-workflow-topology-design/    ← 목표 → 노드 구조 (Mode A: 신규 설계, Mode B: Graph Search)
-├── mso-mental-model-design/         ← Vertex Registry: directive 택소노미·바인딩
+├── mso-mental-model/                ← Vertex Registry: directive 택소노미·바인딩
 │   └── directives/                  ← seed directives (analysis, general)
-├── mso-execution-design/            ← 실행 계획 생성 (execution_graph)
-├── mso-task-context-management/     ← 티켓 관리
-│   └── templates/                   ← PRD.md, SPEC.md, ADR.md
-├── mso-agent-collaboration/         ← 멀티에이전트 디스패치 (branch/merge)
-├── mso-agent-audit-log/             ← 감사 로그 (SQLite, node_snapshots)
+├── mso-agent-collaboration/         ← 티켓 관리 + 멀티에이전트 디스패치 (branch/merge)
+│   ├── templates/                   ← PRD.md, SPEC.md, ADR.md
+│   └── scripts/                     ← collaborate.py, ai_collaborator/
+├── mso-agent-audit-log/             ← 감사 인프라 SoT (DB + 세션 훅 + 실행 로그)
+│   ├── hooks/                       ← session_start_hook.py, pre_compact_hook.py, session_end_hook.py
+│   ├── scripts/                     ← setup.py, init_db.py, inject_hooks.py, append_from_payload.py
 │   └── history/                     ← 스키마 버전 스냅샷
 ├── mso-observability/               ← 관찰, 환류 (패턴 분석)
 │   └── templates/                   ← HITL_ESCALATION_BRIEF.md, RUN_RETROSPECTIVE.md
@@ -24,8 +25,12 @@ skills/
 ├── mso-model-optimizer/             ← Smart Tool 경량 모델 학습·평가·배포
 │   ├── modules/                     ← model-decision, training-level, retraining, rollback
 │   └── schemas/                     ← deploy_spec, handoff_payload, smart_tool_manifest
-├── mso-process-template/            ← 프로세스 규약, Hand-off 템플릿 SoT
+├── mso-workflow-repository-setup/   ← Workflow Repository + Scaffold + Memory Layer 설정
+├── mso-harness-setup/               ← Runtime Harness + 실행 조율 (canonical event · policy · evaluator · execution_graph)
 └── _shared/                         ← 공통 유틸 (runtime_workspace.py)
+skills/
+├── mso-orchestration/               ← 진입점 스킬 (→ ~/.claude/skills/mso-orchestration 심링크)
+└── mso-agent-audit-log/             ← 감사 인프라 참조 문서 레이어
 rules/
 └── ORCHESTRATOR.md                  ← 불변 정책
 docs/
@@ -42,62 +47,55 @@ v0.0.3부터는 별도 `config.yaml` 없이 동작한다. 환경별 오버라이
 
 ---
 
-## {workspace} 디렉토리 구조 (최종 표준)
+## 0. 감사 인프라 초기화 (레포 설정 시 1회)
 
-MSO 런타임 산출물은 기본적으로 `{workspace}/.mso-context` 하위에 기록된다.
+새 프로젝트 레포에서 MSO를 사용하기 전에 감사 DB와 세션 훅을 초기화한다.
 
-```text
-{workspace}/
-└── .mso-context/
-    ├── config/
-    │   └── policy.yaml
-    ├── audit_global.db
-    ├── workflow_registry.json
-    ├── active/
-    │   └── <run_id>/
-    │       ├── manifest.json
-    │       ├── 00_collect/
-    │       ├── 10_topology/
-    │       │   └── workflow_topology_spec.json
-    │       ├── 20_mental-model/
-    │       │   └── directive_binding.json
-    │       ├── 30_execution/
-    │       │   └── execution_plan.json
-    │       ├── 40_collaboration/
-    │       │   └── task-context/
-    │       │       ├── tickets/
-    │       │       ├── archive/
-    │       │       └── rules.md
-    │       ├── 50_audit/
-    │       │   ├── agent_log.db
-    │       │   └── snapshots/
-    │       ├── 60_observability/
-    │       │   ├── callback-*.json
-    │       │   └── callbacks-*.json
-    │       ├── 70_governance/
-    │       ├── 80_delivery/
-    │       ├── 90_meta/
-    │       ├── optimizer/
-    │       │   ├── level10_report.md
-    │       │   ├── level20_report.md
-    │       │   ├── level30_report.md
-    │       │   ├── goal.json
-    │       │   ├── handoff_payload.json      ← CC-11: model-optimizer 트리거
-    │       │   ├── process/
-    │       │   └── llm-as-a-judge/
-    │       └── model-optimizer/
-    │           ├── tl10_model/               ← TL-10: rules.json
-    │           ├── tl20_model/               ← TL-20: model/ + tokenizer/
-    │           ├── tl30_model/               ← TL-30: model/ + checkpoints/
-    │           ├── tl{XX}_eval_report.md
-    │           └── deploy_spec.json
-    └── archive/
-        └── <YYYY-MM>/
+```bash
+python3 ~/.skill-modules/mso-skills/mso-agent-audit-log/scripts/setup.py \
+  --project-root <repository_root> \
+  --target claude    # claude | codex | all
 ```
 
-표기 규칙:
-- 워크스페이스 경로: `{workspace}/.mso-context/...`
-- 스킬 내부 경로: `{스킬명}/*` (예: `{mso-workflow-optimizer}/scripts/select_llm_model.py`)
+한 번에 수행하는 작업:
+1. `{repository}/00.agent_log/logs/` 디렉터리 생성
+2. `{repository}/.mso-context/audit_global.db` 스키마 초기화
+3. `{repository}/.claude/settings.json`에 `SessionStart · PreCompact · SessionEnd` 훅 주입 (멱등)
+
+Codex도 함께 설정하려면 `--target all`을 사용한다.
+
+---
+
+## {repository} 디렉토리 구조
+
+MSO 런타임 산출물은 기본적으로 `{repository}/.mso-context` 하위에 기록된다.
+
+```text
+{repository}/
+├── .mso-context/
+│   ├── audit_global.db              ← 전체 감사 데이터 SoT
+│   ├── workflow_registry.json       ← Run 인덱스
+│   ├── config/
+│   │   └── policy.yaml
+│   ├── active/
+│   │   └── <run_id>/
+│   │       ├── manifest.json
+│   │       ├── 10_topology/         ← workflow_topology_spec.json
+│   │       ├── 20_mental-model/     ← directive_binding.json
+│   │       ├── 30_execution/        ← execution_plan.json
+│   │       ├── 40_collaboration/    ← task-context/tickets/
+│   │       ├── 50_audit/            ← snapshots/
+│   │       ├── 60_observability/    ← callback-*.json
+│   │       ├── 70_governance/
+│   │       └── optimizer/           ← goal.json, handoff_payload.json
+│   └── archive/
+├── .claude/
+│   └── settings.json                ← SessionStart·PreCompact·SessionEnd 훅
+└── 00.agent_log/
+    └── logs/                        ← worklog-YYYYMMDD.md
+```
+
+> 스킬 내부 경로 표기: `{스킬명}/*` (예: `{mso-workflow-optimizer}/scripts/select_llm_model.py`)
 
 ---
 
@@ -114,7 +112,7 @@ RUN_ID="YYYYMMDD-msowd-onboarding"
 python3 {mso-workflow-topology-design}/scripts/graph_search.py \
   --intent "사용자 온보딩 프로세스 설계" \
   --top-k 3 \
-  --registry {workspace}/.mso-context/workflow_registry.json
+  --registry {repository}/.mso-context/workflow_registry.json
 ```
 
 similarity ≥ 0.6이면 검색된 워크플로우로 진행. 아니면 Mode A로 fallback.
@@ -132,13 +130,13 @@ python3 {mso-workflow-topology-design}/scripts/generate_topology.py \
   --goal "사용자 온보딩 프로세스 설계"
 
 # 각 노드에 directive를 바인딩한다 (Vertex Registry 검색).
-python3 {mso-mental-model-design}/scripts/bind_directives.py \
-  --topology {workspace}/.mso-context/active/$RUN_ID/10_topology/workflow_topology_spec.json \
-  --registry {workspace}/.mso-context/vertex_registry \
-  --output {workspace}/.mso-context/active/$RUN_ID/20_mental-model/directive_binding.json
+python3 {mso-mental-model}/scripts/bind_directives.py \
+  --topology {repository}/.mso-context/active/$RUN_ID/10_topology/workflow_topology_spec.json \
+  --registry {repository}/.mso-context/vertex_registry \
+  --output {repository}/.mso-context/active/$RUN_ID/20_mental-model/directive_binding.json
 
 # 두 결과를 통합하여 execution_graph를 생성한다.
-python3 {mso-execution-design}/scripts/build_plan.py \
+python3 {mso-harness-setup}/scripts/build_plan.py \
   --run-id "$RUN_ID" \
   --skill-key msowd \
   --case-slug onboarding
@@ -149,13 +147,13 @@ python3 {mso-execution-design}/scripts/build_plan.py \
 ## 2. 티켓 운영 (Ops)
 
 ```bash
-TASK_ROOT="{workspace}/.mso-context/active/$RUN_ID/40_collaboration/task-context"
+TASK_ROOT="{repository}/.mso-context/active/$RUN_ID/40_collaboration/task-context"
 
-python3 {mso-task-context-management}/scripts/create_ticket.py \
+python3 {mso-agent-collaboration}/scripts/create_ticket.py \
   "온보딩 플로우 구현" \
   --path "$TASK_ROOT"
 
-python3 {mso-task-context-management}/scripts/archive_tasks.py \
+python3 {mso-agent-collaboration}/scripts/archive_tasks.py \
   --path "$TASK_ROOT"
 ```
 
