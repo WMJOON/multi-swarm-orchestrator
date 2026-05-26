@@ -1,0 +1,165 @@
+# Workflow Template: Standard Module Workflow v1.0.0
+#
+# 사용 방법:
+# 1. 이 파일을 [module-id]/[module-id]-workflow-00.yaml 로 복사
+# 2. [REQUIRED] 표시된 항목을 채우기
+# 3. [OPTIONAL] 표시된 항목은 필요에 따라 추가/제거
+# 4. [CUSTOMIZE] 표시된 항목은 모듈 특성에 맞게 수정
+
+module:
+  name: "[REQUIRED] Module Display Name"
+  id: "[REQUIRED] module-id (e.g., 05.new-module)"
+  version: "[REQUIRED] 1.0.0"
+  description: "[REQUIRED] 모듈의 목적과 핵심 기능 설명"
+  owner: "[REQUIRED] owner@example.com"
+  created: "[REQUIRED] 2026-05-21"
+
+discovery:
+  id: discovery
+  name: 발견 & 계획
+  description: "요구사항 분석, 범위 정의, 전략 수립"
+  steps:
+    - step-01: "[CUSTOMIZE] First planning step"
+    - step-02: "[CUSTOMIZE] Second planning step"
+    - step-03: "[CUSTOMIZE] Third planning step"
+    - step-04: "[CUSTOMIZE] Fourth planning step"
+  status: completed
+  artifacts:
+    - "[OPTIONAL] 기획 문서 위치"
+    - "[OPTIONAL] 리서치 결과 위치"
+
+development:
+  id: development
+  name: 개발 & 구현
+  description: "핵심 기능 개발, 산출물 생성"
+  steps:
+    - step-01: "[CUSTOMIZE] Major component 1"
+      location: "[REQUIRED] /path/to/component1/"
+      status: completed
+      deliverables:
+        - "[REQUIRED] 산출물 1"
+        - "[REQUIRED] 산출물 2"
+      validation:
+        - "[OPTIONAL] 검증 항목 1"
+      metrics:
+        - "[OPTIONAL] metric_name: value"
+
+    - step-02: "[CUSTOMIZE] Major component 2"
+      location: "[REQUIRED] /path/to/component2/"
+      status: completed
+      deliverables:
+        - "[REQUIRED] 산출물 1"
+      validation:
+        - "[OPTIONAL] 검증 항목 1"
+
+    - step-03: "[CUSTOMIZE] Major component 3 (if needed)"
+      location: "[REQUIRED] /path/to/component3/"
+      status: completed
+      deliverables:
+        - "[REQUIRED] 산출물 1"
+
+  status: completed
+  artifacts:
+    - "[REQUIRED] 주요 산출물 저장 경로 1"
+    - "[REQUIRED] 주요 산출물 저장 경로 2"
+    - "[OPTIONAL] 추가 산출물"
+
+testing:
+  id: testing
+  name: 테스트 & 평가
+  description: "품질 검증, 성능 측정, 최종 검수"
+  steps:
+    - step-01: "[CUSTOMIZE] Component 1 testing"
+      validation:
+        - "[REQUIRED] 검증 항목 1"
+        - "[REQUIRED] 검증 항목 2"
+      metrics:
+        - "[OPTIONAL] metric_name: target_value"
+
+    - step-02: "[CUSTOMIZE] Component 2 testing"
+      validation:
+        - "[REQUIRED] 검증 항목 1"
+      metrics:
+        - "[OPTIONAL] metric_name: target_value"
+
+    - step-03: "[CUSTOMIZE] Integration testing (if needed)"
+      validation:
+        - "[OPTIONAL] 통합 테스트 항목"
+
+  status: active
+  success_criteria:
+    - "[REQUIRED] 성공 기준 1"
+    - "[REQUIRED] 성공 기준 2"
+    - "[OPTIONAL] 성공 기준 3"
+
+quality_metrics:
+  - "[REQUIRED] metric_name_1: numeric_value"
+  - "[REQUIRED] metric_name_2: numeric_value"
+  - "[OPTIONAL] metric_name_3: numeric_value"
+
+deliverables:
+  - type: "[CUSTOMIZE] type-1 (e.g., scripts, data, engine)"
+    location: "[REQUIRED] /path/"
+    status: "[REQUIRED] production-ready|complete|draft"
+    "[CUSTOMIZE]": "[type-specific fields]"
+
+  - type: "[CUSTOMIZE] type-2"
+    location: "[REQUIRED] /path/"
+    status: "[REQUIRED] production-ready|complete|draft"
+    "[CUSTOMIZE]": "[type-specific fields]"
+
+  - type: "[OPTIONAL] type-3 (if needed)"
+    location: "[REQUIRED] /path/"
+    status: "[REQUIRED] production-ready|complete|draft"
+
+  - type: documentation
+    location: "docs/[module-id].md"
+    status: complete
+
+dependencies:
+  - requires: "[CUSTOMIZE] External resource or module dependency"
+    source: "[REQUIRED] module-id | external"
+    status: "[REQUIRED] ready|pending|received"
+    usage: "[REQUIRED] How this dependency is used"
+
+  - provides: "[CUSTOMIZE] Output/service provided by this module"
+    consumers: "[REQUIRED] [list of consuming modules]"
+    status: "[REQUIRED] ready|pending"
+
+key_decisions:
+  - decision: "[REQUIRED] What was decided"
+    rationale: "[REQUIRED] Why this decision was made"
+    status: "[REQUIRED] implemented|pending|reviewed"
+    "[OPTIONAL]": "impact_modules: [affected modules]"
+
+  - decision: "[OPTIONAL] Second key decision (if any)"
+    rationale: "[OPTIONAL] Rationale"
+    status: "[OPTIONAL] implemented|pending"
+
+timeline:
+  - phase: "[CUSTOMIZE] Phase 1"
+    duration: "[REQUIRED] Xweeks"
+    status: "[REQUIRED] completed|active|pending"
+    date: "[REQUIRED] YYYY-MM-DD to YYYY-MM-DD"
+
+  - phase: "[CUSTOMIZE] Phase 2"
+    duration: "[REQUIRED] Xweeks"
+    status: "[REQUIRED] completed|active|pending"
+    date: "[REQUIRED] YYYY-MM-DD to YYYY-MM-DD"
+
+milestones:
+  - id: "[OPTIONAL] m-milestone-1"
+    name: "[OPTIONAL] Milestone name"
+    date: "[OPTIONAL] YYYY-MM-DD"
+    status: "[OPTIONAL] completed|pending"
+
+# [OPTIONAL] Add module-specific sections below as needed:
+# Examples from existing modules:
+# - agent_package: (consultdata) Define agent package structure
+# - governance: (AI-Chatbot-Policy) Define version/change control
+# - compliance: (sensitive-data-masking) Define regulatory compliance
+# - communications: (AIKON7) Define collaboration channels
+# - data_governance: (RAG-Corpus-Dataset) Define storage/backup policies
+
+"[OPTIONAL-SECTION]":
+  "[CUSTOMIZE-FIELD]": "[Description]"

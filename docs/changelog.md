@@ -1,5 +1,40 @@
 # 변경 이력
 
+## v0.3.0 (2026-05-26)
+
+> **스킬팩 전면 재설계 — Working System First.** v0.2.x의 복잡한 13개 스킬을 5개로 재편했다. `mso-repository-setup`, `mso-scaffold-design`, `mso-workflow-design`, `mso-work-memory`, `mso-orchestration`이 실제로 동작하는 단일 스킬팩을 구성한다. Python 스크립트 기반 CLI(`init.py`, `sf_node.py`, `wf_node.py`, `wm_node.py`)와 hook 자동 등록(`auditlog.py`, `worklog.py`)으로 provider-free 운영이 가능해졌다.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `mso-repository-setup` | `agent-context/` 트리 부트스트랩 CLI(`init.py`). `--hook` 옵션으로 `.claude/settings.json` 자동 등록 |
+| `mso-scaffold-design` | `index.yaml` SSOT. `sf_node.py` — show/scaffold/validate/inventory/tree 명령. sub_index 계층 참조 지원 |
+| `mso-workflow-design` | workflow YAML SSOT. `wf_node.py` — show/scaffold/validate/harness-manifest. `workflow_to_markdown.py`, `workflow_to_mermaid.py` 변환 스크립트 |
+| `mso-work-memory` | JSONL entry CLI(`wm_node.py`). 9종 타입, zvec 시맨틱 검색, relations 그래프 traversal |
+| `hooks/auditlog.py` | PostToolUse hook — Bash·Edit·Write 호출을 `auditlog/AU-YYYY-MM-DD.jsonl`에 일별 append |
+| `hooks/worklog.py` | Stop hook — 세션 종료를 `worklog/WL-YYYY-MM-DD.jsonl`에 일별 append |
+| `install.sh` | 5개 스킬을 `~/.{claude,codex,gemini}/skills/`에 symlink 등록 |
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| 스킬 수 13 → 5 | v0.2.x 스킬 전체 폐기. 5개 스킬로 완전 재편 |
+| `.skill-modules/` 구조 폐기 | 모든 스킬이 직접 `skills/` 하위에 위치. on-demand 로딩 없음 |
+| `mso-orchestration` 역할 축소 | 실행자 → name-only 라우터. 실제 동작은 각 sub-skill |
+| `agent-context/` 표준 구조 도입 | `index/`, `workflow/`, `work-memory/` 3개 축으로 정리 |
+| Python 의존성 | `PyYAML>=6.0`, `jsonschema>=4.24.0` (stdlib 외 최소화) |
+
+### Fixed
+
+| 수정 | 내용 |
+|------|------|
+| `sf_node.py inventory` EXTRA 오탐 | `agent-context/` 디렉토리가 항상 unregistered로 감지되던 문제 수정 |
+| `wm_node.py` DeprecationWarning | `datetime.utcnow()` → `datetime.now(timezone.utc)` 교체 |
+
+---
+
 ## v0.2.3 (2026-05-13)
 
 > **mso-task-execution → mso-harness-setup 흡수 + 리포지토리 구조 정리.** 실행 조율(execution_graph 소비, Fallback Policy, node snapshot)을 `mso-harness-setup`에 통합하여 스킬 수를 11 → 10개로 줄였다. 더불어 폐기된 훅, 중복 스크립트, 고아 마이그레이션 파일 등 15건을 정리했다.
@@ -17,12 +52,12 @@
 | 항목 | 이유 |
 |------|------|
 | `mso-task-execution` 스킬 | `mso-harness-setup`에 흡수 |
-| `skills/mso-agent-audit-log/hooks/` (Python/sh 스크립트) | `.skill-modules/`에 정본 존재. `skills/`는 참조 문서 레이어 |
+| `skills/mso-agent-audit-log/hooks/` (Python/sh 스크립트) | `skills/`에 정본 존재. `skills/`는 참조 문서 레이어 |
 | `skills/mso-agent-audit-log/hooks/stop_hook.sh` | Stop hook 폐기 (v0.2.2에서 3-hook 체계로 대체) |
-| `.skill-modules/mso-agent-audit-log/schema/migrate_*.sql` (3개) | 마이그레이션 완료. 스냅샷은 `history/`에서 관리 |
+| `skills/mso-agent-audit-log/schema/migrate_*.sql` (3개) | 마이그레이션 완료. 스냅샷은 `history/`에서 관리 |
 | `docs/diagrams/` | 빈 디렉토리 |
 | `docs/knowledge-object-mapping.md` | v0.1.1 시대 산출물 |
-| `.skill-modules/mso-workflow-optimizer/.env.local` | `.env.example` 중복 |
+| `skills/mso-workflow-optimizer/.env.local` | `.env.example` 중복 |
 
 ---
 
@@ -34,8 +69,8 @@
 
 | 추가 | 내용 |
 |------|------|
-| **신규 스킬** | `repository/.skill-modules/mso-harness-setup/` 추가 |
-| **Workflow Repository Setup 스킬** | `repository/.skill-modules/mso-workflow-repository-setup/` 추가. workflow-design + scaffolding-design을 repository setup 계약으로 승격 |
+| **신규 스킬** | `repository/skills/mso-harness-setup/` 추가 |
+| **Workflow Repository Setup 스킬** | `repository/skills/mso-workflow-repository-setup/` 추가. workflow-design + scaffolding-design을 repository setup 계약으로 승격 |
 | **Canonical Event Schema** | provider/native/capability/execution/semantic/governance/audit block을 분리한 `canonical_event.schema.json` 추가 |
 | **YAML Runtime Spec** | adapter, policy, evaluator, escalation, checkpointing, audit 설정을 담는 `runtime_harness_config.schema.json` 및 예시 YAML 추가 |
 | **Provider Adapter 명세** | Claude Code, Codex, OpenClaw, Hermes, LangGraph, OpenAI Agents SDK, Google ADK, MCP-based systems의 native event를 canonical lifecycle로 매핑하는 adapter contract 초안 |

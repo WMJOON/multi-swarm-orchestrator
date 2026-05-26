@@ -1,0 +1,33 @@
+project:
+  name: TODO Project Name
+  id: NN.project-id
+  description: |
+    TODO: 프로젝트 한 문장 요약 (멀티라인 가능)
+  owner: TODO@example.com
+  updated: YYYY-MM-DD
+  version: "1.0.0"
+
+modules:
+  - id: 01.example-module
+    path: 01.example-module/
+    description: TODO 모듈 한 문장 설명
+    subdirs:
+      - path: 00.context/
+        role: context
+        description: 모듈 컨텍스트 문서
+      - path: 01.scripts/
+        role: scripts
+        description: 실행 코드
+      - path: 02.data/
+        role: data
+        description: 입출력 데이터
+      - path: 99.planning/
+        role: planning
+        description: 기획·로드맵
+    key_files:
+      - README.md
+      - CLAUDE.md
+    status: active
+    # references:
+    #   - provides_to: [02.another-module]
+    #     artifacts: [산출물 이름]

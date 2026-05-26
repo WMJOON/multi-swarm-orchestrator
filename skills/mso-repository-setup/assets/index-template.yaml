@@ -1,0 +1,20 @@
+project:
+  name: "TODO Project Name"
+  id: "TODO-project-id"
+  description: "TODO: 프로젝트 한 문장 요약"
+  owner: "TODO@example.com"
+  updated: "2026-01-01"
+  version: "0.1.0"
+  root_offset: "../.."   # agent-context/index 에서 프로젝트 루트로 가는 상대 경로
+
+modules:
+  # mso-scaffold-design 으로 모듈·subdir 등록.
+  # 예시:
+  # - id: 01.foo
+  #   path: 01.foo/
+  #   description: "..."
+  #   subdirs:
+  #     - path: 01.scripts/
+  #       description: "..."
+
+root_files: []

@@ -1,0 +1,31 @@
+type: group
+description: "여러 노드를 Mermaid subgraph로 묶는 컨테이너."
+
+fields:
+  type:
+    required: true
+    type: literal
+    value: group
+
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: |
+      그룹 고유 식별자. 네이밍 패턴은 프로젝트에서 정의
+      (예: '{module-abbr}-g-{NNN}').
+
+  label:
+    required: true
+    type: string
+    description: "컨테이너 제목 (예: '정책 업데이트 사이클')"
+
+  steps:
+    required: true
+    type: list
+    description: "step | decision | group 재귀 중첩 가능"
+    items: node  # step | decision | group 중 하나
+
+structural_invariants:
+  - "id 는 워크플로우 내 unique"
+  - "steps 비어있지 않음"

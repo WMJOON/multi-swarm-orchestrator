@@ -1,0 +1,67 @@
+type: phase
+description: "워크플로우의 단계(phase) 컨테이너."
+
+fields:
+  id:
+    required: true
+    type: string
+    description: |
+      Phase 식별자. 자유형 string.
+      MSO 권장 어휘: discovery, development, testing.
+      프로젝트가 다른 어휘를 쓸 경우 컨벤션에 명시.
+
+  label:
+    required: true
+    type: string
+
+  status:
+    required: true
+    type: enum
+    values: [completed, active, pending]
+
+  show_wrapper:
+    required: false
+    type: bool
+    default: true
+    description: "false 이면 시각화에서 phase 래퍼 생략."
+
+  default_judge:
+    required: false
+    type: enum
+    values: [HITL, HITLFE, HOTL, HOOTL]
+    description: "하위 decision 노드의 기본 judge 값."
+
+  steps:
+    required: false
+    type: list
+    description: |
+      step | decision | validation | group 노드 목록.
+      `workflows` 가 있으면 sub workflow 의 entry anchor 가 step 역할을 대체할 수 있어
+      비어 있을 수 있다.
+
+  workflows:
+    required: false
+    type: list
+    description: |
+      sub workflow 참조 목록 (workflow_ref.schema.yaml 참조).
+      이 phase 가 sub workflow 의 phase/group 을 entry point 로 위임할 때 사용.
+    items: workflow_ref
+
+  artifacts:
+    required: false
+    type: list
+    items: string
+
+  success_criteria:
+    required: false
+    type: list
+    items: string
+    description: |
+      측정 가능한 성공 기준.
+      특정 phase 에서 강제할지는 프로젝트 컨벤션으로 정의.
+
+structural_invariants:
+  - "id 비어있지 않음"
+  - "status ∈ {completed, active, pending}"
+  - "steps 또는 workflows 둘 중 하나는 존재해야 함 (둘 다 비면 ERROR)"
+  - "workflows[] 각 항목은 workflow_ref.schema.yaml 의 invariant 를 따름"

@@ -1,0 +1,42 @@
+type: project
+description: "index.yaml top-level `project:` 메타데이터."
+
+fields:
+  name:
+    required: true
+    type: string
+    description: "프로젝트 표시 이름."
+
+  id:
+    required: true
+    type: string
+    description: "프로젝트 고유 식별자. 네이밍 컨벤션은 프로젝트에서 정의."
+
+  description:
+    required: true
+    type: string
+    description: "프로젝트 한 문장 요약 (멀티라인 가능)."
+
+  owner:
+    required: true
+    type: string
+    description: "프로젝트 책임자."
+
+  updated:
+    required: true
+    type: string
+    description: "최종 갱신일 (프로젝트 컨벤션에 따른 형식)."
+
+  version:
+    required: false
+    type: string
+    description: "Semantic versioning 권장. 예: '1.0.0'"
+
+  root_offset:
+    required: false
+    type: string
+    description: |
+      yaml 파일 위치와 다른 프로젝트 루트를 지정 (yaml 부모 디렉토리 기준 상대).
+      예: "../.." — index.yaml 이 agent-context/index/ 안에 있고 프로젝트 루트가
+      그 두 단계 위일 때. modules[].path 는 이 루트 기준 상대로 해석됨.
+      값이 없으면 yaml 부모 디렉토리가 프로젝트 루트.

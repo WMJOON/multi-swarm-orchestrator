@@ -1,0 +1,77 @@
+type: module
+description: "`modules[]` 항목 — 프로젝트 내 1개 모듈을 규정."
+
+fields:
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: "모듈 고유 식별자. 디렉토리명과 동일해야 함. 네이밍 컨벤션은 프로젝트에서 정의."
+
+  path:
+    required: true
+    type: string
+    description: |
+      프로젝트 루트 기준 디렉토리 경로. 끝에 '/' 필수.
+      id 와 '/' 추가 외 동일 (path == id + '/').
+
+  description:
+    required: true
+    type: string
+    description: "모듈 한 문장 설명."
+
+  subdirs:
+    required: false
+    type: list
+    description: "모듈 내 서브디렉토리 목록 — subdir.schema.yaml 참조."
+
+  key_files:
+    required: false
+    type: list
+    items: string
+    description: "모듈 루트의 주요 파일 (예: README.md, CLAUDE.md, AGENTS.md)."
+
+  references:
+    required: false
+    type: list
+    description: "모듈 간 의존 관계."
+    items:
+      consumes:
+        required: false
+        type: string
+        description: "이 모듈이 입력으로 사용하는 다른 모듈 id."
+      provides_to:
+        required: false
+        type: list
+        items: string
+        description: "이 모듈이 산출물을 제공하는 다른 모듈 id 목록."
+      artifacts:
+        required: false
+        type: list
+        items: string
+        description: "오가는 산출물 이름."
+
+  status:
+    required: false
+    type: enum
+    values: [active, deprecated, planned]
+    default: active
+
+  sub_index:
+    required: false
+    type: string
+    description: |
+      이 모듈의 내부 구조를 정의한 sub index.yaml 경로 (root index 기준 상대).
+      예: "02.AI-Chatbot-Policy/index.yaml".
+      sub_index 가 있으면 동일 모듈의 subdirs/key_files/references 는 sub 파일이 SSOT.
+      root 에서 중복 선언 시 ERROR.
+      계층 depth 상한은 3 (root + 2단계). 초과 시 ERROR.
+
+structural_invariants:
+  - "id 는 modules[] 내에서 전역 unique (sub_index 트리 전체 포함)"
+  - "path == id + '/'"
+  - "references.consumes / provides_to 는 존재하는 모듈 id 만 참조 (전역 풀 기준)"
+  - "sub_index 존재 시 동일 모듈의 subdirs / key_files / references 는 비어야 함"
+  - "sub_index 경로는 module.path 디렉토리의 자손이어야 함"
+  - "sub 파일의 project.id 는 root project.id 와 일치해야 함"
+  - "계층 depth 상한 3 (root + 2단계). 초과 시 ERROR. 순환 참조 차단 (visited-set)"

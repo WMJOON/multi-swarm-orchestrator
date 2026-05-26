@@ -1,54 +1,58 @@
 #!/bin/bash
-# MSO Skill Pack — install symlinks into ~/.{claude,codex}/skills/ and ~/.skill-modules/
-# Targets: CLAUDE_CODE (default), CODEX, ALL
+# MSO v0.3.0 — install symlinks into ~/.{claude,codex,gemini}/skills/
+# Usage: bash install.sh [--codex] [--all]
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_MODULES_SRC="$REPO_DIR/.skill-modules"
-ORCHESTRATION_SRC="$REPO_DIR/skills/mso-orchestration"
-MODULES_DST="${HOME}/.skill-modules"
+SKILLS_SRC="$REPO_DIR/skills"
+
+SKILLS=(
+  mso-orchestration
+  mso-repository-setup
+  mso-scaffold-design
+  mso-workflow-design
+  mso-work-memory
+)
 
 # Parse args
 TARGETS=()
 for arg in "$@"; do
-    case "$arg" in
-        --codex)      TARGETS+=(codex) ;;
-        --all)        TARGETS+=(claude codex) ;;
-        *)            ;;
-    esac
+  case "$arg" in
+    --codex) TARGETS+=(codex) ;;
+    --gemini) TARGETS+=(gemini/antigravity) ;;
+    --all) TARGETS+=(claude codex gemini/antigravity) ;;
+  esac
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(claude)
 
-echo "MSO Skill Pack Install"
+echo "MSO v0.3.0 Install"
+echo "  Skills  : ${SKILLS[*]}"
 echo "  Targets : ${TARGETS[*]}"
 echo ""
 
-link_target() {
-    local src="$1" dst="$2" label="$3"
-    if [ -L "$dst" ]; then
-        echo "  SKIP  $label  (symlink already exists)"
-    elif [ -e "$dst" ]; then
-        echo "  SKIP  $label  (path exists — remove manually to re-link)"
-    else
-        ln -s "$src" "$dst"
-        echo "  LINK  $label"
-    fi
+link_skill() {
+  local src="$1" dst="$2" label="$3"
+  if [ -L "$dst" ]; then
+    rm "$dst"
+    ln -s "$src" "$dst"
+    echo "  UPDATE  $label"
+  elif [ -e "$dst" ]; then
+    echo "  SKIP    $label  (directory exists — remove manually to re-link)"
+  else
+    ln -s "$src" "$dst"
+    echo "  LINK    $label"
+  fi
 }
 
-# 1) ~/.skill-modules/mso-skills → .skill-modules/
-mkdir -p "$MODULES_DST"
-link_target "$SKILL_MODULES_SRC" "$MODULES_DST/mso-skills" "~/.skill-modules/mso-skills"
-
-echo ""
-
-# 2) orchestration skill → each target
 for target in "${TARGETS[@]}"; do
-    SKILLS_DST="${HOME}/.${target}/skills"
-    mkdir -p "$SKILLS_DST"
-    echo "  [$target]"
-    link_target "$ORCHESTRATION_SRC" "$SKILLS_DST/mso-orchestration" "mso-orchestration"
+  DST_DIR="$HOME/.$target/skills"
+  mkdir -p "$DST_DIR"
+  echo "[$target]"
+  for skill in "${SKILLS[@]}"; do
+    link_skill "$SKILLS_SRC/$skill" "$DST_DIR/$skill" "$skill"
+  done
+  echo ""
 done
 
-echo ""
-echo "Done. Sub-skills are available at ~/.skill-modules/mso-skills/"
-echo "Tip: run with --codex or --all to also install for Codex."
+echo "Done."
+echo "Tip: run with --all to install for Claude + Codex + Gemini."

@@ -1,0 +1,377 @@
+---
+name: mso-workflow-design
+description: >
+  Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
+  규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
+  받아, 그 위에서 동작하는 step·decision·group 노드를 YAML로 선언한다.
+  MOTIF 패턴(Phase/Step/Decision/Deliverable/Dependencies/Success Criteria/
+  Key Decisions)으로 일관성을 강제하고, 노드 단위 스키마(references/schemas/)와
+  wf_node.py 툴로 validate·scaffold를 지원한다. Mermaid 자동 시각화는
+  관측성을 위한 후순위 산출물이다. 다음 상황에서 사용한다:
+  (1) scaffold가 정의된 모듈에 워크플로우 규정 추가,
+  (2) 기존 워크플로우의 step/decision 노드 추가·수정,
+  (3) Discovery→Development→Testing 표준 흐름 정의,
+  (4) HITL/HITLFE/HOTL/HOOTL 의사결정 노드 명시,
+  (5) 모듈 간 dependencies 선언.
+---
+
+# MSO Workflow Design v2
+
+**Primary**: Repository Scaffolding 위에 워크플로우(step·decision·group)를 YAML로 규정한다.  
+**Secondary**: 규정된 워크플로우를 Mermaid로 시각화한다 (관측성, 후순위).
+
+## Abstraction Principle
+
+이 스킬은 **구조적 검증**과 **judge taxonomy** 만 강제한다. 네이밍 패턴·동사 어휘·phase 이름·directory role 어휘 등은 **프로젝트 영역**.
+
+| 스킬이 강제하는 것 | 프로젝트가 정의하는 것 |
+|----------------|------------------|
+| `type ∈ {step, decision, validation, group, phase}` | `id` 네이밍 패턴 (예: `{abbr}-s-{NNN}`) |
+| 노드 id unique, label 존재 | 모듈 약어 매핑 (acp/sdm/…) |
+| `judge ∈ {HITL, HITLFE, HOTL, HOOTL}` | label 동사 어휘 (분석/생성/검증 …) |
+| `branches.on ∈ judge_branch_conditions[judge]` | `phase.id` 어휘 (discovery/development/testing …) |
+| HITL/HITLFE → owner 필수, HITLFE → threshold 필수 | `directories.role` 어휘 (input/output/reference/…) |
+| status ∈ {completed, active, pending} | `success_criteria` 강제 여부·개수 |
+| `directories[].path` 존재 | `owner` 형식 (이메일/팀명/…) |
+
+> 프로젝트별 컨벤션은 [assets/conventions-example.md](assets/conventions-example.md) 를 복사·수정해 `docs/` 또는 `CLAUDE.md` 에 둔다.
+
+## Cross-Reference: mso-scaffold-design ↔ mso-workflow-design
+
+두 스킬은 **양방향 의존** 관계다.
+
+| 스킬 | 책임 | 산출물 |
+|------|------|--------|
+| **mso-scaffold-design** | Repository 구조(directory/reference/convention) 규정 | `index.yaml` (정본) |
+| **mso-workflow-design** | scaffold 위 동작 시퀀스 규정 | `workflow/*-workflow-00.yaml` |
+
+### 의존 규칙
+
+1. **workflow YAML의 `directories.path`** 는 scaffold(`index.yaml`)에 등록된 디렉토리만 참조한다.
+   - workflow 작성 시 새 경로가 필요하면 **scaffold(index.yaml)에 먼저 등록**.
+2. **scaffold(index.yaml) 수정** 시 — 디렉토리 rename·삭제·이동이 발생하면 workflow YAML의 `directories.path`를 영향 분석한다.
+3. **workflow YAML 수정** 시 — 새 directory role(`input`/`output`/`reference`/`instruction`) 사용이 발생하면 scaffold에 해당 경로가 존재하는지 검증한다.
+
+> 한쪽 수정이 일어나면 다른 쪽 검토가 필수다.
+
+## SSOT 원칙
+
+> **YAML이 SSOT(Single Source of Truth)다. md 파일은 YAML을 변환한 시각화 산출물이다.**
+>
+> - **수정**: 반드시 YAML을 먼저 수정한다. md를 직접 편집하지 않는다.
+> - **재생성**: YAML 수정 후 `workflow_to_mermaid.py --all`로 md를 재생성한다.
+> - **자동화**: PostToolUse 훅으로 YAML 저장 시 validate + 재생성이 자동 실행된다.
+
+## Core Workflow
+
+### Step 1. Scaffold
+
+프로젝트 루트에 워크플로우 디렉토리 생성:
+
+```bash
+mkdir -p workflow/{scripts,diagrams}
+cp .claude/skills/mso-workflow-design/assets/global-workflow-template.yaml \
+   workflow/workflow-00.yaml
+cp .claude/skills/mso-workflow-design/scripts/workflow_to_mermaid.py \
+   workflow/scripts/
+```
+
+각 모듈마다:
+```bash
+mkdir workflow/[module-id]
+cp .claude/skills/mso-workflow-design/assets/module-workflow-template-00.yaml \
+   workflow/[module-id]/[module-id]-workflow-00.yaml
+```
+
+### Step 2. Define (MOTIF 패턴 적용)
+
+각 module workflow YAML은 7개 필수 MOTIF를 따른다:
+
+| Motif | Required Fields |
+|-------|----------------|
+| Phase Structure | 하나 이상의 phase (id 어휘는 프로젝트 — MSO 권장: discovery/development/testing) |
+| Step Definition | `type: step` — `id`, `label`, `status`, `directories` (optional), `deliverables` |
+| **Decision Node** | **`type: decision` — `judge` ∈ {HITL/HITLFE/HOTL/HOOTL}, HITL/HITLFE는 `owner` 필수, `description` 권장 (판정 주체가 검토할 항목 서술)** |
+| **Validation Harness** | **`type: validation` — 자동 검증 게이트. `harness` (runner 식별자), `pass_criteria` 필수** |
+| Deliverable Taxonomy | `type`, `location`, `status` |
+| Dependencies | `requires` (입력), `provides` (출력) |
+| Success Criteria | 측정 가능한 기준 (강제 개수는 프로젝트 컨벤션) |
+| Key Decisions | `decision`, `rationale`, `status` |
+
+#### Validation vs Decision
+
+| 항목 | `decision` | `validation` |
+|------|----------|------------|
+| 의미 | 분기 판단 (사람/모델이 판단) | 자동 검증 하네스 (스크립트가 패스/실패 판정) |
+| 필수 필드 | `judge`, `branches[].on` | `harness`, `pass_criteria` |
+| Mermaid 형태 | 마름모 `{}` | 육각형 `{{}}` |
+| 분기 | 가능 (branches 명시) | 일반적으로 단일 후속 (실패 시 별도 정책) |
+
+### 다중 Workflow 패턴 (Repo당 N개 workflow)
+
+하나의 레포에 여러 workflow 가 공존할 수 있다. (예: 정책 사이클, 데이터 파이프라인, 평가, 릴리즈, lifecycle 등)
+
+**명명 컨벤션**:
+```
+agent-context/workflow/
+├── workflow-00.yaml              # 기본/lifecycle (legacy 호환)
+├── workflow-policy-cycle.yaml
+├── workflow-data-pipeline.yaml
+├── workflow-evaluation.yaml
+└── workflow-release.yaml
+```
+
+→ 패턴: `workflow-<slug>.yaml`
+
+**각 yaml 의 메타 (필수)**:
+```yaml
+workflow:
+  id: lifecycle              # 전역 unique
+  slug: lifecycle            # 파일명과 일치
+  description: ...
+```
+
+**일괄 검증**:
+```bash
+wf_node validate-all agent-context/workflow/
+wf_node validate-all agent-context/workflow/ --scaffold agent-context/index/index.yaml
+wf_node validate-all . --pattern "*workflow*.yaml"   # 모듈 workflow 도 포함
+```
+
+각 workflow YAML은 독립 root 로 검증되며, 자체 계층 참조(workflow_ref) 트리를 가질 수 있다.
+
+### 계층 참조 (Monorepo/Subrepo 패턴)
+
+대형 워크플로우는 root → sub workflow 로 분리할 수 있다. root 의 phase 가 sub workflow 의 phase/group 을 entry point 로 위임한다 (subgraph 형태).
+
+```yaml
+# root workflow.yaml
+phase-01-discovery:
+  label: 발견 & 계획
+  status: active
+  workflows:
+    - ref: 02.AI-Chatbot-Policy/workflow/02.AI-Chatbot-Policy-workflow-00.yaml#discovery
+      module: 02.AI-Chatbot-Policy        # required (scaffold module id 와 일치)
+      harness_propagate: true             # default true
+```
+
+**규칙** (`workflow_ref.schema.yaml`):
+- `ref` 와 `module` 모두 **required**.
+- `ref` 의 file path 는 scaffold `module:{module}.path` 의 자손이어야 함 (cross-skill invariant).
+- `ref` 의 anchor (`#...`) 는 sub 파일의 phase/group id 와 일치해야 함.
+- sub 파일이 선언한 `module.id` 와 `module` 필드 값이 일치해야 함.
+- 계층 depth 상한 **3** (root + 2단계). 순환 차단.
+- node id 는 **계층 전역 unique**.
+
+상세 정의 및 예제:
+- [references/yaml-schema.md](references/yaml-schema.md) — **YAML 공식 문법 스펙** (step/decision/group/phase)
+- [references/motif-patterns.md](references/motif-patterns.md) — 전체 MOTIF 패턴
+- [references/gate-levels.md](references/gate-levels.md) — Judge 4-level taxonomy, decision matrix, Mermaid 스타일
+- [references/workflow-patterns.md](references/workflow-patterns.md) — Workflow Pattern (Local File Versioning, Git Versioning)
+
+> **MOTIF vs Pattern**: MOTIF는 `id`, `judge` 같은 **필드 구조**가 고정된 단위.  
+> Pattern은 Local File Versioning처럼 **사이클 형태**는 같지만 edit 단계 내용이 모듈마다 다른 더 큰 단위.
+
+### Step 3. Validate (필수)
+
+변환 전에 반드시 MOTIF 패턴 준수 검증 실행:
+
+```bash
+cd workflow/scripts
+python validate_workflow.py            # 전체 검증
+python validate_workflow.py --module 04.AIKON7  # 단일 모듈
+python validate_workflow.py --strict   # warning까지 error로 승격
+```
+
+검증 실패 시 변환 단계로 진행할 수 없다.
+
+### Step 4. Visualize (Optional, 후순위)
+
+> 시각화는 관측성 산출물이다. workflow YAML이 SSOT이며, 마크다운/Mermaid는 단순 변환물.  
+> 워크플로우 규정·검증이 완료된 후에만 의미가 있다.
+
+두 가지 변환 스크립트를 제공한다:
+
+| 스크립트 | 출력 | 용도 |
+|---------|------|------|
+| `workflow_to_markdown.py` | 모듈별 **통합 마크다운 1개** (mermaid + 테이블 + 메타데이터) | 모듈 단위 문서화·리뷰 |
+| `workflow_to_mermaid.py` | **프로젝트 전체 다이어그램 세트** (global/module/dependencies/deliverables/timeline) | 프로젝트 단위 관측성 |
+
+#### 4-A. 모듈별 통합 마크다운 (`workflow_to_markdown.py`)
+
+단일 모듈 YAML을 받아 mermaid 다이어그램 + phase 테이블(ID/Type/Title/State/Output/Validation) + 메타데이터를 하나의 .md로 출력한다.
+
+```bash
+python workflow_to_markdown.py workflow/04.AIKON7/04.AIKON7-workflow-00.yaml
+# → workflow/04.AIKON7/04.AIKON7-workflow-00.md
+
+python workflow_to_markdown.py workflow/04.AIKON7/04.AIKON7-workflow-00.yaml \
+  -o workflow/04.AIKON7/04.AIKON7-workflow.md
+```
+
+- 노드 형태: step → `[]`, decision → `{}` (마름모), validation → `{{}}` (육각형), group → `([])`
+- 상태별 색상: completed(녹색), active(주황), pending(연보라), blocked(분홍)
+- Decision 노드의 `branches[].goto` 가 자동으로 edge로 변환됨 (on 라벨 포함)
+
+**계층 통합 모드** (`--aggregate`): root → sub workflow 트리를 하나의 마크다운으로 통합.
+
+```bash
+python workflow_to_markdown.py workflow/workflow-00.yaml --aggregate -o aggregate.md
+```
+
+#### 4-B. 프로젝트 전체 시각화 세트 (`workflow_to_mermaid.py`)
+
+```bash
+cd workflow/scripts
+python workflow_to_mermaid.py --all    # 자동으로 validate_workflow.py 선행 실행
+```
+
+`workflow_to_mermaid.py`는 변환 전 자동으로 `validate_workflow.py`를 호출한다.  
+검증 실패 시 변환은 중단된다 (`--skip-validation`으로 강제 변환 가능하나 권장하지 않음).
+
+생성되는 다이어그램:
+- `01-global-workflow.md` — 프로젝트 5-phase flowchart
+- `02-module-[id].md` — 모듈별 discovery/development/testing flow
+- `03-dependencies-graph.md` — 모듈 간 의존성 그래프
+- `04-deliverables-[id].md` — 산출물 트리
+- `05-timeline-[id].md` — Gantt chart
+
+개별 다이어그램만 생성:
+```bash
+python workflow_to_mermaid.py --global
+python workflow_to_mermaid.py --module 01.consultdata
+python workflow_to_mermaid.py --dependencies
+```
+
+**계층 subgraph 통합** (`--aggregate`): root → sub workflow 트리를 nested subgraph 형태의 단일 다이어그램으로 렌더링.
+
+```bash
+python workflow_to_mermaid.py --aggregate workflow/workflow-00.yaml
+# → diagrams/06-aggregate-workflow-00.md
+```
+
+## YAML 작성 시 주의사항
+
+### Nested list with dict 금지
+```yaml
+# Bad — YAML 파싱 오류
+deliverables:
+  - engine.py:
+    - Metric: Faithfulness
+
+# Good — 평면 string으로
+deliverables:
+  - "engine.py (Faithfulness metric)"
+```
+
+### Module ID 일관성
+디렉토리명 = `module.id` = YAML 파일명 prefix.  
+예: `04.AIKON7/` 디렉토리 → `id: 04.AIKON7` → `04.AIKON7-workflow-00.yaml`
+
+### Dependencies는 모듈 ID로 참조
+```yaml
+dependencies:
+  - requires: 상담 데이터 분석 결과
+    source: 01.consultdata
+    status: ready
+  - provides: 라우팅 정책
+    consumers: [04.AIKON7]
+```
+
+## 검증 체크리스트
+
+**Scaffold 정합성 (먼저 확인)**
+- [ ] `directories.path` 에 쓴 경로가 `index.yaml`(scaffold)에 등록되어 있는가
+- [ ] scaffold가 최근 변경됐다면 영향 받은 workflow YAML을 재검증했는가
+
+**Workflow 구조 (스킬이 검증)**
+- [ ] 각 노드에 `type` ∈ {step, decision, validation, group} 명시
+- [ ] 각 노드에 `id` 명시 (워크플로우 **계층 전역** unique)
+- [ ] 각 노드에 `label` 명시
+- [ ] 분기·판단 지점은 `type: decision` 노드로 분리
+- [ ] 자동 검증 게이트(스키마 검증·테스트 러너·KPI 체크 등)는 `type: validation` 노드로 분리
+- [ ] 각 decision 에 `judge` ∈ {HITL/HITLFE/HOTL/HOOTL} 명시
+- [ ] HITL/HITLFE → `owner` 필수, HITLFE → `threshold` 필수
+- [ ] HITL/HITLFE decision → `description`에 운영자가 검토할 항목 명시 (권장)
+- [ ] 각 validation 에 `harness` (runner 식별자), `pass_criteria` 명시
+- [ ] `branches[].on` 이 judge 별 허용 조건에 속함
+- [ ] phase 에 `status` ∈ {completed, active, pending}
+
+**계층 참조 (스킬이 검증)**
+- [ ] `phase.workflows[]` 항목에 `ref`, `module` 모두 명시 (required)
+- [ ] `ref` 의 file path 가 scaffold module path 의 자손 (cross-skill, `--scaffold` 옵션으로 확인)
+- [ ] `ref` 의 anchor (`#...`) 가 sub 파일의 phase/group id 와 일치
+- [ ] 계층 depth ≤ 3, 순환 참조 없음
+- [ ] 동일 harness runner id 가 여러 validation 노드에 등장 시 의도 확인 (WARN)
+
+**프로젝트 컨벤션 (프로젝트가 정의·검증)**
+- [ ] `id` 네이밍 패턴 (예: `{module-abbr}-s-{NNN}`)
+- [ ] label 동사 어휘 일관성
+- [ ] phase id 어휘 (discovery/development/testing 등)
+- [ ] `directories.role` 어휘 (input/output/reference/instruction 등)
+- [ ] `success_criteria` 강제 phase·개수
+- [ ] dependencies·key_decisions 필수성
+
+## Node Schema & Tool (wf_node.py)
+
+노드 유형별 YAML 스키마 파일과 이를 읽는 CLI 툴.
+
+### 스키마 파일 (`references/schemas/`)
+
+| 파일 | 대상 노드 | 핵심 정의 |
+|------|---------|---------|
+| `step.schema.yaml` | `type: step` | 필수 필드 + structural invariants |
+| `decision.schema.yaml` | `type: decision` | judge 4-level, conditional fields, branches.on 허용 조건, `description` |
+| `validation.schema.yaml` | `type: validation` | 자동 검증 게이트. `harness`, `pass_criteria`, `on_fail` |
+| `group.schema.yaml` | `type: group` | 필수 필드, steps 중첩 |
+| `phase.schema.yaml` | phase | 필수 필드, status enum, default_judge, `workflows[]` (sub workflow ref) |
+| `workflow_ref.schema.yaml` | phase.workflows[] | 계층 참조. `ref` (file#anchor), `module` (required), `harness_propagate` |
+
+### wf_node.py 사용법
+
+```bash
+# 스키마 조회
+python wf_node.py show step
+python wf_node.py show decision      # judge 결정 흐름 포함
+python wf_node.py show validation    # 자동 검증 게이트
+
+# 노드 스캐폴드 생성 (stdout 에 YAML 출력)
+python wf_node.py scaffold step --id mymod-s-001
+python wf_node.py scaffold decision --id mymod-d-001 --judge HITLFE
+python wf_node.py scaffold validation --id mymod-v-001
+python wf_node.py scaffold group --id mymod-g-001
+
+# 워크플로우 YAML 전체 검증 (계층 참조 자동 해석)
+python wf_node.py validate path/to/workflow.yaml
+
+# 특정 노드만 검증
+python wf_node.py validate path/to/workflow.yaml --node mymod-d-001
+
+# Cross-skill 검증 (scaffold 와 정합성 검사)
+python wf_node.py validate path/to/workflow.yaml --scaffold path/to/index.yaml
+
+# Harness manifest 생성 (validation 노드 → CI 매니페스트)
+python wf_node.py harness-manifest path/to/root_workflow.yaml --out ci-manifest.json
+python wf_node.py harness-manifest path/to/root_workflow.yaml --format yaml
+```
+
+> `--id` 의 네이밍 패턴은 프로젝트 컨벤션 영역. 스킬은 unique·존재 여부만 검증한다.
+
+scaffold 결과를 workflow YAML에 붙여 넣은 뒤 TODO 값을 채우면 된다.
+
+## 의존성
+
+```
+pyyaml>=6.0
+```
+
+## 참고 자료
+
+- **YAML 문법 스펙**: [references/yaml-schema.md](references/yaml-schema.md)
+- **MOTIF 패턴 상세**: [references/motif-patterns.md](references/motif-patterns.md)
+- **Gate Levels (HITL/HITLFE/HOTL/HOOTL)**: [references/gate-levels.md](references/gate-levels.md)
+- **Workflow Patterns**: [references/workflow-patterns.md](references/workflow-patterns.md)
+- **변환 스크립트 (모듈 통합 .md)**: [scripts/workflow_to_markdown.py](scripts/workflow_to_markdown.py)
+- **변환 스크립트 (전체 시각화 세트)**: [scripts/workflow_to_mermaid.py](scripts/workflow_to_mermaid.py)
+- **글로벌 템플릿**: [assets/global-workflow-template.yaml](assets/global-workflow-template.yaml)
+- **모듈 템플릿**: [assets/module-workflow-template-00.yaml](assets/module-workflow-template-00.yaml)

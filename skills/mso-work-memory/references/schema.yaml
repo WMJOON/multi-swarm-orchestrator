@@ -1,0 +1,128 @@
+# Work-Memory JSONL 공통 스키마
+# 모든 entry 는 한 줄(jsonl)로 직렬화. zvec 호환 + 그래프 표현 동시 지원.
+
+version: "1.0.0"
+updated: 2026-05-22
+
+# ─── ID 규칙 ─────────────────────────────────────────────
+id_patterns:
+  IN: "issue-note       (track-record) — IN-NNNN"
+  AD: "agent-decision   (track-record) — AD-NNNN"
+  UD: "user-decision    (track-record) — UD-NNNN"
+  TS: "trouble-shooting (track-record) — TS-NNNN"
+  EP: "episode          (insight-record) — EP-NNNN"
+  PT: "pattern          (insight-record) — PT-NNNN"
+  PR: "principle        (insight-record) — PR-NNNN"
+  AU: "auditlog         (자동) — AU-YYYYMMDD-HHMMSS-<hash>"
+  WL: "worklog          (일별) — WL-YYYY-MM-DD"
+
+id_rules:
+  - "타입별 시퀀스, zero-pad 4자리 (예: IN-0001, IN-0042)"
+  - "타입 prefix 는 변경 불가 (immutable)"
+  - "파일명 = id + '.jsonl' (예: IN-0042.jsonl)"
+  - "auditlog/worklog 는 일별·시각별 자동 생성"
+
+# ─── 공통 필수 필드 (모든 entry) ────────────────────────
+required_fields:
+  id: "예: IN-0042"
+  type: "issue-note | agent-decision | user-decision | trouble-shooting | episode | pattern | principle | auditlog | worklog"
+  title: "한 줄 요약 (60자 이내 권장)"
+  text: "본문 (markdown 가능, 임베딩 대상)"
+  tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.AI-Chatbot-Policy')"
+  created_at: "ISO 8601 (예: 2026-05-22T15:30:00Z)"
+
+# ─── 선택 필드 ──────────────────────────────────────────
+optional_fields:
+  source_path: "이 jsonl 파일의 경로 (zvec 호환)"
+  relations: "list[{type, target}] — 그래프 edge"
+  metadata: "dict — 자유형 부가 정보 (module, severity, status 등)"
+  author: "user | agent | <agent-id>"
+
+# ─── Relation 어휘 (그래프) ─────────────────────────────
+relation_types:
+  # 라이프사이클 (track-record)
+  raised:              "이 entry 가 다른 entry 를 발생시킴 (IN → AD/UD)"
+  followed-by:         "다음 단계로 이어짐 (AD → UD, UD → TS 등)"
+  resolved-by:         "이 issue 가 해당 trouble-shooting 으로 해결됨 (IN ← TS)"
+  caused-by:           "이 entry 의 원인이 다른 entry"
+
+  # 인사이트 추출 (insight-record)
+  analyzed-in:         "특정 사건이 episode 로 회고됨 (TS → EP)"
+  shows-pattern:       "episode 가 pattern 의 인스턴스 (EP → PT)"
+  generalized-in:      "episode 가 일반화되어 pattern 으로 (EP → PT)"
+  crystallized-in:     "pattern 이 응축되어 principle 로 (PT → PR)"
+
+  # 일반
+  references:          "단순 참조"
+  supersedes:          "이전 entry 를 대체"
+  refines:             "이전 entry 를 정교화"
+  depends-on:          "다른 entry 에 의존"
+
+# ─── 타입별 권장 필드 (metadata) ────────────────────────
+type_specific:
+  issue-note:
+    metadata:
+      - severity: "minor | major | critical"
+      - module: "관련 모듈 id (있을 경우)"
+      - reporter: "user | agent"
+
+  agent-decision:
+    metadata:
+      - rationale: "왜 이 결정을 했나"
+      - alternatives: "list[str] — 고려한 대안"
+      - confidence: "high | medium | low"
+
+  user-decision:
+    metadata:
+      - rationale: "사용자 의도"
+      - structural: "bool — true 면 repository-ADR (index/workflow 구조 변경)"
+
+  trouble-shooting:
+    metadata:
+      - resolution: "어떻게 해결됐나"
+      - root_cause: "근본 원인 (가설/검증)"
+      - prevention: "재발 방지 조치"
+
+  episode:
+    metadata:
+      - event_date: "사건 발생 시각"
+      - participants: "list[str]"
+      - timeline: "사건 진행 흐름 요약"
+
+  pattern:
+    metadata:
+      - frequency: "관찰 빈도 (몇 개 episode 에서?)"
+      - context: "이 패턴이 나타나는 맥락"
+      - sources: "근거 EP-* id 목록 (relations 와 별도로 빠른 참조용)"
+
+  principle:
+    metadata:
+      - statement: "원칙 한 줄 (text 보다 짧게)"
+      - scope: "적용 범위 (project | global | module)"
+      - status: "draft | accepted | deprecated"
+
+# ─── zvec 인덱싱 매핑 ───────────────────────────────────
+zvec_mapping:
+  text_field: "text"
+  title_field: "title"
+  tags_field: "tags"
+  source_path_field: "source_path"
+  created_at_field: "created_at"
+  embedder: "hash"            # bootstrap. 이후 local/qwen 으로 전환
+  dimension: 384
+
+# ─── 예시 ──────────────────────────────────────────────
+examples:
+  issue_note:
+    id: IN-0001
+    type: issue-note
+    title: "라우팅 정책 hand-off 에 timeout 누락"
+    text: "v0.9.0 → v1.0.0 정제 과정에서 secondary_evaluation 의 timeout 항목이 사라짐. 백엔드 개발자 영역의 검토 누락이 원인."
+    tags: ["hand-off", "timeout", "policy", "02.AI-Chatbot-Policy"]
+    created_at: "2026-05-22T15:00:00Z"
+    metadata:
+      severity: minor
+      module: "02.AI-Chatbot-Policy"
+      reporter: user
+    relations:
+      - {type: resolved-by, target: TS-0001}

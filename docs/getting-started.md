@@ -1,232 +1,222 @@
-# 시작하기
+# 시작하기 (v0.3.0)
 
-## 디렉토리 구조
+## 0. 설치
 
-```
-.skill-modules/                      ← 설치 후 ~/.skill-modules/mso-skills/ 심링크
-├── mso-skill-governance/            ← 계약 검증, 구조 점검
-├── mso-workflow-topology-design/    ← 목표 → 노드 구조 (Mode A: 신규 설계, Mode B: Graph Search)
-├── mso-mental-model/                ← Vertex Registry: directive 택소노미·바인딩
-│   └── directives/                  ← seed directives (analysis, general)
-├── mso-agent-collaboration/         ← 티켓 관리 + 멀티에이전트 디스패치 (branch/merge)
-│   ├── templates/                   ← PRD.md, SPEC.md, ADR.md
-│   └── scripts/                     ← collaborate.py, ai_collaborator/
-├── mso-agent-audit-log/             ← 감사 인프라 SoT (DB + 세션 훅 + 실행 로그)
-│   ├── hooks/                       ← session_start_hook.py, pre_compact_hook.py, session_end_hook.py
-│   ├── scripts/                     ← setup.py, init_db.py, inject_hooks.py, append_from_payload.py
-│   └── history/                     ← 스키마 버전 스냅샷
-├── mso-observability/               ← 관찰, 환류 (패턴 분석)
-│   └── templates/                   ← HITL_ESCALATION_BRIEF.md, RUN_RETROSPECTIVE.md
-├── mso-workflow-optimizer/          ← 워크플로우 성과 평가, Automation Level 판단
-│   ├── modules/                     ← process-optimizing, llm-as-a-judge 등
-│   ├── configs/                     ← llm-model-catalog.yaml
-│   ├── schemas/                     ← optimizer_result.schema.json
-│   └── scripts/                     ← select_llm_model.py
-├── mso-model-optimizer/             ← Smart Tool 경량 모델 학습·평가·배포
-│   ├── modules/                     ← model-decision, training-level, retraining, rollback
-│   └── schemas/                     ← deploy_spec, handoff_payload, smart_tool_manifest
-├── mso-workflow-repository-setup/   ← Workflow Repository + Scaffold + Memory Layer 설정
-├── mso-harness-setup/               ← Runtime Harness + 실행 조율 (canonical event · policy · evaluator · execution_graph)
-└── _shared/                         ← 공통 유틸 (runtime_workspace.py)
-skills/
-├── mso-orchestration/               ← 진입점 스킬 (→ ~/.claude/skills/mso-orchestration 심링크)
-└── mso-agent-audit-log/             ← 감사 인프라 참조 문서 레이어
-rules/
-└── ORCHESTRATOR.md                  ← 불변 정책
-docs/
-├── architecture.md                  ← Git-Metaphor 모델, 전체 아키텍처
-├── pipelines.md                     ← 3대 파이프라인, CC 계약, 티켓 생명주기
-├── getting-started.md               ← 이 문서
-├── usage_matrix.md                  ← Phase × Swarm × Role 매트릭스
-└── changelog.md                     ← 버전별 변경 이력
+```bash
+# 옵션 A: install.sh (직접 symlink)
+bash install.sh               # Claude Code 전용
+bash install.sh --all         # Claude + Codex + Gemini
+
+# 옵션 B: sync-agents-global.sh (글로벌 링크 허브 경유)
+bash 00_agents_global_links/sync-agents-global.sh sync
 ```
 
-각 스킬 디렉토리의 `SKILL.md` 파일만 확인하면 해당 스킬의 목적, 입출력, 실행 절차를 모두 파악할 수 있다. `modules/`나 `schemas/`는 상세 구현 확인 시에만 참조한다.
-
-v0.0.3부터는 별도 `config.yaml` 없이 동작한다. 환경별 오버라이드는 `MSO_WORKSPACE_ROOT`, `MSO_OBSERVATION_ROOT`, `MSO_OBSERVER_ID`로만 처리한다.
+설치 후 `~/.claude/skills/` 에 5개 스킬이 등록된다.
 
 ---
 
-## 0. 감사 인프라 초기화 (레포 설정 시 1회)
-
-새 프로젝트 레포에서 MSO를 사용하기 전에 감사 DB와 세션 훅을 초기화한다.
+## 1. 새 프로젝트 부트스트랩 (mso-repository-setup)
 
 ```bash
-python3 ~/.skill-modules/mso-skills/mso-agent-audit-log/scripts/setup.py \
-  --project-root <repository_root> \
-  --target claude    # claude | codex | all
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py \
+  --target /path/to/project \
+  --name "프로젝트 이름" \
+  --id "project-id-01"
 ```
 
-한 번에 수행하는 작업:
-1. `{repository}/00.agent_log/logs/` 디렉터리 생성
-2. `{repository}/.mso-context/audit_global.db` 스키마 초기화
-3. `{repository}/.claude/settings.json`에 `SessionStart · PreCompact · SessionEnd` 훅 주입 (멱등)
+생성되는 구조:
 
-Codex도 함께 설정하려면 `--target all`을 사용한다.
+```
+project/
+├── agent-context/
+│   ├── index/index.yaml
+│   ├── workflow/
+│   └── work-memory/
+│       ├── schema.yaml
+│       ├── auditlog/   worklog/
+│       ├── track-record/{issue-note, agent-decision, user-decision, trouble-shooting}/
+│       └── insight-record/{episodes, patterns, principles}/
+└── .gitignore
+```
+
+### 기존 프로젝트 점검
+
+```bash
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --check /path/to/project
+```
+
+### Hook 등록 (auditlog + worklog 자동 기록)
+
+```bash
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/project
+```
+
+`.claude/settings.json` 에 `PostToolUse(Bash·Edit·Write → auditlog)` 와 `Stop(→ worklog)` hook이 등록된다.
 
 ---
 
-## {repository} 디렉토리 구조
+## 2. Scaffold 정의 (mso-scaffold-design)
 
-MSO 런타임 산출물은 기본적으로 `{repository}/.mso-context` 하위에 기록된다.
-
-```text
-{repository}/
-├── .mso-context/
-│   ├── audit_global.db              ← 전체 감사 데이터 SoT
-│   ├── workflow_registry.json       ← Run 인덱스
-│   ├── config/
-│   │   └── policy.yaml
-│   ├── active/
-│   │   └── <run_id>/
-│   │       ├── manifest.json
-│   │       ├── 10_topology/         ← workflow_topology_spec.json
-│   │       ├── 20_mental-model/     ← directive_binding.json
-│   │       ├── 30_execution/        ← execution_plan.json
-│   │       ├── 40_collaboration/    ← task-context/tickets/
-│   │       ├── 50_audit/            ← snapshots/
-│   │       ├── 60_observability/    ← callback-*.json
-│   │       ├── 70_governance/
-│   │       └── optimizer/           ← goal.json, handoff_payload.json
-│   └── archive/
-├── .claude/
-│   └── settings.json                ← SessionStart·PreCompact·SessionEnd 훅
-└── 00.agent_log/
-    └── logs/                        ← worklog-YYYYMMDD.md
-```
-
-> 스킬 내부 경로 표기: `{스킬명}/*` (예: `{mso-workflow-optimizer}/scripts/select_llm_model.py`)
-
----
-
-## 1. 워크플로우 설계 (Design)
-
-두 가지 경로가 있다. 유사한 워크플로우가 레지스트리에 있으면 **Mode B**(검색)를 먼저 시도하고, 없으면 **Mode A**(신규 설계)로 진행한다.
-
-### Mode B: Graph Search (기존 워크플로우 로딩)
+`index.yaml` 이 repository 구조의 SSOT다. 모든 모듈·서브디렉토리·참조를 여기에 등록한다.
 
 ```bash
-RUN_ID="YYYYMMDD-msowd-onboarding"
+SF=~/.claude/skills/mso-scaffold-design/scripts/sf_node.py
 
-# 레지스트리에서 유사 워크플로우 검색
-python3 {mso-workflow-topology-design}/scripts/graph_search.py \
-  --intent "사용자 온보딩 프로세스 설계" \
-  --top-k 3 \
-  --registry {repository}/.mso-context/workflow_registry.json
+# 스키마 확인
+python3 $SF show project
+python3 $SF show module
+python3 $SF show subdir
+
+# 모듈 스캐폴드 생성 (stdout → index.yaml 의 modules: 에 붙여넣기)
+python3 $SF scaffold module --id "01.core"
+
+# index.yaml 검증
+python3 $SF validate agent-context/index/index.yaml
+
+# 파일시스템과 선언 대조
+python3 $SF inventory agent-context/index/index.yaml
+
+# 계층 트리 출력 (sub_index 포함)
+python3 $SF tree agent-context/index/index.yaml
 ```
 
-similarity ≥ 0.6이면 검색된 워크플로우로 진행. 아니면 Mode A로 fallback.
-
-### Mode A: 신규 설계
-
-```bash
-RUN_ID="YYYYMMDD-msowd-onboarding"
-
-# 목표(Goal)를 입력하면 노드 구조(Topology)가 생성된다.
-python3 {mso-workflow-topology-design}/scripts/generate_topology.py \
-  --run-id "$RUN_ID" \
-  --skill-key msowd \
-  --case-slug onboarding \
-  --goal "사용자 온보딩 프로세스 설계"
-
-# 각 노드에 directive를 바인딩한다 (Vertex Registry 검색).
-python3 {mso-mental-model}/scripts/bind_directives.py \
-  --topology {repository}/.mso-context/active/$RUN_ID/10_topology/workflow_topology_spec.json \
-  --registry {repository}/.mso-context/vertex_registry \
-  --output {repository}/.mso-context/active/$RUN_ID/20_mental-model/directive_binding.json
-
-# 두 결과를 통합하여 execution_graph를 생성한다.
-python3 {mso-harness-setup}/scripts/build_plan.py \
-  --run-id "$RUN_ID" \
-  --skill-key msowd \
-  --case-slug onboarding
-```
-
----
-
-## 2. 티켓 운영 (Ops)
-
-```bash
-TASK_ROOT="{repository}/.mso-context/active/$RUN_ID/40_collaboration/task-context"
-
-python3 {mso-agent-collaboration}/scripts/create_ticket.py \
-  "온보딩 플로우 구현" \
-  --path "$TASK_ROOT"
-
-python3 {mso-agent-collaboration}/scripts/archive_tasks.py \
-  --path "$TASK_ROOT"
-```
-
----
-
-## 3. 멀티 프로바이더 실행 (Multi-Provider)
-
-Codex·Claude·Gemini CLI로 동일 프롬프트를 동시에 전송하거나, 프로바이더별 역할을 분리하여 실행한다.
-`mso-agent-collaboration` 스킬에 포함된 `collaborate.py`를 사용한다.
-
-```bash
-COLLAB=~/.skill-modules/mso-skills/mso-agent-collaboration/scripts
-
-# 프로바이더 상태 확인
-python3 "$COLLAB/collaborate.py" status
-
-# 전체 프로바이더에 동일 프롬프트 전송 (second opinion)
-python3 "$COLLAB/collaborate.py" run --all \
-  --context ./PRD.md \
-  -m "PRD를 시니어 리뷰어 관점에서 비평해줘" \
-  --format json
-
-# 프로바이더별 역할 분리
-python3 "$COLLAB/collaborate.py" run --context ./PRD.md --tasks \
-  "codex@gpt-5:아키텍처 가정 검토:arch" \
-  "claude@sonnet:구현 리스크 식별:risk" \
-  "gemini@gemini-2.5-pro:실현 가능성 확인:feasibility" \
-  --format json
-
-# Swarm 세션 (tmux 기반 장기 실행)
-python3 "$COLLAB/collaborate.py" swarm init --db ./.ai-collab/swarm.db
-python3 "$COLLAB/collaborate.py" swarm start \
-  --db ./.ai-collab/swarm.db \
-  --session team-a \
-  --agents planner:claude,coder:codex,reviewer:gemini
-```
-
-티켓에서 swarm을 자동 실행하려면 frontmatter에 추가:
+`index.yaml` 최소 예시:
 
 ```yaml
----
-id: TKT-0001
-title: 멀티 에이전트 분석
-status: todo
-tags: [swarm]
-swarm_db: ./.ai-collab/swarm.db
-swarm_session: team-a
-swarm_agents: planner:claude,coder:codex,reviewer:gemini
----
+project:
+  name: "My Project"
+  id: "my-project-01"
+  description: "TODO"
+  owner: "owner@example.com"
+  updated: "2026-05-26"
+  version: "0.1.0"
+  root_offset: "../.."
+
+modules:
+  - id: 01.core
+    path: 01.core/
+    description: 핵심 로직
+    subdirs:
+      - path: 00.context/
+        role: context
+        description: 배경 문서
+      - path: 01.scripts/
+        role: scripts
+        description: 실행 스크립트
+    key_files: [README.md]
+    status: active
 ```
 
 ---
 
-## 4. 검증 (Validation)
+## 3. Workflow 정의 (mso-workflow-design)
+
+workflow YAML 이 SSOT다. Markdown·Mermaid는 변환 산출물이므로 직접 편집하지 않는다.
 
 ```bash
-# 스키마 정합성 확인
-python3 {mso-skill-governance}/scripts/validate_schemas.py \
-  --run-id "$RUN_ID" \
-  --skill-key msogov \
-  --case-slug onboarding \
-  --json
+WF=~/.claude/skills/mso-workflow-design/scripts/wf_node.py
 
-# 전체 거버넌스 점검
-python3 {mso-skill-governance}/scripts/validate_all.py \
-  --run-id "$RUN_ID" \
-  --skill-key msogov \
-  --case-slug onboarding
+# 스키마 확인
+python3 $WF show phase
+python3 $WF show step
+python3 $WF show decision   # judge 5-level 포함
+python3 $WF show validation
 
-# 설계 → 운영 → 인프라 통합 테스트
-python3 {mso-skill-governance}/scripts/run_sample_pipeline.py \
-  --goal "테스트 파이프라인" \
-  --task-title "샘플 티켓" \
-  --skill-key msowd \
-  --case-slug onboarding
+# 노드 스캐폴드 생성 (stdout → workflow YAML 에 붙여넣기)
+python3 $WF scaffold phase --id "P01.discovery"
+python3 $WF scaffold step --id "s-001"
+python3 $WF scaffold decision --id "d-001" --judge HITL
+python3 $WF scaffold validation --id "v-001"
+
+# workflow YAML 검증
+python3 $WF validate agent-context/workflow/workflow-00.yaml
+
+# scaffold 정합성 cross-check
+python3 $WF validate agent-context/workflow/workflow-00.yaml \
+  --scaffold agent-context/index/index.yaml
+
+# harness manifest 생성 (validation 노드 → CI)
+python3 $WF harness-manifest agent-context/workflow/workflow-00.yaml \
+  --out ci-manifest.json
+```
+
+workflow YAML 시작점은 `skills/mso-workflow-design/assets/module-workflow-template-00.yaml` 을 복사해 사용한다.
+
+### Mermaid 변환 (관측성, 선택)
+
+```bash
+MD=~/.claude/skills/mso-workflow-design/scripts
+
+# 단일 모듈 → 통합 마크다운
+python3 $MD/workflow_to_markdown.py agent-context/workflow/workflow-00.yaml
+
+# 전체 시각화 세트 (validate 선행 포함)
+python3 $MD/workflow_to_mermaid.py --all
+```
+
+---
+
+## 4. Work-Memory 사용 (mso-work-memory)
+
+```bash
+export WORKMEM_DIR=./agent-context/work-memory
+WM=~/.claude/skills/mso-work-memory/scripts/wm_node.py
+
+# entry 생성
+python3 $WM new issue-note \
+  --title "timeout 누락 발견" --tags "policy,timeout" --module "01.core"
+
+python3 $WM new agent-decision \
+  --title "retry 로직 추가 결정" --tags "retry,resilience"
+
+python3 $WM new user-decision \
+  --title "v2 마감 연기 승인" --tags "schedule"
+
+# 통계
+python3 $WM stats
+
+# 검증
+python3 $WM validate ./agent-context/work-memory
+
+# 단일 entry 조회
+python3 $WM show IN-0001
+
+# 그래프 traversal
+python3 $WM graph IN-0001 --depth 2 --direction both
+```
+
+### entry 타입 정리
+
+| 타입 | prefix | 저장 위치 |
+|------|--------|-----------|
+| issue-note | IN | track-record/issue-note/ |
+| agent-decision | AD | track-record/agent-decision/ |
+| user-decision | UD | track-record/user-decision/ |
+| trouble-shooting | TS | track-record/trouble-shooting/ |
+| episode | EP | insight-record/episodes/ |
+| pattern | PT | insight-record/patterns/ |
+| principle | PR | insight-record/principles/ |
+| auditlog | AU | auditlog/ (hook 자동) |
+| worklog | WL | worklog/ (hook 자동) |
+
+---
+
+## 5. Hook 동작 확인
+
+hook 등록 후 실제 동작 테스트:
+
+```bash
+# auditlog hook 수동 실행
+echo '{"tool_name":"Bash","tool_input":{"command":"git status"},"session_id":"test","hook_event_name":"PostToolUse"}' \
+  | WORKMEM_DIR=./agent-context/work-memory \
+    python3 ~/.claude/skills/mso-work-memory/hooks/auditlog.py
+
+# worklog hook 수동 실행
+echo '{"session_id":"test","hook_event_name":"Stop"}' \
+  | WORKMEM_DIR=./agent-context/work-memory \
+    python3 ~/.claude/skills/mso-work-memory/hooks/worklog.py
+
+# 생성 확인
+ls agent-context/work-memory/auditlog/
+ls agent-context/work-memory/worklog/
 ```

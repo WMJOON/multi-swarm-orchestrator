@@ -1,0 +1,38 @@
+type: subdir
+description: "`modules[].subdirs[]` 항목 — 모듈 내 서브디렉토리."
+
+fields:
+  path:
+    required: true
+    type: string
+    description: |
+      모듈 path 기준 상대경로. 끝에 '/' 필수.
+      네이밍 컨벤션·중첩 깊이는 프로젝트에서 정의.
+
+  description:
+    required: true
+    type: string
+
+  role:
+    required: false
+    type: string
+    description: |
+      서브디렉토리의 역할 식별자. 자유형 string.
+      프로젝트 차원에서 enum 컨벤션을 정의해 일관성을 부여할 것을 권장.
+      일반적인 값 예: code, data, docs, modules, archive, draft, artifacts, planning.
+
+  artifacts:
+    required: false
+    type: list
+    items: string
+    description: "이 서브디렉토리의 주요 파일 경로 (모듈 루트 기준)."
+
+  status:
+    required: false
+    type: enum
+    values: [active, deprecated, planned]
+    default: active
+
+structural_invariants:
+  - "path 는 '/' 로 끝나야 함"
+  - "path 는 동일 모듈 내 subdirs[] 에서 unique"

@@ -1,0 +1,84 @@
+type: validation
+description: |
+  자동 검증 하네스 노드. 스크립트·테스트 러너·스키마 검증기 등이 자동으로
+  pass/fail 을 판정하는 게이트. decision(사람/모델 판단) 과 명확히 구분.
+
+fields:
+  type:
+    required: true
+    type: literal
+    value: validation
+
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: |
+      노드 고유 식별자. 네이밍 패턴은 프로젝트에서 정의.
+      검증 노드 prefix 컨벤션 예: '{module-abbr}-v-{NNN}' 또는 step과 동일 시퀀스.
+
+  label:
+    required: true
+    type: string
+    description: "검증 대상·범위를 한 줄로 (예: '스키마 검증', 'KPI 게이트', 'F1 임계 검증')"
+
+  status:
+    required: true
+    type: enum
+    values: [completed, active, pending]
+
+  harness:
+    required: true
+    type: string
+    description: |
+      검증을 실행하는 러너/스크립트 식별자.
+      예: schema_validator, pytest, ragas_metric, custom_kpi_check.
+      해당 러너의 실제 경로·호출 방식은 프로젝트가 정의.
+
+  pass_criteria:
+    required: true
+    type: list
+    items: string
+    description: |
+      통과 조건. 측정 가능한 표현 권장 (예: 'F1 >= 0.87', 'schema valid',
+      'all required fields present', 'response_time_p95 < 500ms').
+
+  on_fail:
+    required: false
+    type: enum
+    values: [block, retry, manual_review]
+    default: block
+    description: |
+      실패 시 동작. block(워크플로우 중단), retry(이전 step 재시도),
+      manual_review(HITL decision 노드로 위임).
+
+  directories:
+    required: false
+    type: list
+    description: "검증 대상 경로 (선택)"
+    items:
+      role:
+        required: true
+        type: string
+      path:
+        required: true
+        type: string
+
+  deliverables:
+    required: false
+    type: list
+    items: string
+    description: "검증 산출물 (예: validation_report.json, coverage.html)"
+
+structural_invariants:
+  - "id 는 워크플로우 내 unique"
+  - "label 비어있지 않음"
+  - "harness 비어있지 않음 (자동 실행 주체가 명시되어야 함)"
+  - "pass_criteria 최소 1개 이상"
+  - "decision 의 judge 와 혼용 금지 — validation 은 자동 판정, decision 은 판단 주체 필요"
+  - "directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"
+
+mermaid:
+  shape: "{{...}}"
+  shape_name: hexagon
+  rationale: "decision(마름모)과 시각적으로 구분되는 자동 게이트 표시"

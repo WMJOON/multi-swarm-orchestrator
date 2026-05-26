@@ -1,386 +1,293 @@
-# Multi-Swarm Orchestrator (v0.2.3)
+# Multi-Swarm Orchestrator (MSO) v0.3.0
 
-MSO는 **Repository Environment Operating을 위한 provider-free 플러그인형 스킬셋**이다.
+MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
-Claude Code, Codex, OpenClaw, Hermes 같은 provider runtime을 대체하지 않는다. 대신 그 위에서 workflow repository, scaffolding, memory boundary, audit hook, optimizer trigger, runtime harness를 표준화한다. 목표는 또 하나의 agent framework가 아니라, 여러 provider runtime이 같은 repository 운영 계약 아래에서 일하게 만드는 것이다.
-
-v0.2.3의 핵심 변화는 `workflow-design`을 실행 계획 생성 단계가 아니라 **workflow repository setup**으로 승격한 것이다. `mso-workflow-repository-setup`은 workflow-design과 scaffolding-design을 결합해 repository contract와 memory boundary를 만들고, `mso-harness-setup`은 이를 provider-free runtime governance 계약으로 변환한다.
-
-MSO가 추구하는 것은 블랙박스 자동화가 아니다. 사용자가 repository 운영 계약을 직접 승인하고, 실행 결과를 audit log로 남기며, 반복 실행에서 나온 state signal로 workflow를 점진적으로 개선하는 구조다.
-
-현재 구조는 `mso-orchestration`을 진입점으로 두고, `mso-workflow-repository-setup`, `mso-harness-setup`, `mso-agent-audit-log`, `mso-observability`, `mso-workflow-optimizer` 같은 서브스킬을 on-demand로 로드한다. MSM 스킬셋과의 수렴은 별도 검토 대상이다.
-
-이 구성 전체를 실제 운영 가능한 수준으로 갖추는 것이 **v0.3.0의 목표**다. v0.2.3는 방향 전환과 계약면을 고정하는 단계이고, v0.3.0은 Personal Memory, Repository Governance, Decision Control, Runtime Harness, Audit/Optimizer loop를 하나의 작동 가능한 repository operating system으로 연결하는 단계다.
+Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 **repository 구조·workflow·작업 기억을 선언하면, 에이전트가 실행 가능한 형태로 컴파일**한다.
 
 ---
 
-## 설계 철학: Perfect Architecture Later. Working System First.
+## MSO가 해결하는 문제
 
-MSO v0.2.3의 우선순위는 완벽한 agent architecture를 먼저 정의하는 것이 아니다. 먼저 repository environment에서 실제로 돌아가는 운영 계약을 만들고, 반복 실행에서 얻은 audit/state signal로 구조를 개선한다.
+AI 에이전트가 repository에서 작업할 때 세 가지 문제가 반복된다.
 
-|                 | Architecture-first 접근      | MSO v0.2.3 접근                                      |
-| --------------- | ---------------------------- | ---------------------------------------------------- |
-| **출발점**      | 이상적인 agent framework 설계 | 동작하는 repository operating contract               |
-| **Agent 역할**  | LLM이 전체 구조를 소유        | Agent는 provider runtime 위에서 관측 가능한 일을 수행 |
-| **Tool 역할**   | 단순 API wrapper             | workflow repository, harness, audit, optimizer를 가진 운영 모듈 |
-| **설계 방식**   | 실행 전 완전한 DAG 확정       | workflow-design + scaffolding-design을 먼저 repository setup으로 고정 |
-| **거버넌스**    | 사후 로그 확인               | SessionStart · PreCompact · SessionEnd hook과 audit-log state-trigger를 운영 계약에 포함 |
-| **최적화 방식** | 처음부터 완전 자동화 시도     | 작동하는 흐름 → 관측 → 제안 → HITL 승인 → 점진적 자동화 |
-| **재사용**      | 플랫폼 종속                  | Provider-free plugin layer로 repository 단위 재사용 |
+1. **구조 없음**: 에이전트가 매번 codebase를 재탐색한다. 모듈이 무엇이고 디렉토리가 어떤 역할인지 명시되지 않으면 컨텍스트가 낭비된다.
+2. **절차 없음**: 어떤 작업을 어떤 순서로, 누가 결정하고, 언제 사람이 개입하는지가 암묵적이다. 에이전트가 혼자 판단하거나, 불필요하게 모든 것을 사람에게 묻는다.
+3. **기억 없음**: 세션이 끝나면 어떤 도구를 썼고, 어떤 결정을 내렸고, 무엇을 배웠는지가 사라진다. 동일한 실패가 반복된다.
 
-`Thin Agent, Thick Smart Tools`는 여전히 유효하지만, v0.2.3에서는 더 구체적으로 **Thin Provider Runtime, Thick Repository Environment**에 가깝다. 핵심은 agent 내부를 더 똑똑하게 만드는 것이 아니라, repository 환경이 workflow·memory·audit·harness·optimizer 계약을 안정적으로 제공하게 만드는 것이다.
+MSO는 이 세 문제에 각각 하나씩 대응한다.
 
----
-
-## 두 가지 운영 축: Personal Memory, Repository Governance
-
-MSO v0.2.3에서는 **Global Workflow**와 **Workspace Workflow** 개념을 폐지한다. 대신 개인의 장기 맥락을 다루는 **Personal Memory**와, repository 안에서 실행·감사·최적화를 통제하는 **Repository Governance**를 분리한다.
-
-Personal Memory는 단순 작업 기억이 아니다. 사용자의 발화(`user-utterance`)를 개인 사용 패턴과 과거 결정 맥락에 비추어 더 명확한 intent로 grounding하는 레이어다. Agent는 사람의 인지적 한계를 보조하는 역할을 하며, 스스로 결정을 대체하지 않는다. 또한 agent가 데이터를 해석할 때 생기는 `semantic-bias`가 사용자의 `decision-bias`를 강화하지 않도록, 해석·제안·사용자 결정을 분리해서 기록해야 한다.
-
-```mermaid
-graph TB
-    subgraph PersonalMemory ["Personal Memory — 나의 장기 맥락"]
-        direction LR
-        UU["user-utterance"]
-        PM["personal usage pattern<br/>preferences · domain context"]
-        GI["grounded intent"]
-    end
-    subgraph RepositoryGovernance ["Repository Governance — 지금 이 repo의 운영 계약"]
-        direction LR
-        WR["workflow_repository.yaml<br/>scaffolding contract"]
-        HG["harness config<br/>policy · evaluator · routing"]
-        AL["audit-log.db<br/>hooks · state triggers"]
-    end
-    subgraph DecisionControl ["Decision Control — 사용자 우선"]
-        direction TB
-        AD["agent-decision<br/>proposal · rationale"]
-        UD["user-decision<br/>approval · override"]
-    end
-
-    UU --> PM
-    PM -->|"intent grounding"| GI
-    GI -->|"context enrichment"| WR
-    WR --> HG
-    HG --> AL
-    HG --> AD
-    AD -->|"recommend"| UD
-    UD -->|"higher priority"| HG
-    AD -->|"record"| AL
-    UD -->|"record"| AL
-```
-
-| 축 | 범위 | 역할 | 예시 |
-| --- | --- | --- | --- |
-| **Personal Memory** | 사용자 개인의 장기 맥락 | user-utterance를 personal usage pattern 기반의 grounded intent로 변환 | 업무 스타일, 반복 판단 기준, 도메인 용어, 선호 |
-| **Repository Governance** | 특정 repository의 운영 계약 | workflow repository, scaffolding, memory boundary, runtime harness, audit hook, optimizer trigger를 통제 | `workflow_repository.yaml`, `runtime-harness.yaml`, `audit-log.db` |
-| **Decision Control** | agent와 user의 결정 경계 | `agent-decision`과 `user-decision`을 모두 기록하고, 충돌 시 user-decision을 우선. agent semantic-bias와 user decision-bias를 분리해 검토 | 제안, 승인, 반려, override, HITL 기록 |
-
-Personal Memory는 repo를 넘나드는 사용자 맥락이고, Repository Governance는 repo 내부에서 재현 가능해야 하는 운영 규약이다. Decision Control은 두 레이어 위에서 작동한다. Agent는 판단 후보와 근거, 해석상의 불확실성을 남기고, 사용자는 승인·수정·거부·override를 남긴다. 같은 사건에 `agent-decision`과 `user-decision`이 모두 있으면 `user-decision`이 우선한다. 단, user-decision도 무조건 정답으로 취급하지 않고, 반복되는 편향 신호는 audit/optimizer가 다시 검토할 수 있어야 한다.
+| 문제 | MSO의 답 | 핵심 파일 |
+|------|----------|----------|
+| 구조 없음 | Directory Index 명문화 | `index.yaml` |
+| 절차 없음 | Workflow Schema 명문화 + HITL 수준 명시 | `workflow/*.yaml` |
+| 기억 없음 | Hook 기반 Execution Context 자동 적재 | `work-memory/` JSONL |
 
 ---
 
-## 점진적 최적화: Automation Escalation
+## v0.3.0의 네 가지 핵심 전환
 
-워크플로우를 처음 실행할 때는 LLM이 대부분을 처리한다(Lv30). 반복 실행으로 패턴이 안정되면, 시스템이 자동으로 더 효율적인 처리 방식을 제안한다.
+### 1. Filesystem/Repository 중심 Agentic Workflow Compiler
+
+MSO는 repository를 에이전트의 실행 컨텍스트로 취급한다. 선언이 컴파일 대상이다.
 
 ```
-첫 실행                  패턴 안정화              완전 자동화
-──────                  ──────────              ──────────
-Lv30: LLM reasoning   → Lv20: 경량 모델 추론   → Lv10: 규칙 기반 처리
-(비용 높음, 유연)         (비용 절감, 빠름)         (비용 최소, 결정론적)
+선언 (YAML)                       컴파일 산출물
+─────────────────────             ──────────────────────────────
+index.yaml                    →   모듈·디렉토리 구조 SSOT
+  + sf_node.py validate            스키마 검증 / 파일시스템 대조
+
+workflow/*.yaml               →   phase · step · decision · validation 노드
+  + wf_node.py validate            스키마 검증 / judge 수준 검증
+  + wf_node.py harness-manifest    CI manifest (validation 노드 추출)
+
+Markdown · Mermaid            ←   변환 산출물 (직접 편집 금지)
 ```
 
-이 전환은 자동으로 일어나지 않는다. **사용자가 HITL(Human-in-the-Loop) 게이트에서 승인**해야 다음 단계로 넘어간다. "이 정도면 경량 모델로 대체해도 되겠다"는 판단은 시스템이 제안하고, 사용자가 결정한다.
+workflow의 `decision` 노드는 `judge` 필드로 자동화 수준을 4단계로 명시한다.
 
-| 단계             | 처리 방식            | 비용 | 통제 수준              |
-| ---------------- | -------------------- | ---- | ---------------------- |
-| Lv30 Agentic     | LLM reasoning        | 높음 | 유연하지만 예측 어려움 |
-| Lv20 Light Model | 파인튜닝된 경량 모델 | 중간 | 도메인 특화, 빠름      |
-| Lv10 Logical     | 규칙/스크립트        | 최소 | 완전 결정론적          |
+| judge | 의미 |
+|-------|------|
+| `HITL` | 사람이 검토 후 진행 |
+| `HITLFE` | 사람이 검토, 에이전트가 초안 |
+| `HOTL` | 에이전트가 실행, 사람이 나중에 검토 |
+| `HOOTL` | 에이전트가 실행, 사람에게 보고만 |
 
-`mso-workflow-optimizer`가 언제 전환할지 판단하고, `mso-model-optimizer`가 전환에 필요한 경량 모델을 학습·배포한다.
+### 2. Index + Workflow 기반 Execution Context 자동 적재
 
----
+`index.yaml`과 workflow YAML은 선언으로 끝나지 않는다. Claude Code hook이 세션 중 도구 사용과 세션 종료를 감지하여 실행 컨텍스트를 `work-memory`에 자동으로 적재한다.
 
-## 스킬 아키텍처
-
-10개 스킬이 설계·런타임·인프라·최적화·거버넌스 5개 레이어에서 협업한다. `mso-orchestration`이 진입점이며, 서브스킬은 on-demand로 로드된다.
-
-```mermaid
-graph LR
-    ORCH["mso-orchestration<br/>(진입점 · On-Demand 라우팅)"]
-
-    subgraph Design["설계"]
-        WT["topology-design<br/>(Goal → Task Graph)"]
-        MM["mental-model<br/>(Directive Binding)"]
-        WR["workflow-repository-setup<br/>(Workflow Repo + Scaffold)"]
-        WT --> WR
-        MM -. optional .-> WR
-    end
-    subgraph Runtime["런타임"]
-        HS["harness-setup<br/>(Runtime Harness + 실행 조율)"]
-        AC["agent-collaboration<br/>(Ticket + Dispatch)"]
-        WR --> HS
-        HS --> AC
-    end
-    subgraph Infra["인프라"]
-        AAL["agent-audit-log<br/>(SQLite SoT)"]
-        OBS["observability<br/>(Pattern · HITL)"]
-        AAL --> OBS
-    end
-    subgraph Optimize["최적화"]
-        WO["workflow-optimizer<br/>(Automation Level)"]
-        MO["model-optimizer<br/>(Light Model)"]
-        WO --> MO
-    end
-    GOV["skill-governance<br/>(CC 계약 검증)"]
-
-    ORCH -.->|on-demand| Design
-    ORCH -.->|on-demand| Runtime
-    ORCH -.->|on-demand| Infra
-    ORCH -.->|on-demand| Optimize
-    ORCH -.->|on-demand| GOV
-    HS --> AAL
-    OBS -.->|개선 제안| WO
-    OBS -.->|패턴 피드백| WT
-    MO -->|eval 기록| AAL
-    GOV -.->|validates| Design
-    GOV -.->|validates| Runtime
+```
+Claude Code 세션
+    │
+    ├── PostToolUse (Bash | Edit | MultiEdit | Write)
+    │       → hooks/auditlog.py
+    │       → work-memory/auditlog/AU-YYYY-MM-DD.jsonl
+    │         {"tool_name", "tool_input", "session_id", "timestamp", ...}
+    │
+    └── Stop (세션 종료)
+            → hooks/worklog.py
+            → work-memory/worklog/WL-YYYY-MM-DD.jsonl
+              {"session_id", "timestamp", "hook_event_name", ...}
 ```
 
-| 레이어 | 스킬 | 하는 일 |
-| ------ | ---- | ------- |
-| **설계** | topology-design · workflow-repository-setup · mental-model(optional) | Goal → Workflow Repository → Scaffold/Memory Contract |
-| **런타임** | harness-setup · agent-collaboration | Runtime Harness 설계 + execution_graph 실행 조율 + Fallback Policy, 티켓 관리 + 멀티에이전트 Dispatch |
-| **인프라** | agent-audit-log · observability | 감사 인프라 SoT (DB + 세션 훅 설정 + 실행 로그), 패턴 분석·이상 감지·HITL 체크포인트 |
-| **최적화** | workflow-optimizer · model-optimizer | Automation Level 10/20/30 판단, 경량 모델 학습·배포 |
-| **거버넌스** | skill-governance | CC-01~14 계약 검증, 스킬 구조 검사, 레거시 참조 탐지 |
+`init.py --hook`이 `.claude/settings.json`에 두 hook을 등록한다. 이후 에이전트 세션의 도구 사용 이력과 세션 종료 기록이 자동으로 누적된다.
+
+### 3. Work-Memory 구조화 Logging
+
+work-memory는 자동 기록(hook)과 수동 기록(`wm_node.py`) 두 층으로 구성된다. 모든 entry는 JSONL 포맷이며 `schema.yaml`이 스키마를 정의한다.
+
+**자동 기록 (hook)**
+
+| 타입 | 파일 패턴 | 트리거 |
+|------|----------|--------|
+| auditlog | `AU-YYYY-MM-DD.jsonl` | PostToolUse: Bash·Edit·Write |
+| worklog | `WL-YYYY-MM-DD.jsonl` | Stop (세션 종료) |
+
+**수동 기록 (wm_node.py new)**
+
+| 카테고리 | 타입 | prefix | 용도 |
+|---------|------|--------|------|
+| track-record | issue-note | `IN` | 발견된 이슈·버그 |
+| track-record | agent-decision | `AD` | 에이전트가 내린 결정과 근거 |
+| track-record | user-decision | `UD` | 사람이 내린 결정과 승인 |
+| track-record | trouble-shooting | `TS` | 문제 해결 과정 |
+| insight-record | episodes | `EP` | 주목할 경험과 관찰 |
+| insight-record | patterns | `PT` | 반복 패턴과 공통 구조 |
+| insight-record | principles | `PR` | 도출된 원칙과 규칙 |
+
+### 4. Sub-Index + 1:N Workflow + Compile-time Topology 제약
+
+**계층 구조 (sub_index)**
+
+대규모 repository는 단일 `index.yaml`로 표현하기 어렵다. MSO는 모듈 단위로 `sub_index`를 선언해 계층 참조를 지원한다 (최대 depth 3).
+
+```yaml
+# root index.yaml
+modules:
+  - id: 01.core
+    path: 01.core/
+    sub_index: 01.core/agent-context/index/index.yaml   # 모듈 자체 index
+```
+
+`sf_node.py validate`는 root → sub_index를 재귀 해석하여 전역 id unique 검증, 경계 침범 검사를 수행한다. sub_index가 있는 모듈은 root에서 `subdirs/key_files/references`를 비워야 한다 — 선언 위치가 컴파일 타임에 강제된다.
+
+**1:N Workflow**
+
+하나의 index.yaml 구조에 여러 workflow가 대응한다. phase는 `workflows[].ref`로 sub workflow를 참조할 수 있다.
+
+```
+index.yaml (1)
+    └── workflow-00.yaml          ← 기본 workflow
+    └── workflow-feature-a.yaml  ← 기능별 workflow
+    └── workflow-release.yaml    ← 릴리즈 workflow
+
+# phase 내 sub workflow 참조
+phase:
+  workflows:
+    - ref: "workflow-release.yaml#P02.validation"
+      module: "01.core"
+```
+
+**Compile-time Topology 제약 (Rail · Checkpoint · Guardrail)**
+
+workflow YAML의 세 가지 노드 타입이 에이전트의 실행 경로를 컴파일 타임에 제약한다.
+
+| 노드 타입 | 역할 | 컴파일 타임 검증 |
+|----------|------|-----------------|
+| `step` | **Rail** — 실행 경로. phase → step 순서가 directed path를 구성한다 | node id 전역 unique · 의존 관계 |
+| `validation` | **Checkpoint** — 통과 기준이 선언된 게이트. `wf_node.py harness-manifest`가 validation 노드만 추출해 CI manifest를 생성한다 | 필수 필드 검증 |
+| `decision` | **Guardrail** — `judge` 수준으로 에이전트 자율성 한계를 명시한다. HITL이면 사람 없이 진행 불가 | judge 값 검증 · owner 필수 여부 |
+
+```
+wf_node.py validate workflow.yaml
+    → rail: phase/step 순서 · node id 전역 unique 검증
+    → checkpoint: validation 노드 필수 필드 검증
+    → guardrail: decision judge 수준 · owner 필수 여부 검증
+
+wf_node.py harness-manifest workflow.yaml
+    → validation 노드만 수집 → ci-manifest.json (CI가 소비하는 checkpoint 목록)
+```
 
 ---
 
-## 문서
+## 스킬 구성
 
-| 문서                                       | 설명                                                         |
-| ------------------------------------------ | ------------------------------------------------------------ |
-| [아키텍처](docs/architecture.md)           | Git-Metaphor 상태 모델, 전체 아키텍처, Automation Escalation |
-| [3대 파이프라인 & 계약](docs/pipelines.md) | 설계·운영·인프라 파이프라인, CC-01~15, 티켓 생명주기         |
-| [시작하기](docs/getting-started.md)        | 디렉토리 구조, 설계·운영·검증 명령어                         |
-| [스킬 사용 매트릭스](docs/usage_matrix.md) | Phase × Swarm × Role 매트릭스                                |
-| [KO 매핑](docs/knowledge-object-mapping.md) | 기존 산출물의 명시지 분류 매핑표                             |
-| [변경 이력](docs/changelog.md)             | v0.0.3~v0.2.3 변경 이력 및 하위 호환 노트                    |
+v0.3.0은 **Design → Ops → Infra** 세 레이어에 걸쳐 5개 스킬이 동작한다.
+
+```
+사용자 요청
+    │
+    ▼
+mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
+    │
+    ├── [Design]
+    │   ├──> mso-scaffold-design     index.yaml SSOT · sf_node.py
+    │   └──> mso-workflow-design     workflow YAML · wf_node.py · Mermaid 변환
+    │
+    ├── [Ops]
+    │   └──> mso-repository-setup   agent-context/ 부트스트랩 · hook 등록
+    │
+    └── [Infra]
+        └──> mso-work-memory        JSONL entry · auditlog · worklog · graph
+```
+
+| 스킬 | 레이어 | 핵심 스크립트 |
+|------|--------|-----------|
+| `mso-orchestration` | — | — |
+| `mso-repository-setup` | Ops | `init.py` |
+| `mso-scaffold-design` | Design | `sf_node.py` |
+| `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py` |
+| `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py` |
 
 ---
 
-## 설치
+## 생성되는 구조
+
+```
+project/
+├── agent-context/
+│   ├── index/
+│   │   └── index.yaml              ← scaffold SSOT (mso-scaffold-design)
+│   ├── workflow/
+│   │   └── workflow-00.yaml        ← workflow SSOT (mso-workflow-design)
+│   └── work-memory/
+│       ├── schema.yaml             ← entry 스키마 정의
+│       ├── auditlog/               ← AU-*.jsonl (hook 자동 기록 — 도구 사용)
+│       ├── worklog/                ← WL-*.jsonl (hook 자동 기록 — 세션 종료)
+│       ├── track-record/
+│       │   ├── issue-note/         ← IN-*.jsonl
+│       │   ├── agent-decision/     ← AD-*.jsonl
+│       │   ├── user-decision/      ← UD-*.jsonl
+│       │   └── trouble-shooting/   ← TS-*.jsonl
+│       └── insight-record/
+│           ├── episodes/           ← EP-*.jsonl
+│           ├── patterns/           ← PT-*.jsonl
+│           └── principles/         ← PR-*.jsonl
+├── .claude/
+│   └── settings.json               ← PostToolUse · Stop hook 등록
+└── .gitignore
+```
+
+---
+
+## 빠른 시작
+
+### 설치
 
 ```bash
-git clone https://github.com/WMJOON/multi-swarm-orchestrator.git
-cd multi-swarm-orchestrator
-./install.sh          # Claude Code만
-./install.sh --codex  # Codex만
-./install.sh --all    # Claude Code + Codex
+bash install.sh          # ~/.claude/skills/ 에 symlink 등록
+bash install.sh --all    # Claude + Codex + Gemini 전체
 ```
 
-`install.sh`는 두 가지를 생성한다:
-
-| 생성 경로 | 내용 |
-|----------|------|
-| `~/.claude/skills/mso-orchestration` | 진입점 스킬 심링크 |
-| `~/.skill-modules/mso-skills/` | 서브스킬 디렉토리 심링크 |
-
-이미 같은 경로가 존재하면 건너뛰고 출력한다.
-
-### 감사 인프라 초기화 (새 프로젝트 레포 1회)
+### 새 프로젝트 init + hook 등록
 
 ```bash
-python3 ~/.skill-modules/mso-skills/mso-agent-audit-log/scripts/setup.py \
-  --project-root <repository_root> \
-  --target claude   # claude | codex | all
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py \
+  --target /path/to/project \
+  --name "My Project" \
+  --id "my-project-01"
+
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py \
+  --hook /path/to/project
 ```
 
-DB 생성 + worklog 디렉터리 생성 + 세션 훅 주입을 한 번에 처리한다. `--target all`을 사용하면 `.codex/hooks.json`에도 `SessionStart` 훅을 등록한다.
-
-### 서브스킬 On-Demand 로딩
-
-서브스킬은 `~/.skill-modules/mso-skills/`에 위치한다. 필요할 때 아래 경로를 Read 도구로 직접 읽으면 로드된다:
-
-```
-~/.skill-modules/mso-skills/SKILL_NAME/SKILL.md
-```
-
-`SKILL_NAME`을 아래 라우팅 테이블의 스킬명으로 교체한다.
-
-### 스킬 라우팅
-
-| 요청 유형 | 담당 스킬 |
-|----------|----------|
-| Goal → Task Graph 설계 | `mso-workflow-topology-design` |
-| Mental Model · Directive 바인딩 | `mso-mental-model` (선택) |
-| Workflow Repository Setup · Scaffolding · Memory Layer | `mso-workflow-repository-setup` |
-| 티켓 관리 · 멀티에이전트 Dispatch | `mso-agent-collaboration` |
-| 멀티 프로바이더 실행 (Codex·Claude·Gemini) | `mso-agent-collaboration` → `collaborate.py` |
-| Runtime Harness 설계 · 실행 조율 · Fallback Policy | `mso-harness-setup` |
-| 감사 인프라 초기화 · 실행 로그 · SQLite SoT | `mso-agent-audit-log` |
-| 패턴 분석 · HITL 체크포인트 | `mso-observability` |
-| Automation Level 판단 · 최적화 | `mso-workflow-optimizer` |
-| 경량 모델 학습 · 배포 | `mso-model-optimizer` |
-| 스킬 구조 · CC 계약 검증 | `mso-skill-governance` |
-
-**설치 확인**
+### scaffold 정의
 
 ```bash
-python3 skills/mso-skill-governance/scripts/validate_gov.py \
-  --pack-root ~/.claude \
-  --pack mso \
-  --json
+SF=~/.claude/skills/mso-scaffold-design/scripts/sf_node.py
+python3 $SF scaffold module --id "01.core"       # stdout → index.yaml 에 붙여넣기
+python3 $SF validate agent-context/index/index.yaml
+python3 $SF inventory agent-context/index/index.yaml
+python3 $SF tree agent-context/index/index.yaml
 ```
 
-`"status": "ok"`, `"findings": []`이면 정상.
+### workflow 정의
 
----
-
-## v0.2.3 변경 이력 — mso-task-execution 흡수 + 구조 정리
-
-> **실행 조율 역할을 `mso-harness-setup`에 통합하고 리포지토리 구조를 정리했다.**
-> `mso-task-execution` 스킬을 삭제하고 execution_graph 실행, Fallback Policy Registry, node snapshot 적재를 `mso-harness-setup` Phase 6–7로 흡수. 스킬 수 11 → 10개.
-> 추가로 폐기 훅, 중복 스크립트, 고아 마이그레이션 파일 등 15건을 정리했다.
-
-| 개선 영역 | v0.2.2 | v0.2.3 |
-|-----------|--------|--------|
-| **스킬 구성** | 11개 (harness-setup + task-execution 분리) | **10개** — task-execution 흡수, harness-setup이 설계·실행 통합 담당 |
-| **실행 조율** | mso-task-execution 별도 스킬 | mso-harness-setup Phase 6–7 (입력 검증 + 노드 실행 + Fallback) |
-| **Fallback Policy** | task-execution 인라인 정의 | harness-setup SKILL.md에 통합 |
-| **리포지토리 구조** | deprecated 파일 산재 | 15건 정리 (stop_hook, 중복 스크립트, migrate SQL, 빈 디렉토리 등) |
-
-상세: [docs/changelog.md](docs/changelog.md)
-
----
-
-## v0.2.1 변경 이력 — ai-collaborator 완전 흡수
-
-> **멀티 프로바이더 CLI 통합.** 별도 스킬로 운영되던 ai-collaborator(Codex·Claude·Gemini)를 `mso-agent-collaboration`으로 완전 흡수. `collaborate.py`와 `ai_collaborator` 패키지가 이제 `~/.skill-modules/mso-skills/mso-agent-collaboration/scripts/`에 위치한다.
-
-| 개선 영역 | v0.2.0 | v0.2.1 |
-|-----------|--------|--------|
-| **멀티 프로바이더 실행** | ai-collaborator 별도 스킬 | **`mso-agent-collaboration`** 흡수 — `collaborate.py` + `ai_collaborator` 패키지 통합 |
-| **파이프라인** | [A]~[D] 4개 | **[E] 멀티 프로바이더 실행** 추가 |
-| **swarm 실행** | dispatch_mode enum만 | 티켓 `swarm_db`+`swarm_agents` 필드로 tmux swarm 직접 실행 |
-
-상세: [docs/changelog.md](docs/changelog.md)
-
----
-
-## Roadmap
-
+```bash
+WF=~/.claude/skills/mso-workflow-design/scripts/wf_node.py
+python3 $WF scaffold phase --id "P01.discovery"
+python3 $WF scaffold decision --id "d-001" --judge HITL
+python3 $WF validate agent-context/workflow/workflow-00.yaml
+python3 $WF harness-manifest agent-context/workflow/workflow-00.yaml --out ci-manifest.json
 ```
-v0.1.x  Perfect architecture later. Working system first.                                ✓ 완료
-v0.2.x  스킬 통합 재편 — 굵게 적게, 워크플로우 완결성 강화                              ← 현재
-v0.3.x  Repository Environment Operating 완성 — Personal Memory · Governance · Harness · Optimizer loop
-v1.0.0  A Companion of Agent Swarm
+
+### work-memory 기록
+
+```bash
+export WORKMEM_DIR=./agent-context/work-memory
+WM=~/.claude/skills/mso-work-memory/scripts/wm_node.py
+python3 $WM new issue-note --title "timeout 누락 발견" --tags "policy,timeout"
+python3 $WM stats
+python3 $WM graph IN-0001 --depth 2
 ```
 
 ---
 
-### v0.2.x — 스킬 통합 재편
+## 설계 원칙
 
-> **얇게 많이 → 굵게 적게.** 각 스킬의 워크플로우 완결성을 높이고, 프로세스 규약과 티켓 관리를 소유자 스킬로 흡수. Runtime 구현 완성(`wrapper.otel`/`wrapper.guardrails`·NHI Attestation)까지를 이 선상에서 진행한다.
+**Working System First.** 완벽한 아키텍처보다 실제로 돌아가는 시스템을 먼저 만든다. v0.3.0은 5개 스킬이 실제로 동작하는 것을 검증한 milestone이다.
 
-| 방법론 | 한 줄 정의 |
-|--------|-----------|
-| ***Thick Skill*** | 컨텍스트 전환 없이 하나의 스킬이 더 넓은 범위를 스스로 해결한다 |
-| ***Ownership over Reference*** | 정책·규약·템플릿은 실제로 사용하는 스킬이 직접 소유한다 |
+**YAML이 SSOT.** `index.yaml`과 workflow YAML이 정본이다. Markdown·Mermaid는 변환 산출물이지, 편집 대상이 아니다.
 
-| 작업 영역                     | 내용                                                                       |
-| ------------------------- | ------------------------------------------------------------------------ |
-| 스킬 통합 (완료)                | 13개 → 10개 재편, 크로스 레퍼런스 전체 정합                                             |
-| ai-collaborator 흡수 (완료)   | Codex·Claude·Gemini 멀티 프로바이더 CLI → `mso-agent-collaboration`             |
-| Runtime 구현                | `wrapper.otel`·`wrapper.guardrails` 실구현 `[spec-only → impl]`             |
-| Workflow Repository Setup | `workflow-design + scaffolding-design → harness-setup` 경로 고정             |
-| Runtime Harness Toolkit   | `mso-harness-setup` 기반 canonical event · adapter · policy · evaluator 설계 |
-| NHI Attestation           | `nhi_policy.json` 기반 fail-closed 전환 `[spec-only → impl]`                 |
+**Provider-free.** Claude Code, Codex, Gemini CLI 어디서나 동일한 스킬과 스크립트가 동작한다.
 
----
-
-### v0.1.0 — Perfect architecture later. Working system first.
-
-> 완벽한 구조보다 작동하는 시스템이 먼저다.
-> **v0.1.x는 개인 업무 환경에서의 검증 단계이며, 외부 사용은 권장하지 않는다.**
-
-| 방법론                                                             | 한 줄 정의                                                                                    |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| ***Thin Agent, Thick Smart Tools***                                | Agent는 흐름만 제어하고, 실행은 자체 workflow를 가진 Smart Tool이 맡는다                      |
-| ***Automation Escalation and Label-Lean Training, Progressively*** | Lv30(LLM) → Lv20(경량 모델) → Lv10(규칙)을 점진적으로 대체하되, 라벨이 부족해도 멈추지 않는다 |
-
----
-
-### v0.3.0 — Explicit Knowledge Architecture: Better Outcomes from the Same AI
-
-> 개인적인 업무 도구에서 벗어나, **다른 사람들도 실질적인 도구로 활용할 수 있는 상태**를 목표로 한다.
-> 기록된 것과 이해할 수 있는 것은 다르다. 협업 가능한 지식만이 명시지다.
-> v0.3.0의 직접 목표는 v0.2.3에서 정의한 Personal Memory, Repository Governance, Decision Control, Runtime Harness, Audit/Optimizer loop를 모두 갖춘 repository operating 구성을 완성하는 것이다.
-
-| 방법론                            | 한 줄 정의                                                                           |
-| --------------------------------- | ------------------------------------------------------------------------------------ |
-| ***Contract Surface Design***     | 명시지는 인간과 AI 사이의 계약면이다. 결과뿐 아니라 선택 근거와 전제를 고정한다      |
-| ***Gate as Knowledge Projector*** | Gate는 멈춤 지점이 아니라, 내부의 복잡한 상태를 협업 가능한 단위로 투영하는 변환기다 |
-| ***Semantic Handoff Protocol***   | 다음 주체가 행동할 수 있는 최소 충분 조건을 구조화하여 전달한다                      |
-
-**핵심 테제**: Agent 내부의 repository는 로그로 저장되어 있어도, 인간이 재구성할 수 없다면 사실상 암묵지로 작동한다. 명시지는 단지 저장된 정보가 아니라, handoff 가능하도록 구조화된 지식이어야 한다.
-
-| 작업 영역             | 내용                                                                    |
-| --------------------- | ----------------------------------------------------------------------- |
-| 명시지 분류 체계      | 모든 산출물을 결정형/실행형/연결형으로 분류 + 품질 기준 적용            |
-| Gate 재설계           | HITL Gate를 Knowledge Projector로 재정의, drill-down 구조 설계          |
-| 시각화 체계           | reasoning skeleton, 비교 테이블, dependency map 등 시각적 명시지 표준화 |
-| 저장 데이터 승격 정책 | audit log, training log에서 명시지로 승격할 항목 기준 수립              |
-| Tool Lifecycle 자동화 | `tool_registry.json` + symlink 규약 공식화                              |
-| Observability 연동    | rolling_f1 모니터링 + 승격 후보 자동 제안                               |
-| Repository Operating 구성 완성 | Personal Memory → grounded intent → Repository Governance → Runtime Harness → Audit/Optimizer loop 연결 |
-
----
-
-### v1.0.0 — A Companion of Agent Swarm
-
-> Agent는 뒤에서 일하는 도구가 아니라, **믿을 수 있는 동료**다.
-> 그리고 그 동료는 단일 Instance가 아니라 **Swarm**이다.
-
-| 방법론                          | 한 줄 정의                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| ***Two Layers Workflow Space*** | Global(나의 업무 방식) + Workspace(지금 이 프로젝트) — 지식과 도구가 자연스럽게 승격된다                     |
-| ***Trust-Level Collaboration*** | 핵심은 자동화 수준이 아니라 신뢰 수준이다. 맡기면 되는 상태를 만든다                                         |
-| ***Swarm-Native Teamwork***     | 사람이 팀원의 뉴런을 공유하지 않듯, Swarm도 내부 reasoning을 드러낼 필요 없다. 대신 팀원이 해야 할 것을 한다 |
-
-사람이 팀에서 일할 때 개별 사고 과정을 공유하지 않듯, Agent Swarm도 내부 reasoning을 낱낱이 드러낼 필요는 없다. 대신 팀원이 해야 할 것을 한다 — 맡은 일의 결과를 명확히 전달하고, 판단 근거를 물으면 설명하고, 문제가 생기면 스스로 알리고, 동료의 작업을 이어받을 수 있다.
-
-```mermaid
-graph LR
-    A["사람 A"] <--> SA["Swarm α"]
-    SA <--> B["사람 B"]
-    A <--> SB["Swarm β"]
-    SA <--> SG["Swarm γ"]
-    SB <--> SG
-    SG <--> C["사람 C"]
-    B <--> C
-```
-
-#### v1.0.0의 조건
-
-| 조건                 | 의미                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| **안전성**           | Swarm의 행동이 예측 가능하고, 실패 시 안전하게 복귀하며, 사람이 언제든 개입할 수 있다 |
-| **이해 가능성**      | Swarm이 왜 이 결정을 했는지, 무엇을 근거로 삼았는지 사람이 파악할 수 있다             |
-| **다자간 협업**      | 사람 × 사람, 사람 × Swarm, Swarm × Swarm 간의 handoff가 동일한 계약 구조로 작동한다   |
-| **동료 수준의 신뢰** | Swarm에게 일을 맡겼을 때 "확인해봐야 안심이 된다"가 아니라 "맡기면 된다"의 상태       |
-
-이것은 기술적 마일스톤이 아니라 **협업 경험의 마일스톤**이다. 여러 사람과 여러 Swarm이 하나의 워크플로우 안에서 동료로서 함께 일할 수 있는 최소 상태를 달성하는 것이 v1.0.0이다.
+**HITL 우선.** 에이전트는 제안하고, 사람이 결정한다. `judge` 필드로 자동화 수준을 명시적으로 통제한다.
 
 ---
 
 ## 의존성
 
-- Python 3.10+
+```
+Python 3.10+
+PyYAML >= 6.0
+jsonschema >= 4.24.0
+```
 
-## License
+---
 
-[MIT](LICENSE)
+## 참고
+
+- [docs/getting-started.md](docs/getting-started.md) — 상세 사용법 (설치부터 hook 검증까지)
+- [docs/architecture.md](docs/architecture.md) — 스킬 간 관계 · 데이터 흐름 · 파일시스템 레이아웃
+- [docs/changelog.md](docs/changelog.md) — 버전별 변경 이력
+- 각 `skills/*/SKILL.md` — 스킬별 상세 명세

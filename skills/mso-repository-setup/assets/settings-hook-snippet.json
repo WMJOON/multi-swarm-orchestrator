@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "WORKMEM_DIR=__WORKMEM_DIR__ python3 __HOOKS_DIR__/auditlog.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "WORKMEM_DIR=__WORKMEM_DIR__ python3 __HOOKS_DIR__/worklog.py"
+          }
+        ]
+      }
+    ]
+  }
+}

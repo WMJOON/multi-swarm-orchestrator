@@ -1,0 +1,102 @@
+type: decision
+description: "분기/판단 노드. automation_gate가 여기에 속함."
+
+fields:
+  type:
+    required: true
+    type: literal
+    value: decision
+
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: |
+      노드 고유 식별자. 네이밍 패턴은 프로젝트에서 정의
+      (예: '{module-abbr}-d-{NNN}').
+
+  label:
+    required: true
+    type: string
+    description: "{동사} {목적어} [{맥락}] 패턴. 검토/평가 동사 권장."
+
+  description:
+    required: false
+    type: string
+    description: |
+      판정 주체가 검토해야 할 항목을 자유 서술로 명시. multi-line 허용.
+      HITL/HITLFE 의 경우 운영자가 무엇을 어떤 기준으로 보아야 하는지 적는다.
+
+  judge:
+    required: true
+    type: enum
+    values: [HITL, HITLFE, HOTL, HOOTL]
+    descriptions:
+      HITL: "Human-In-The-Loop — 모든 결정에 사람 승인 (pre-execution)"
+      HITLFE: "Human-In-The-Loop For Exceptions — 임계치 초과 시만 에스컬레이션"
+      HOTL: "Human-On-The-Loop — 자율 실행, 사람은 감독·중단 권한"
+      HOOTL: "Human-Out-Of-The-Loop — 완전 자율, 사후 감사만"
+
+  # HITL 추가 필드
+  owner:
+    required_when:
+      field: judge
+      values: [HITL, HITLFE]
+    type: string
+    description: "의사결정 책임자 식별자 (이메일/팀명 등 — 형식은 프로젝트 정의)"
+
+  sla:
+    required: false
+    type: string
+    description: "인간 응답 SLA. 예: '24시간 이내'"
+    applicable_when:
+      field: judge
+      values: [HITL, HITLFE]
+
+  # HITLFE 추가 필드
+  threshold:
+    required_when:
+      field: judge
+      values: [HITLFE]
+    type: string
+    description: "에스컬레이션 발동 조건. 예: 'F1 < 0.87', 'confidence < 0.85'"
+
+  branches:
+    required: false
+    type: list
+    description: "조건별 분기. 생략 시 → sequential next"
+    items:
+      on:
+        required: true
+        type: string
+        description: "judge 타입별 허용 조건 (아래 judge_branch_conditions 참조)"
+      goto:
+        required: false
+        type: string
+        description: "이동할 node id. 생략 시 → sequential next"
+
+structural_invariants:
+  - "id 는 워크플로우 내 unique"
+  - "judge ∈ {HITL, HITLFE, HOTL, HOOTL}"
+  - "branches[].on 은 judge_branch_conditions[judge] 에 속해야 함"
+  - "HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"
+
+judge_branch_conditions:
+  HITL: [approved, rejected, escalated]
+  HITLFE: [auto-approved, escalated, rejected]
+  HOTL: [passed, flagged]
+  HOOTL: [completed, failed]
+
+decision_matrix:
+  - q: "잘못된 결정이 회복 불가능한가?"
+    yes: HITL
+    no: next
+  - q: "의사결정 신뢰도 95% 이상 측정 가능한가?"
+    no: HITL
+    yes: next
+  - q: "예외 케이스를 실시간으로 차단해야 하는가?"
+    yes: HITLFE
+    no: next
+  - q: "실시간 모니터링·중단이 필요한가?"
+    yes: HOTL
+    no: HOOTL

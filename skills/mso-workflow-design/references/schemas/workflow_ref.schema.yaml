@@ -1,0 +1,37 @@
+type: workflow_ref
+description: |
+  계층 workflow 참조. root workflow YAML 의 `phase.workflows[]` 또는 모듈 workflow YAML
+  의 `sub_workflow:` 필드에서 사용. sub workflow 의 phase/group id 를 anchor 로 가리켜
+  subgraph 형태로 통합한다.
+
+fields:
+  ref:
+    required: true
+    type: string
+    description: |
+      sub workflow YAML 파일 경로 (root YAML 또는 부모 YAML 기준 상대) + 옵션 anchor.
+      예: "02.AI-Chatbot-Policy/workflow/policy-workflow-00.yaml#development".
+      anchor (`#...`) 가 있으면 sub 파일의 해당 phase/group id 만 entry point 로 사용.
+
+  module:
+    required: true
+    type: string
+    description: |
+      sub workflow 가 속한 모듈 id. scaffold(index.yaml) 의 module id 와 일치해야 함.
+      ref 의 file path 가 이 모듈 path 의 자손인지 cross-check 한다.
+
+  harness_propagate:
+    required: false
+    type: bool
+    default: true
+    description: |
+      true(기본) 이면 root harness_manifest 집계 시 이 sub 의 validation 노드 harness 를
+      포함한다. false 이면 sub 의 harness 는 별도 manifest 로만 관리되고 root aggregate
+      에서 제외 (단독 실행 흐름).
+
+structural_invariants:
+  - "ref 비어있지 않음"
+  - "module 비어있지 않음"
+  - "ref 의 file path 는 scaffold module:{module}.path 의 자손이어야 함 (cross-skill invariant)"
+  - "ref 의 anchor (있을 경우) 는 sub 파일 내 phase/group id 와 일치해야 함"
+  - "module 필드 값은 ref 파일 자체가 선언한 module id 와 동일해야 함"

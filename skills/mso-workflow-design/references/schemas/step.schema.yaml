@@ -1,0 +1,64 @@
+type: step
+description: "실행 작업 노드. I/O는 선택적."
+
+fields:
+  type:
+    required: true
+    type: literal
+    value: step
+
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: |
+      노드 고유 식별자. worklog/auditlog 추적 키.
+      네이밍 패턴은 프로젝트에서 정의 (예: '{module-abbr}-s-{NNN}').
+
+  label:
+    required: true
+    type: string
+    description: |
+      사람이 읽는 행위 설명. 권장 패턴: '{동사} {목적어} [{맥락}]'.
+      동사 어휘는 프로젝트 컨벤션으로 정의.
+
+  status:
+    required: true
+    type: enum
+    values: [completed, active, pending]
+
+  directories:
+    required: false
+    type: list
+    description: "없으면 생략 가능 (순수 계산, API 호출 등)"
+    items:
+      role:
+        required: true
+        type: string
+        description: |
+          이 디렉토리의 역할. 자유형 string. 프로젝트 enum 컨벤션 권장.
+          일반적인 값 예: input, output, reference, instruction.
+      path:
+        required: true
+        type: string
+
+  deliverables:
+    required: false
+    type: list
+    items: string
+
+  validation:
+    required: false
+    type: list
+    items: string
+
+  sub_steps:
+    required: false
+    type: list
+    items: string
+    description: "선택적 상세 단계 (시각화·문서화 용)"
+
+structural_invariants:
+  - "id 는 워크플로우 내 unique"
+  - "label 비어있지 않음"
+  - "directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"
