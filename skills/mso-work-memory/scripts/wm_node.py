@@ -357,6 +357,7 @@ def cmd_reindex(args):
         ["python3", str(simple_kb), "add",
          "--path", str(kb_path),
          "--input", str(workmem_root()),
+         "--recursive",
          "--embedder", "hash"],
         capture_output=False,
     )
