@@ -1,0 +1,50 @@
+{"utterance": "ticket-217 재실행해줘", "expected_intent": "dispatch_ticket"}
+{"utterance": "방금 fail한 티켓 다시 실행해", "expected_intent": "dispatch_ticket"}
+{"utterance": "ticket-001 retry", "expected_intent": "dispatch_ticket"}
+{"utterance": "이 티켓 다시 dispatch해줘", "expected_intent": "dispatch_ticket"}
+{"utterance": "ticket-999 재시도", "expected_intent": "dispatch_ticket"}
+{"utterance": "내 run 어떻게 되고 있어?", "expected_intent": "query_run_status"}
+{"utterance": "run-2025 현황 보여줘", "expected_intent": "query_run_status"}
+{"utterance": "지금 진행률 알려줘", "expected_intent": "query_run_status"}
+{"utterance": "현재 run 상태 확인해줘", "expected_intent": "query_run_status"}
+{"utterance": "run 지금 어떻게 돼?", "expected_intent": "query_run_status"}
+{"utterance": "오늘 active ticket 보여줘", "expected_intent": "query_ticket_list"}
+{"utterance": "현재 진행 중인 ticket 목록", "expected_intent": "query_ticket_list"}
+{"utterance": "active 작업 뭐 있어?", "expected_intent": "query_ticket_list"}
+{"utterance": "할 일 목록 보여줘", "expected_intent": "query_ticket_list"}
+{"utterance": "ticket 목록 조회해줘", "expected_intent": "query_ticket_list"}
+{"utterance": "어제 fail한 것만 보여줘", "expected_intent": "query_audit_log"}
+{"utterance": "audit log 확인해줘", "expected_intent": "query_audit_log"}
+{"utterance": "실패 기록 조회", "expected_intent": "query_audit_log"}
+{"utterance": "어제 로그 보여줘", "expected_intent": "query_audit_log"}
+{"utterance": "audit 조회해줘", "expected_intent": "query_audit_log"}
+{"utterance": "이 워크플로우 멈춰", "expected_intent": "pause_workflow"}
+{"utterance": "wf-001 pause해줘", "expected_intent": "pause_workflow"}
+{"utterance": "워크플로우 일시정지", "expected_intent": "pause_workflow"}
+{"utterance": "잠깐 대기시켜", "expected_intent": "pause_workflow"}
+{"utterance": "wf-abc 중단해", "expected_intent": "pause_workflow"}
+{"utterance": "다시 진행해줘", "expected_intent": "resume_workflow"}
+{"utterance": "워크플로우 재개해", "expected_intent": "resume_workflow"}
+{"utterance": "resume해줘", "expected_intent": "resume_workflow"}
+{"utterance": "계속 진행해줘", "expected_intent": "resume_workflow"}
+{"utterance": "wf-001 계속해", "expected_intent": "resume_workflow"}
+{"utterance": "H1 gate 해제해줘", "expected_intent": "override_hitl_gate"}
+{"utterance": "gate 통과시켜", "expected_intent": "override_hitl_gate"}
+{"utterance": "H2 해제해줘", "expected_intent": "override_hitl_gate"}
+{"utterance": "gate override해줘", "expected_intent": "override_hitl_gate"}
+{"utterance": "gate skip해줘", "expected_intent": "override_hitl_gate"}
+{"utterance": "새 작업 추가해줘", "expected_intent": "create_ticket"}
+{"utterance": "ticket 새로 만들어줘", "expected_intent": "create_ticket"}
+{"utterance": "작업 추가해줘", "expected_intent": "create_ticket"}
+{"utterance": "티켓 추가해줘", "expected_intent": "create_ticket"}
+{"utterance": "새 ticket 만들어", "expected_intent": "create_ticket"}
+{"utterance": "ticket-217 priority 높여", "expected_intent": "update_ticket_priority"}
+{"utterance": "이 티켓 우선순위 올려줘", "expected_intent": "update_ticket_priority"}
+{"utterance": "ticket-001 priority 낮춰줘", "expected_intent": "update_ticket_priority"}
+{"utterance": "우선순위 변경해줘", "expected_intent": "update_ticket_priority"}
+{"utterance": "ticket priority 내려줘", "expected_intent": "update_ticket_priority"}
+{"utterance": "이 run 취소해줘", "expected_intent": "cancel_run"}
+{"utterance": "실행 중단해줘", "expected_intent": "cancel_run"}
+{"utterance": "run abort해줘", "expected_intent": "cancel_run"}
+{"utterance": "run-abc cancel해줘", "expected_intent": "cancel_run"}
+{"utterance": "run stop해줘", "expected_intent": "cancel_run"}

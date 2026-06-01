@@ -1,0 +1,97 @@
+@prefix mso:  <https://mso.dev/ontology/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ═══════════════════════════════════════════════════════════
+# MSO Target Taxonomy  (v0.3.1)
+# PCA의 Frame/Capital/Entity/Event/Ledger → MSO 5 target 리매핑
+# ═══════════════════════════════════════════════════════════
+
+mso:MSOTarget a skos:ConceptScheme ;
+    skos:prefLabel "MSO Target Taxonomy"@ko ;
+    skos:definition "MSO 운영 명령의 대상 개념 분류 체계"@ko .
+
+# ─── 5 root target concepts ─────────────────────────────────
+
+mso:RunContext a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "RunContext"@ko ;
+    skos:definition "한 Run의 실행 환경·executor·HITL state"@ko ;
+    skos:notation "RunContext" ;
+    skos:topConceptOf mso:MSOTarget .
+
+mso:AgentResource a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "AgentResource"@ko ;
+    skos:definition "Agent 토큰·시간·Concurrency slot"@ko ;
+    skos:notation "AgentResource" ;
+    skos:topConceptOf mso:MSOTarget .
+
+mso:WorkflowEntity a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "WorkflowEntity"@ko ;
+    skos:definition "Workflow / Spec / Node / SmartTool 정의 객체"@ko ;
+    skos:notation "WorkflowEntity" ;
+    skos:topConceptOf mso:MSOTarget .
+
+mso:TicketEvent a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "TicketEvent"@ko ;
+    skos:definition "Ticket 생성·상태 전이·dispatch 이벤트"@ko ;
+    skos:notation "TicketEvent" ;
+    skos:topConceptOf mso:MSOTarget .
+
+mso:RunManifest a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "RunManifest"@ko ;
+    skos:definition "Run manifest-index.jsonl, audit log"@ko ;
+    skos:notation "RunManifest" ;
+    skos:topConceptOf mso:MSOTarget .
+
+# ─── RunContext 하위 분류 ────────────────────────────────────
+
+mso:HITLGateContext a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "HITLGateContext"@ko ;
+    skos:definition "H1/H2 HITL 게이트 상태"@ko ;
+    skos:notation "HITLGateContext" ;
+    skos:broader mso:RunContext .
+
+mso:ActiveRunContext a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "ActiveRunContext"@ko ;
+    skos:definition "현재 실행 중인 Run의 컨텍스트"@ko ;
+    skos:notation "ActiveRunContext" ;
+    skos:broader mso:RunContext .
+
+# ─── TicketEvent 하위 분류 ──────────────────────────────────
+
+mso:FailedTicket a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "FailedTicket"@ko ;
+    skos:definition "실패 상태인 Ticket"@ko ;
+    skos:notation "FailedTicket" ;
+    skos:broader mso:TicketEvent .
+
+mso:ActiveTicket a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "ActiveTicket"@ko ;
+    skos:definition "진행 중인 Ticket"@ko ;
+    skos:notation "ActiveTicket" ;
+    skos:broader mso:TicketEvent .
+
+mso:PendingTicket a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "PendingTicket"@ko ;
+    skos:definition "대기 중인 Ticket"@ko ;
+    skos:notation "PendingTicket" ;
+    skos:broader mso:TicketEvent .
+
+# ─── WorkflowEntity 하위 분류 ───────────────────────────────
+
+mso:PausedWorkflow a skos:Concept ;
+    skos:inScheme mso:MSOTarget ;
+    skos:prefLabel "PausedWorkflow"@ko ;
+    skos:definition "일시 정지된 워크플로우"@ko ;
+    skos:notation "PausedWorkflow" ;
+    skos:broader mso:WorkflowEntity .

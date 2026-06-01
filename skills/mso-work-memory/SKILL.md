@@ -24,6 +24,7 @@ description: >
 3. **공통 스키마** — id, type, title, text, tags, created_at, relations, metadata
 4. **그래프 임베드** — `relations: [{type, target}]` 로 entry 간 인과 관계 표현 (별도 DB 불필요)
 5. **zvec 시맨틱 검색** — `text` 필드 임베딩, `tags` 필터
+6. **선제 기록 책임** — 사용자가 요청하기를 기다리지 말고, 향후 작업·구조에 지속 영향을 주는 결정(UD/AD)·이슈(IN)·해결(TS)을 에이전트가 스스로 판단해 먼저 기록한다. 단발성 지시·사소한 수정·질문은 제외. AD는 대안이 둘 이상이고 득실이 갈릴 때 `metadata.rationale/alternatives/confidence`와 함께 기록하고, 사용자가 채택하면 이어지는 UD를 `followed-by`로 연결한다. *이 행동 규약은 always-on이어야 효과가 있으므로, 프로젝트는 이 책임 항목을 상시 로드되는 rules(CLAUDE.md/AGENTS.md 등)에도 둔다 — 이 스킬은 '어떻게(절차·CLI·스키마)'를 소유한다.*
 
 ## 디렉토리 구조 (프로젝트 측)
 

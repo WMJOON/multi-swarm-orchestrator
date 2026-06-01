@@ -1,0 +1,21 @@
+{
+  "name": "mso-conversation-analytics",
+  "version": "0.3.1",
+  "lifecycle_state": "local",
+  "owner_workspace": "03_AgentsTools/00_multi-swarm-orchestrator/repository-test",
+  "role": "observability",
+  "slots": {
+    "script": {
+      "type": "script",
+      "entry": "src/analytics.py",
+      "tier": "Lv10",
+      "note": "DuckDB in-memory 분석 + 환류 보고서"
+    }
+  },
+  "input": "workspace/.mso-context/conversation/turns.jsonl",
+  "env": {
+    "MSO_TURNS_PATH": "turns.jsonl 경로 오버라이드 (기본값: workspace/.mso-context/conversation/turns.jsonl)"
+  },
+  "created": "2026-05-27",
+  "promoted_from": null
+}
