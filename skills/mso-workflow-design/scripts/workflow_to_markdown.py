@@ -21,12 +21,12 @@ def workflow_to_markdown(workflow: dict) -> str:
 
     lines = []
 
-    # 모듈 헤더
-    module = workflow.get("module", {})
-    module_name = module.get("name", "Workflow")
-    module_id = module.get("id", "unknown")
-    module_version = module.get("version", "1.0.0")
-    module_desc = module.get("description", "")
+    # 헤더: workflow 블록 우선, module 블록 폴백
+    header = workflow.get("workflow") or workflow.get("module") or {}
+    module_name = header.get("name") or header.get("slug") or "Workflow"
+    module_id = header.get("id", "unknown")
+    module_version = header.get("version", "1.0.0")
+    module_desc = header.get("description", "")
 
     lines.append(f"# {module_name}")
     lines.append("")
@@ -48,14 +48,8 @@ def workflow_to_markdown(workflow: dict) -> str:
     lines.append("```")
     lines.append("")
 
-    # Phase 순서
-    phase_order = ["discovery", "development", "testing"]
-
-    for phase_name in phase_order:
-        if phase_name not in workflow:
-            continue
-
-        phase = workflow[phase_name]
+    # Phase 순회 (임의 phase 키 — RESERVED 제외, YAML 선언 순서 보존)
+    for phase_name, phase in _collect_phases_aggr(workflow):
         phase_label = phase.get("label", phase_name)
         phase_status = phase.get("status", "unknown")
 
@@ -207,15 +201,14 @@ def workflow_to_markdown(workflow: dict) -> str:
 
 
 def _get_overall_status(workflow: dict) -> str:
-    """워크플로우의 전체 상태 판단"""
-    phase_order = ["discovery", "development", "testing"]
-    statuses = []
+    """워크플로우의 전체 상태 판단 (임의 phase 키)"""
+    statuses = [
+        phase.get("status", "unknown")
+        for _, phase in _collect_phases_aggr(workflow)
+    ]
 
-    for phase_name in phase_order:
-        if phase_name in workflow:
-            phase_status = workflow[phase_name].get("status", "unknown")
-            statuses.append(phase_status)
-
+    if not statuses:
+        return "⏳ 예정"
     if all(s == "completed" for s in statuses):
         return "✅ 완료"
     elif any(s == "active" for s in statuses):
@@ -239,16 +232,31 @@ def _workflow_to_mermaid(workflow: dict) -> str:
     """워크플로우를 mermaid flowchart로 변환"""
     lines = ["graph TD"]
 
-    phase_order = ["discovery", "development", "testing"]
+    phases = _collect_phases_aggr(workflow)
+
+    # phase 키/id → 첫 step id 매핑 (cross-phase goto 를 진입 노드로 해석)
+    phase_entry: dict = {}
+    for phase_name, phase in phases:
+        steps = phase.get("steps", [])
+        if not steps:
+            continue
+        first_id = steps[0].get("id")
+        if not first_id:
+            continue
+        phase_entry[phase_name] = first_id
+        if phase.get("id"):
+            phase_entry[phase["id"]] = first_id
+
+    def _resolve(goto: str) -> str:
+        # goto 가 phase 를 가리키면 그 phase 의 첫 step 으로, step 이면 그대로
+        return phase_entry.get(goto, goto)
+
     nodes = {}
     edges = []
     prev_last_node = None
+    prev_last_type = None
 
-    for phase_name in phase_order:
-        if phase_name not in workflow:
-            continue
-
-        phase = workflow[phase_name]
+    for phase_name, phase in phases:
         steps = phase.get("steps", [])
         if not steps:
             continue
@@ -297,17 +305,26 @@ def _workflow_to_mermaid(workflow: dict) -> str:
                     goto = branch.get("goto", "")
                     if goto:
                         label = branch.get("on") or branch.get(True) or ""
-                        edges.append((node_id, goto, str(label) if label else None))
+                        edges.append((node_id, _resolve(goto), str(label) if label else None))
 
-        if prev_last_node and first_node:
+        # phase 경계 자동 edge — 직전 phase 가 decision 으로 끝나면 명시 분기가
+        # 흐름을 책임지므로 생략 (중복/오해 유발 방지)
+        if prev_last_node and first_node and prev_last_type != "decision":
             edges.append((prev_last_node, first_node, None))
 
         prev_last_node = last_node
+        prev_last_type = last_step_type
 
     for node_def in nodes.values():
         lines.append(f"    {node_def}")
 
+    # 동일 edge 중복 제거 (선언 순서 보존)
+    seen_edges: set = set()
     for from_node, to_node, label in edges:
+        key = (from_node, to_node, label)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
         if label:
             lines.append(f"    {from_node} -->|{label}| {to_node}")
         else:
@@ -368,7 +385,7 @@ def cmd_convert(yaml_path: str, output_path: str | None = None):
 # ─── aggregate (계층 통합) ────────────────────────────────────────────────────
 
 RESERVED_TOP_KEYS = {
-    "meta", "metadata", "module", "project",
+    "workflow", "meta", "metadata", "module", "project",
     "dependencies", "key_decisions",
     "deliverables", "quality_metrics", "timeline",
     "versioning", "governance", "metrics",
