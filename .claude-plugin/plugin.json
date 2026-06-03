@@ -1,6 +1,0 @@
-{
-  "name": "multi-swarm-orchestrator",
-  "version": "0.3.1",
-  "author": { "name": "WMJOON" },
-  "description": "MSO skill pack — repository scaffold/workflow design, work-memory asset layer, orchestration router. Provider-free SKILL.md skills."
-}
