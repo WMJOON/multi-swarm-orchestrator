@@ -1,0 +1,40 @@
+@prefix mso:  <https://mso.dev/ontology/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+# ═══════════════════════════════════════════════════════════
+# MSO Verb Taxonomy  (v0.3.1)
+# v0.3.1 등록 verb: query / create / update / delete (4개)
+# Brief · Simulate → v0.4.x
+# ═══════════════════════════════════════════════════════════
+
+mso:MSOVerb a skos:ConceptScheme ;
+    skos:prefLabel "MSO Verb Taxonomy"@ko ;
+    skos:definition "MSO 운영 명령 동사 분류 체계"@ko .
+
+mso:QueryVerb a skos:Concept ;
+    skos:inScheme mso:MSOVerb ;
+    skos:prefLabel "query"@ko ;
+    skos:definition "상태·목록·이력 조회"@ko ;
+    skos:notation "query" ;
+    skos:topConceptOf mso:MSOVerb .
+
+mso:CreateVerb a skos:Concept ;
+    skos:inScheme mso:MSOVerb ;
+    skos:prefLabel "create"@ko ;
+    skos:definition "새 리소스 생성 또는 실행 트리거"@ko ;
+    skos:notation "create" ;
+    skos:topConceptOf mso:MSOVerb .
+
+mso:UpdateVerb a skos:Concept ;
+    skos:inScheme mso:MSOVerb ;
+    skos:prefLabel "update"@ko ;
+    skos:definition "기존 리소스 상태·속성 변경"@ko ;
+    skos:notation "update" ;
+    skos:topConceptOf mso:MSOVerb .
+
+mso:DeleteVerb a skos:Concept ;
+    skos:inScheme mso:MSOVerb ;
+    skos:prefLabel "delete"@ko ;
+    skos:definition "리소스 취소·중단·삭제"@ko ;
+    skos:notation "delete" ;
+    skos:topConceptOf mso:MSOVerb .

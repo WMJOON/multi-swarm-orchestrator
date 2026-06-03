@@ -22,3 +22,5 @@ skills/mso-workflow-optimizer/.env
 skills/mso-workflow-optimizer/.env.local
 skills/mso-workflow-optimizer/.env.*
 !skills/mso-workflow-optimizer/.env.example
+.venv/
+*.egg-info/

@@ -1,0 +1,146 @@
+@prefix mso:  <https://mso.dev/ontology/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ═══════════════════════════════════════════════════════════
+# MSO Intent Matrix  (v0.3.1)
+# (verb × target) coverage enumeration
+# v0.3.1 filled: 10 cells
+# ═══════════════════════════════════════════════════════════
+
+mso:IntentMatrixCell a rdfs:Class ;
+    rdfs:label "IntentMatrixCell" .
+
+# ─── FILLED (10 cells) ──────────────────────────────────────
+
+# query × RunContext
+mso:cell_query_x_RunContext a mso:IntentMatrixCell ;
+    mso:cell_id "query_x_RunContext" ;
+    mso:verb_concept mso:QueryVerb ;
+    mso:target_concept mso:RunContext ;
+    mso:status "filled" ;
+    mso:intent_id "query_run_status" ;
+    skos:note "Run 실행 상태 조회"@ko .
+
+# query × TicketEvent
+mso:cell_query_x_TicketEvent a mso:IntentMatrixCell ;
+    mso:cell_id "query_x_TicketEvent" ;
+    mso:verb_concept mso:QueryVerb ;
+    mso:target_concept mso:TicketEvent ;
+    mso:status "filled" ;
+    mso:intent_id "query_ticket_list" ;
+    skos:note "Ticket 목록 조회"@ko .
+
+# query × RunManifest
+mso:cell_query_x_RunManifest a mso:IntentMatrixCell ;
+    mso:cell_id "query_x_RunManifest" ;
+    mso:verb_concept mso:QueryVerb ;
+    mso:target_concept mso:RunManifest ;
+    mso:status "filled" ;
+    mso:intent_id "query_audit_log" ;
+    skos:note "audit log 조회"@ko .
+
+# create × TicketEvent (dispatch)
+mso:cell_create_x_TicketEvent_dispatch a mso:IntentMatrixCell ;
+    mso:cell_id "create_x_TicketEvent_dispatch" ;
+    mso:verb_concept mso:CreateVerb ;
+    mso:target_concept mso:TicketEvent ;
+    mso:status "filled" ;
+    mso:intent_id "dispatch_ticket" ;
+    skos:note "Ticket 재실행·dispatch"@ko .
+
+# create × TicketEvent (new)
+mso:cell_create_x_TicketEvent_new a mso:IntentMatrixCell ;
+    mso:cell_id "create_x_TicketEvent_new" ;
+    mso:verb_concept mso:CreateVerb ;
+    mso:target_concept mso:TicketEvent ;
+    mso:status "filled" ;
+    mso:intent_id "create_ticket" ;
+    skos:note "새 Ticket 생성"@ko .
+
+# update × WorkflowEntity (pause)
+mso:cell_update_x_WorkflowEntity_pause a mso:IntentMatrixCell ;
+    mso:cell_id "update_x_WorkflowEntity_pause" ;
+    mso:verb_concept mso:UpdateVerb ;
+    mso:target_concept mso:WorkflowEntity ;
+    mso:status "filled" ;
+    mso:intent_id "pause_workflow" ;
+    skos:note "워크플로우 일시 정지"@ko .
+
+# update × WorkflowEntity (resume)
+mso:cell_update_x_WorkflowEntity_resume a mso:IntentMatrixCell ;
+    mso:cell_id "update_x_WorkflowEntity_resume" ;
+    mso:verb_concept mso:UpdateVerb ;
+    mso:target_concept mso:WorkflowEntity ;
+    mso:status "filled" ;
+    mso:intent_id "resume_workflow" ;
+    skos:note "워크플로우 재개"@ko .
+
+# update × RunContext (HITL gate)
+mso:cell_update_x_HITLGateContext a mso:IntentMatrixCell ;
+    mso:cell_id "update_x_HITLGateContext" ;
+    mso:verb_concept mso:UpdateVerb ;
+    mso:target_concept mso:HITLGateContext ;
+    mso:status "filled" ;
+    mso:intent_id "override_hitl_gate" ;
+    skos:note "HITL gate override"@ko .
+
+# update × TicketEvent (priority)
+mso:cell_update_x_TicketEvent_priority a mso:IntentMatrixCell ;
+    mso:cell_id "update_x_TicketEvent_priority" ;
+    mso:verb_concept mso:UpdateVerb ;
+    mso:target_concept mso:TicketEvent ;
+    mso:status "filled" ;
+    mso:intent_id "update_ticket_priority" ;
+    skos:note "Ticket 우선순위 변경"@ko .
+
+# delete × RunContext
+mso:cell_delete_x_RunContext a mso:IntentMatrixCell ;
+    mso:cell_id "delete_x_RunContext" ;
+    mso:verb_concept mso:DeleteVerb ;
+    mso:target_concept mso:RunContext ;
+    mso:status "filled" ;
+    mso:intent_id "cancel_run" ;
+    skos:note "Run 취소·중단"@ko .
+
+# ─── PLANNED (우선순위 셀) ───────────────────────────────────
+
+mso:cell_query_x_AgentResource a mso:IntentMatrixCell ;
+    mso:cell_id "query_x_AgentResource" ;
+    mso:verb_concept mso:QueryVerb ;
+    mso:target_concept mso:AgentResource ;
+    mso:status "planned" ;
+    mso:priority 3 ;
+    skos:note "Agent 리소스 사용량 조회 (v0.4.x)"@ko .
+
+mso:cell_create_x_WorkflowEntity a mso:IntentMatrixCell ;
+    mso:cell_id "create_x_WorkflowEntity" ;
+    mso:verb_concept mso:CreateVerb ;
+    mso:target_concept mso:WorkflowEntity ;
+    mso:status "planned" ;
+    mso:priority 2 ;
+    skos:note "새 워크플로우 생성 (v0.4.x)"@ko .
+
+mso:cell_delete_x_WorkflowEntity a mso:IntentMatrixCell ;
+    mso:cell_id "delete_x_WorkflowEntity" ;
+    mso:verb_concept mso:DeleteVerb ;
+    mso:target_concept mso:WorkflowEntity ;
+    mso:status "planned" ;
+    mso:priority 4 ;
+    skos:note "워크플로우 삭제 (v0.4.x)"@ko .
+
+# ─── REJECTED ────────────────────────────────────────────────
+
+mso:cell_delete_x_RunManifest a mso:IntentMatrixCell ;
+    mso:cell_id "delete_x_RunManifest" ;
+    mso:verb_concept mso:DeleteVerb ;
+    mso:target_concept mso:RunManifest ;
+    mso:status "rejected" ;
+    mso:rejected_rationale "RunManifest(audit log)은 append-only 불변 원칙. 삭제 불가."@ko .
+
+mso:cell_create_x_RunManifest a mso:IntentMatrixCell ;
+    mso:cell_id "create_x_RunManifest" ;
+    mso:verb_concept mso:CreateVerb ;
+    mso:target_concept mso:RunManifest ;
+    mso:status "rejected" ;
+    mso:rejected_rationale "RunManifest는 시스템 자동 생성. operator가 직접 create 불가."@ko .

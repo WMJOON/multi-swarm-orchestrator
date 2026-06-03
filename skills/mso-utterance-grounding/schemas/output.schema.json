@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "title": "GroundedCommand",
+  "description": "Thin Agent 입력 계약. mso-utterance-grounding 출력.",
+  "type": "object",
+  "required": ["intent_id", "slots", "tier", "session_id", "turn_id"],
+  "properties": {
+    "intent_id": {
+      "type": ["string", "null"],
+      "description": "canonical intent ID. null = unresolved"
+    },
+    "target_id": {
+      "type": ["string", "null"],
+      "description": "resolver가 식별한 entity ref (예: ticket-217)"
+    },
+    "target_concepts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "target_taxonomy SKOS concept 목록"
+    },
+    "slots": {
+      "type": "object",
+      "description": "채워진 슬롯 맵 {slot_name: value}"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["Lv10", "Lv20", "Lv30"]
+    },
+    "reprompt_needed": {
+      "type": "boolean"
+    },
+    "reprompt_slots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "session_id": { "type": "string" },
+    "turn_id":    { "type": "string" }
+  }
+}

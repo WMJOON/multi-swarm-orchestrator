@@ -1,0 +1,239 @@
+id: https://mso.dev/nlu_intent
+name: nlu_intent
+version: "0.1.0"
+description: >
+  MSO v0.3.1 NLU Intent Layer Schema.
+  Intent / SlotSpec / IntentTurn / SessionContext / IntentMatrixCell 클래스 정의.
+  PCA nlu_intent.yaml 기반, MSO 도메인으로 재작성.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  mso:    https://mso.dev/ontology/
+  skos:   http://www.w3.org/2004/02/skos/core#
+  xsd:    http://www.w3.org/2001/XMLSchema#
+
+default_prefix: mso
+default_range: string
+
+imports:
+  - linkml:types
+
+# ─────────────────────────────────────────────
+# Enums
+# ─────────────────────────────────────────────
+enums:
+
+  SlotTypeEnum:
+    description: 슬롯 값의 종류
+    permissible_values:
+      entity_ref:
+        description: ticket-217, run-abc 등 entity 식별자
+      timestamp:
+        description: ISO-8601 날짜/시간
+      enum_value:
+        description: 미리 정의된 값 목록 중 하나
+      free_text:
+        description: 자유 텍스트
+
+  FillPolicyEnum:
+    description: 슬롯 채움 전략
+    permissible_values:
+      ask:
+        description: utterance에서 추출 시도. 없으면 reprompt
+      session_context:
+        description: SessionContext 필드에서 자동 채움
+      default:
+        description: SlotSpec.default_value 사용
+
+  MatrixStatusEnum:
+    description: IntentMatrixCell의 구현 상태
+    permissible_values:
+      filled:
+        description: intent 인스턴스 존재, 사용 가능
+      planned:
+        description: 향후 구현 예정
+      rejected:
+        description: MSO 도메인에서 불필요하다고 판단
+
+  TierEnum:
+    description: Thin Agent Tier Escalation 레벨
+    permissible_values:
+      Lv10:
+        description: Deterministic rule — LLM 없음
+      Lv20:
+        description: 경량 모델 추론
+      Lv30:
+        description: LLM reasoning (Agentic)
+
+# ─────────────────────────────────────────────
+# Classes
+# ─────────────────────────────────────────────
+classes:
+
+  # ── SlotSpec ──────────────────────────────
+  SlotSpec:
+    description: Intent 충족에 필요한 슬롯 명세
+    attributes:
+      slot_name:
+        identifier: true
+        range: string
+        required: true
+        description: 슬롯 식별자 (예: ticket_ref, run_ref)
+      slot_type:
+        range: SlotTypeEnum
+        required: true
+      required:
+        range: boolean
+        required: true
+        description: true면 미충족 시 reprompt
+      fill_policy:
+        range: FillPolicyEnum
+        required: true
+      default_value:
+        range: string
+        required: false
+        description: fill_policy=default 일 때 사용하는 기본값
+
+  # ── Intent ────────────────────────────────
+  Intent:
+    description: MSO 운영 명령의 canonical representation
+    attributes:
+      intent_id:
+        identifier: true
+        range: string
+        required: true
+        description: 예) dispatch_ticket, query_run_status
+      verb_concept:
+        range: string
+        required: true
+        description: SKOS URI — mso:QueryVerb / mso:CreateVerb / mso:UpdateVerb / mso:DeleteVerb
+      target_concept:
+        range: string
+        required: true
+        description: SKOS URI — mso:RunContext / mso:TicketEvent 등
+      trigger_keywords:
+        range: string
+        multivalued: true
+        description: rule-based 1차 매칭 키워드 목록
+      slot_specs:
+        range: SlotSpec
+        multivalued: true
+        inlined: true
+        description: 이 intent에 필요한 슬롯 명세
+      example_utterances:
+        range: string
+        multivalued: true
+        description: 테스트·문서용 예시 발화
+
+  # ── SessionContext ─────────────────────────
+  SessionContext:
+    description: grounding 시 슬롯 채움에 사용하는 세션 상태
+    attributes:
+      session_id:
+        identifier: true
+        range: string
+        required: true
+        description: "<run_id>:<operator_id>:<ulid>"
+      run_ids:
+        range: string
+        multivalued: true
+        description: 현재 operator가 attach된 Run ID 목록 (복수 Run 지원)
+      operator_id:
+        range: string
+        required: false
+      last_referenced_entity:
+        range: string
+        required: false
+        description: 직전 발화에서 참조된 entity ref
+      now:
+        range: datetime
+        required: false
+        description: 세션 기준 현재 시각 (ISO-8601)
+
+  # ── IntentTurn ─────────────────────────────
+  IntentTurn:
+    description: 1회 operator 발화 처리 기록. turns.jsonl 행 스키마.
+    attributes:
+      turn_id:
+        identifier: true
+        range: string
+        required: true
+        description: ULID
+      session_id:
+        range: string
+        required: true
+      timestamp:
+        range: datetime
+        required: true
+      utterance:
+        range: string
+        required: true
+        description: 오퍼레이터 원문 발화
+      resolved_intent_id:
+        range: string
+        required: false
+        description: 분류된 intent_id. null = unresolved
+      resolved_target_entity_id:
+        range: string
+        required: false
+        description: resolver가 식별한 entity ref (예: ticket-217)
+      resolved_target_concepts:
+        range: string
+        multivalued: true
+        description: target_taxonomy SKOS concept 목록
+      slots_filled:
+        range: string
+        required: false
+        description: JSON string — 채워진 슬롯 맵
+      reprompt_count:
+        range: integer
+        required: true
+        minimum_value: 0
+        description: 슬롯 재질문 횟수
+      success:
+        range: boolean
+        required: true
+        description: grounding 및 downstream 실행 성공 여부
+      duration_ms:
+        range: integer
+        required: false
+        description: grounding 처리 소요 시간 (ms)
+      prev_turn_id:
+        range: string
+        required: false
+        description: 직전 turn의 ULID. 시퀀스 추적용.
+
+  # ── IntentMatrixCell ──────────────────────
+  IntentMatrixCell:
+    description: (verb_concept × target_concept) coverage 셀
+    attributes:
+      cell_id:
+        identifier: true
+        range: string
+        required: true
+        description: "<verb>_x_<target>" 형식
+      verb_concept:
+        range: string
+        required: true
+        description: SKOS verb URI
+      target_concept:
+        range: string
+        required: true
+        description: SKOS target URI
+      status:
+        range: MatrixStatusEnum
+        required: true
+      intent_id:
+        range: string
+        required: false
+        description: status=filled 일 때만. Intent.intent_id 참조
+      priority:
+        range: integer
+        required: false
+        minimum_value: 1
+        maximum_value: 5
+        description: status=planned 셀의 구현 우선순위
+      rejected_rationale:
+        range: string
+        required: false
+        description: status=rejected 사유

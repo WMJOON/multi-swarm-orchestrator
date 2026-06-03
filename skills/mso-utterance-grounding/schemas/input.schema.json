@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "title": "GroundingInput",
+  "type": "object",
+  "required": ["utterance"],
+  "properties": {
+    "utterance": {
+      "type": "string",
+      "description": "오퍼레이터 원문 발화"
+    },
+    "session_context": {
+      "type": "object",
+      "description": "SessionContext — 슬롯 채움에 사용",
+      "properties": {
+        "session_id":             { "type": "string" },
+        "run_ids":                { "type": "array", "items": { "type": "string" } },
+        "operator_id":            { "type": "string" },
+        "last_referenced_entity": { "type": "string" },
+        "now":                    { "type": "string", "format": "date-time" }
+      }
+    },
+    "prev_turn_id": {
+      "type": ["string", "null"],
+      "description": "직전 turn ULID (시퀀스 추적용)"
+    }
+  }
+}

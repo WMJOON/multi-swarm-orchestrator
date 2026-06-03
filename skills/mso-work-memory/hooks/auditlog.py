@@ -7,6 +7,7 @@ WORKMEM_DIR/auditlog/AU-YYYY-MM-DD.jsonl 에 한 줄 append 한다.
 추적 대상: Bash, Edit, MultiEdit, Write
 """
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -46,8 +47,11 @@ def main():
     file_path = auditlog_dir / f"AU-{now.strftime('%Y-%m-%d')}.jsonl"
 
     summary = _summarize(tool_name, data.get("tool_input", {}))
+    # schema.yaml: AU-YYYYMMDD-HHMMSS-<hash>. 동일 초 내 다중 호출 충돌 방지를 위해
+    # microsecond + 내용 기반 short hash 를 suffix 로 붙인다.
+    uid = hashlib.sha1(f"{now.isoformat()}-{tool_name}-{summary}".encode("utf-8")).hexdigest()[:6]
     entry = {
-        "id": f"AU-{now.strftime('%Y%m%d-%H%M%S')}",
+        "id": f"AU-{now.strftime('%Y%m%d-%H%M%S')}-{uid}",
         "type": "auditlog",
         "title": f"{tool_name}: {summary[:80]}",
         "text": summary,
