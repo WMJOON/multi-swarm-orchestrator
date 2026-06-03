@@ -1,5 +1,25 @@
 # 변경 이력
 
+## v0.3.1 (2026-06-04)
+
+> **Utterance Grounding Layer 추가 — 자연어 운영 명령 레이어.** v0.3.0의 5개 스킬(Design/Ops/Infra) 위에, 오퍼레이터 자연어 발화를 실행 가능한 `GroundedCommand`로 변환하는 Runtime/NLU 레이어 3개 스킬을 더해 8개 스킬 체제로 확장했다. `mso-orchestration`은 자연어 운영 명령을 첫 라우팅 분기로 흡수한다.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `mso-utterance-grounding` | 자연어 발화 → `GroundedCommand` 변환 Smart Tool. 4-slot pipeline(input_norm→rules→inference→script). Lv10 keyword 라우터 + Lv30 LLM fallback, analytics 누적 후 Lv20 경량 모델로 escalation-down |
+| `mso-intent-registry` | MSO 도메인 NLU 어휘 단일 정본. LinkML schema(`nlu_intent.yaml`) · TTL instances · SKOS taxonomy · intent matrix 소유. `lookup.py` lookup API(list_intents/lookup_intent/lookup_target) 제공 |
+| `mso-conversation-analytics` | `turns.jsonl`을 DuckDB in-memory로 분석. 전환 행렬·퍼널·reprompt율·미해결 발화 측정 + Closed-loop 환류 보고서 + Tier Escalation 신호 생성 (`duckdb` 선택 의존성) |
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| 스킬 수 5 → 8 | Runtime/NLU 레이어 3개 스킬 추가 (Design/Ops/Infra 5개는 유지) |
+| `mso-orchestration` 라우팅 | 자연어 운영 명령을 첫 분기(0번)로 흡수 → `mso-utterance-grounding` 디스패치 |
+| `workflow_to_markdown.py` | 하드코딩된 discovery/development/testing phase 순서를 `_collect_phases_aggr`로 일반화. mermaid cross-phase goto 해석 · decision 끝 자동 edge 생략 · 중복 edge 제거 |
+
 ## v0.3.0 (2026-05-26)
 
 > **스킬팩 전면 재설계 — Working System First.** v0.2.x의 복잡한 13개 스킬을 5개로 재편했다. `mso-repository-setup`, `mso-scaffold-design`, `mso-workflow-design`, `mso-work-memory`, `mso-orchestration`이 실제로 동작하는 단일 스킬팩을 구성한다. Python 스크립트 기반 CLI(`init.py`, `sf_node.py`, `wf_node.py`, `wm_node.py`)와 hook 자동 등록(`auditlog.py`, `worklog.py`)으로 provider-free 운영이 가능해졌다.

@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.3.0
+# Multi-Swarm Orchestrator (MSO) v0.3.1
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
@@ -152,7 +152,8 @@ wf_node.py harness-manifest workflow.yaml
 
 ## 스킬 구성
 
-v0.3.0은 **Design → Ops → Infra** 세 레이어에 걸쳐 5개 스킬이 동작한다.
+v0.3.1은 **Design → Ops → Infra → Runtime/NLU** 네 레이어에 걸쳐 8개 스킬이 동작한다.
+v0.3.0의 5개 스킬(Design/Ops/Infra) 위에, 오퍼레이터 자연어 발화를 실행 가능한 명령으로 grounding하는 **Utterance Grounding Layer** 3개 스킬이 추가됐다.
 
 ```
 사용자 요청
@@ -167,8 +168,13 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
     ├── [Ops]
     │   └──> mso-repository-setup   agent-context/ 부트스트랩 · hook 등록
     │
-    └── [Infra]
-        └──> mso-work-memory        JSONL entry · auditlog · worklog · graph
+    ├── [Infra]
+    │   └──> mso-work-memory        JSONL entry · auditlog · worklog · graph
+    │
+    └── [Runtime/NLU — v0.3.1 신규]
+        ├──> mso-utterance-grounding    자연어 발화 → GroundedCommand
+        │       └── mso-intent-registry  Intent/SlotSpec/Taxonomy 정본 (lookup API)
+        └──> mso-conversation-analytics  turns.jsonl 분석 · 환류 · Tier escalation 신호
 ```
 
 | 스킬 | 레이어 | 핵심 스크립트 |
@@ -178,6 +184,9 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
 | `mso-scaffold-design` | Design | `sf_node.py` |
 | `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py` |
 | `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py` |
+| `mso-utterance-grounding` *(v0.3.1)* | Runtime | `slots/` 4-slot pipeline (input_norm→rules→inference→script) |
+| `mso-intent-registry` *(v0.3.1)* | Data | `src/lookup.py`, `references/schemas/nlu_intent.yaml` (LinkML) |
+| `mso-conversation-analytics` *(v0.3.1)* | Observability | `src/analytics.py`, `src/transitions.py` (DuckDB) |
 
 ---
 
@@ -265,7 +274,7 @@ python3 $WM graph IN-0001 --depth 2
 
 ## 설계 원칙
 
-**Working System First.** 완벽한 아키텍처보다 실제로 돌아가는 시스템을 먼저 만든다. v0.3.0은 5개 스킬이 실제로 동작하는 것을 검증한 milestone이다.
+**Working System First.** 완벽한 아키텍처보다 실제로 돌아가는 시스템을 먼저 만든다. v0.3.0은 5개 스킬이 실제로 동작하는 것을 검증한 milestone이고, v0.3.1은 그 위에 자연어 발화를 실행 가능한 GroundedCommand로 변환하는 Utterance Grounding Layer 3개 스킬을 더해 8개 스킬 체제로 확장한 milestone이다.
 
 **YAML이 SSOT.** `index.yaml`과 workflow YAML이 정본이다. Markdown·Mermaid는 변환 산출물이지, 편집 대상이 아니다.
 
