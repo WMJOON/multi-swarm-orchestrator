@@ -224,9 +224,21 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-def cmd_hook(target: Path):
-    """프로젝트의 .claude/settings.json 에 auditlog/worklog hook 을 등록한다."""
-    # hook 스크립트 위치 탐색: mso-work-memory/hooks/ (sibling skill)
+HOOK_FILES = ["auditlog.py", "worklog.py", "work-memory-check.sh"]
+
+
+def cmd_hook(target: Path, worthy_paths: str | None = None):
+    """프로젝트의 .claude/ 에 work-memory hook 을 등록한다 (copy-form).
+
+    hook 스크립트를 <target>/.claude/scripts/ 로 복사하고, settings.json 은
+    "$CLAUDE_PROJECT_DIR" 상대로 참조한다. 절대 경로(스킬의 iCloud 심볼릭 경로,
+    init 시점 workmem 절대경로)를 커밋 대상 파일에 박지 않으므로 다른 머신·CI·
+    경로 이동에도 견딘다 (MKB·umbrella house convention 과 일관).
+
+    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다(미지정 시 스크립트 기본값 =
+    오케스트레이션 레이어). data/·build 처럼 고빈도 경로는 제외하는 게 좋다.
+    """
+    # hook 스크립트 원본 위치 탐색: mso-work-memory/hooks/ (sibling skill)
     hooks_dir = _find_hooks_dir()
     if hooks_dir is None:
         print("[ERROR] mso-work-memory/hooks/ 를 찾을 수 없습니다.")
@@ -235,11 +247,19 @@ def cmd_hook(target: Path):
             print(f"    {p}")
         return 1
 
-    workmem_dir = target / "agent-context" / "work-memory"
-    settings_path = target / ".claude" / "settings.json"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    # 1) hook 스크립트를 프로젝트 .claude/scripts/ 로 복사 (self-contained)
+    scripts_dst = target / ".claude" / "scripts"
+    scripts_dst.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for fn in HOOK_FILES:
+        src = hooks_dir / fn
+        if src.exists():
+            shutil.copy(src, scripts_dst / fn)
+            (scripts_dst / fn).chmod(0o755)
+            copied.append(fn)
 
-    # 기존 settings.json 로드
+    # 2) settings.json 구성 — 경로는 $CLAUDE_PROJECT_DIR 상대로만 참조
+    settings_path = target / ".claude" / "settings.json"
     existing: dict = {}
     if settings_path.exists():
         try:
@@ -250,35 +270,36 @@ def cmd_hook(target: Path):
 
     hooks_section = existing.setdefault("hooks", {})
 
-    # PostToolUse — auditlog
-    auditlog_cmd = f"WORKMEM_DIR={workmem_dir} python3 {hooks_dir}/auditlog.py"
-    _upsert_hook(
-        hooks_section,
-        event="PostToolUse",
-        matcher="Bash|Edit|MultiEdit|Write",
-        command=auditlog_cmd,
-        marker="auditlog.py",
-    )
+    pd = '"$CLAUDE_PROJECT_DIR"'
+    workmem_env = 'WORKMEM_DIR="$CLAUDE_PROJECT_DIR/agent-context/work-memory"'
+    worthy_env = f'WM_WORTHY_PATHS="{worthy_paths}" ' if worthy_paths else ""
 
-    # Stop — worklog
-    worklog_cmd = f"WORKMEM_DIR={workmem_dir} python3 {hooks_dir}/worklog.py"
-    _upsert_hook(
-        hooks_section,
-        event="Stop",
-        matcher=None,
-        command=worklog_cmd,
-        marker="worklog.py",
-    )
+    auditlog_cmd = f"{workmem_env} python3 {pd}/.claude/scripts/auditlog.py"
+    worklog_cmd = f"{workmem_env} python3 {pd}/.claude/scripts/worklog.py"
+    check_cmd = f"{worthy_env}{workmem_env} bash {pd}/.claude/scripts/work-memory-check.sh"
+
+    # PostToolUse — auditlog (도구 호출 감사 로그)
+    _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
+    # Stop / PreCompact — worklog 스냅샷 + work-memory-check 넛지
+    for event, matcher in (("Stop", None), ("PreCompact", "auto")):
+        _upsert_hook(hooks_section, event, matcher, worklog_cmd, "worklog.py")
+        _upsert_hook(hooks_section, event, matcher, check_cmd, "work-memory-check.sh")
 
     settings_path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop worklog)")
-    print(f"    hooks_dir : {hooks_dir}")
-    print(f"    workmem   : {workmem_dir}")
+    print(f"  + .claude/scripts/ 복사: {', '.join(copied)}")
+    print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog·work-memory-check)")
+    if worthy_paths:
+        print(f"    WM_WORTHY_PATHS : {worthy_paths}")
     print()
+    judgment = hooks_dir.parent / "assets" / "work-memory-judgment.md"
     print(f"✓ Hook 등록 완료: {settings_path}")
+    print()
+    print("권장: 기록 '판단 기준'을 상시 로드되도록 아래 템플릿 블록을")
+    print(f"      프로젝트의 CLAUDE.md / AGENTS.md 에 붙여넣으세요 (always-on 강제):")
+    print(f"      {judgment}")
     return 0
 
 
@@ -328,9 +349,12 @@ def main():
     g.add_argument("--target", help="새 프로젝트 init")
     g.add_argument("--check", help="기존 구조 점검")
     g.add_argument("--migrate", help="평탄 구조 → agent-context/ 이전")
-    g.add_argument("--hook", help=".claude/settings.json 에 auditlog/worklog hook 등록")
+    g.add_argument("--hook", help=".claude/ 에 work-memory hook 복사·등록 (copy-form)")
     parser.add_argument("--name", default="TODO Project", help="프로젝트 표시 이름")
     parser.add_argument("--id", default="TODO-project-id", dest="project_id", help="프로젝트 id")
+    parser.add_argument("--worthy-paths", dest="worthy_paths", default=None,
+                        help="--hook 시 WM_WORTHY_PATHS 주입 (공백 구분 경로 목록). "
+                             "예: \"scripts config .github/workflows .claude README.md\"")
 
     args = parser.parse_args()
     if args.target:
@@ -340,7 +364,7 @@ def main():
     elif args.migrate:
         cmd_migrate(Path(args.migrate).resolve())
     elif args.hook:
-        sys.exit(cmd_hook(Path(args.hook).resolve()))
+        sys.exit(cmd_hook(Path(args.hook).resolve(), args.worthy_paths))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.3.1
+# Multi-Swarm Orchestrator (MSO) v0.3.2
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
@@ -64,13 +64,17 @@ Claude Code 세션
     │       → work-memory/auditlog/AU-YYYY-MM-DD.jsonl
     │         {"tool_name", "tool_input", "session_id", "timestamp", ...}
     │
-    └── Stop (세션 종료)
-            → hooks/worklog.py
-            → work-memory/worklog/WL-YYYY-MM-DD.jsonl
-              {"session_id", "timestamp", "hook_event_name", ...}
+    ├── Stop (세션 종료)
+    │       → hooks/worklog.py
+    │       → work-memory/worklog/WL-YYYY-MM-DD.jsonl
+    │         {"session_id", "timestamp", "hook_event_name", ...}
+    │
+    └── Stop · PreCompact (기록 판단 넛지)
+            → hooks/work-memory-check.sh
+            → track/insight entry 기록 시점을 비차단으로 상기 (로깅이 아니라 판단 트리거)
 ```
 
-`init.py --hook`이 `.claude/settings.json`에 두 hook을 등록한다. 이후 에이전트 세션의 도구 사용 이력과 세션 종료 기록이 자동으로 누적된다.
+`init.py --hook`이 `.claude/settings.json`에 세 hook(auditlog · worklog · work-memory-check)을 등록한다. 앞의 둘은 도구 사용 이력과 세션 종료를 자동 누적하고, work-memory-check는 기록할 결정이 쌓였는지 판단해 상기시킨다.
 
 ### 3. Work-Memory 구조화 Logging
 
@@ -94,6 +98,17 @@ work-memory는 자동 기록(hook)과 수동 기록(`wm_node.py`) 두 층으로 
 | insight-record | episodes | `EP` | 주목할 경험과 관찰 |
 | insight-record | patterns | `PT` | 반복 패턴과 공통 구조 |
 | insight-record | principles | `PR` | 도출된 원칙과 규칙 |
+
+**기록 판단 넛지 (hook)**
+
+자동 기록은 *무엇을 했는지*를 남기지만, track/insight entry를 *언제 남길지*는 판단이 필요하다. 그 판단 트리거가 없으면 수동 기록은 쉽게 누락된다. `hooks/work-memory-check.sh`가 Stop·PreCompact에서 비차단으로 그 판단을 상기시킨다.
+
+| 넛지 | 조건 | 권유 |
+|------|------|------|
+| track | 결정 가치 있는 변경(`WM_WORTHY_PATHS`)이 최신 기록보다 앞섬 | UD/AD/IN/TS 작성 |
+| insight | 종결된 TS 이후 회고(EP)가 없음 | EP → PT → PR 추상화 |
+
+판단 *기준*(어떤 상황에 어떤 entry를 남기나)은 `assets/work-memory-judgment.md`를 프로젝트 rules(CLAUDE.md/AGENTS.md)에 드롭인해 상시 로드한다.
 
 ### 4. Sub-Index + 1:N Workflow + Compile-time Topology 제약
 
@@ -183,7 +198,7 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
 | `mso-repository-setup` | Ops | `init.py` |
 | `mso-scaffold-design` | Design | `sf_node.py` |
 | `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py` |
-| `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py` |
+| `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py`, `hooks/work-memory-check.sh` |
 | `mso-utterance-grounding` *(v0.3.1)* | Runtime | `slots/` 4-slot pipeline (input_norm→rules→inference→script) |
 | `mso-intent-registry` *(v0.3.1)* | Data | `src/lookup.py`, `references/schemas/nlu_intent.yaml` (LinkML) |
 | `mso-conversation-analytics` *(v0.3.1)* | Observability | `src/analytics.py`, `src/transitions.py` (DuckDB) |
@@ -213,7 +228,7 @@ project/
 │           ├── patterns/           ← PT-*.jsonl
 │           └── principles/         ← PR-*.jsonl
 ├── .claude/
-│   └── settings.json               ← PostToolUse · Stop hook 등록
+│   └── settings.json               ← PostToolUse · Stop · PreCompact hook 등록
 └── .gitignore
 ```
 

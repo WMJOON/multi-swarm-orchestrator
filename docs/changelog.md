@@ -1,5 +1,23 @@
 # 변경 이력
 
+## v0.3.2 (2026-06-10)
+
+> **기록 판단 넛지 레이어 추가 — 무엇을 했는지(자동 로깅)와 무엇을 기록할지(판단)를 분리.** `auditlog`/`worklog` 자동 로깅 위에, track/insight entry 를 *언제* 남길지 상기시키는 비차단 hook(`work-memory-check.sh`)을 더했다. `mso-repository-setup --hook` 은 hook 을 프로젝트 `.claude/scripts/` 로 copy-form 등록해 절대경로 의존 없이 CI·타 머신 이식성을 확보한다. 스킬 수는 8개 유지.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `mso-work-memory` 넛지 hook | `hooks/work-memory-check.sh` — Stop/PreCompact 에서 비차단 넛지. (1) track 넛지: 결정 가치 있는 변경(`WM_WORTHY_PATHS`)이 최신 기록보다 앞서면 UD/AD/IN/TS 권유. (2) insight 넛지: 종결된 TS 이후 EP 회고가 없으면 episode 회고 권유 |
+| `assets/work-memory-judgment.md` | 어떤 상황에 어떤 entry 를 남기는지 판단 *기준* 텍스트. 프로젝트 rules(CLAUDE.md/AGENTS.md)에 드롭인해 상시 로드 |
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| `mso-repository-setup --hook` | copy-form 으로 전환 — hook 스크립트를 `.claude/scripts/` 로 복사하고 settings.json 은 `$CLAUDE_PROJECT_DIR` 상대로만 참조(절대·스킬 경로를 커밋 파일에 박지 않음 → CI·타 머신 이식성). `--worthy-paths` 로 `WM_WORTHY_PATHS` 주입 지원 |
+| `init.py` / SKILL.md / `settings-hook-snippet.json` | 3-hook(auditlog·worklog·work-memory-check) 체제 + copy-form 반영. 문서-구현 불일치 해소 |
+
 ## v0.3.1 (2026-06-04)
 
 > **Utterance Grounding Layer 추가 — 자연어 운영 명령 레이어.** v0.3.0의 5개 스킬(Design/Ops/Infra) 위에, 오퍼레이터 자연어 발화를 실행 가능한 `GroundedCommand`로 변환하는 Runtime/NLU 레이어 3개 스킬을 더해 8개 스킬 체제로 확장했다. `mso-orchestration`은 자연어 운영 명령을 첫 라우팅 분기로 흡수한다.

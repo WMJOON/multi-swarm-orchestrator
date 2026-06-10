@@ -143,6 +143,15 @@ python wm_node.py reindex
 | `refines` | new → old | 정교화 |
 | `depends-on` | * → * | 의존 |
 
+## 기록 판단 넛지 (work-memory-check.sh)
+
+`auditlog`/`worklog` 는 자동 로깅이지만, **track-record/insight-record entry 를 언제 남길지**에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 Stop/PreCompact 에서 비차단 넛지를 띄운다:
+
+1. **track 넛지** — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.
+2. **insight 넛지** — 종결된 TS 이후 EP 회고가 없으면 → episode 회고 권유 (EP→PT→PR 추상화 유도).
+
+판단 *기준* 텍스트는 [assets/work-memory-judgment.md](assets/work-memory-judgment.md) 를 프로젝트의 상시 로드 rules(CLAUDE.md/AGENTS.md)에 드롭인한다 — 핵심 원리 6(always-on 위임)과 일치. `mso-repository-setup` 의 `init.py --hook` 가 이 훅을 Stop/PreCompact 에 자동 등록한다.
+
 ## Hook 통합 (auditlog 자동)
 
 기존 `mso-agent-audit-log` 의 SessionStart/PreCompact/SessionEnd 훅을 흡수.
