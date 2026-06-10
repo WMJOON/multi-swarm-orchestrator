@@ -1,165 +1,105 @@
 #!/usr/bin/env python3
-"""Contract tests for the MSO v0.2.2 repository skill layout."""
+"""Contract tests for the MSO v0.3.x repository skill layout.
+
+v0.2.2 의 ``.skill-modules/`` 설치 사본 + ``pack_config.json`` 정본 기반 레이아웃은
+v0.3.0 "5-skill pack 전면 교체"에서 폐기됐다. 본 테스트는 현재 8-스킬 구조
+(Design/Ops/Infra 5종 + v0.3.1 Runtime/NLU 3종)의 계약을 검증한다.
+
+검증 대상은 "선언(manifest/SKILL.md)이 파일시스템 실재와 일치하는가"이지,
+파일 존재의 동어반복이 아니다.
+"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import yaml
-from jsonschema import Draft202012Validator
-
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ROOT / ".skill-modules"
+SKILLS = ROOT / "skills"
+
+# v0.3.0 코어 5종 (Design/Ops/Infra)
+CORE_SKILLS = {
+    "mso-orchestration",
+    "mso-repository-setup",
+    "mso-scaffold-design",
+    "mso-workflow-design",
+    "mso-work-memory",
+}
+
+# v0.3.1 Utterance Grounding Layer (Runtime/NLU) — manifest.json 보유
+RUNTIME_SKILLS = {
+    "mso-utterance-grounding",
+    "mso-intent-registry",
+    "mso-conversation-analytics",
+}
+
+ALL_SKILLS = CORE_SKILLS | RUNTIME_SKILLS
+
+# v0.2.2 에서 폐기된 스킬 — 되살아나면 구조 회귀
+DEPRECATED_SKILLS = {
+    "mso-execution-design",
+    "mso-harness-setup",
+    "mso-workflow-repository-setup",
+}
+
+# orchestration SKILL.md 가 라우팅을 *예정* 으로만 언급하는 미래 스킬
+# (디렉토리 미실재가 정상 — depends_on 무결성 검사에서 제외)
+PLANNED_SKILLS = {"mso-discussion-coworker"}
 
 
-def _json(path: Path) -> dict:
-    return json.loads(path.read_text())
+def _manifest(skill: str) -> dict:
+    return json.loads((SKILLS / skill / "manifest.json").read_text())
 
 
-def _yaml(path: Path) -> dict:
-    return yaml.safe_load(path.read_text())
-
-
-def _schema_errors(schema: dict, instance: dict) -> list[str]:
-    validator = Draft202012Validator(schema)
-    return [f"{list(error.path)} {error.message}" for error in validator.iter_errors(instance)]
-
-
-def test_required_skill_modules_exist():
-    pack = _json(ROOT / "skills/mso-orchestration/references/pack_config.json")
-    required = pack["required_skills"]
-
-    assert "mso-execution-design" not in required
-    assert "mso-workflow-repository-setup" in required
-    assert "mso-harness-setup" in required
-
-    for skill in required:
-        skill_dir = MODULES / skill
-        assert skill_dir.exists(), f"missing skill dir: {skill}"
+def test_all_skills_present_with_skill_md():
+    """8-스킬 디렉토리 + SKILL.md 가 모두 존재한다."""
+    for skill in sorted(ALL_SKILLS):
+        skill_dir = SKILLS / skill
+        assert skill_dir.is_dir(), f"missing skill dir: {skill}"
         assert (skill_dir / "SKILL.md").exists(), f"missing SKILL.md: {skill}"
 
 
-def test_deprecated_execution_design_alias_removed():
-    assert not (MODULES / "mso-execution-design").exists()
+def test_deprecated_v022_layout_removed():
+    """v0.2.2 의 .skill-modules / pack_config / 폐기 스킬이 되살아나지 않았다."""
+    assert not (ROOT / ".skill-modules").exists(), ".skill-modules resurfaced"
+    assert not (
+        SKILLS / "mso-orchestration" / "references" / "pack_config.json"
+    ).exists(), "pack_config.json resurfaced"
+    for skill in sorted(DEPRECATED_SKILLS):
+        assert not (SKILLS / skill).exists(), f"deprecated skill resurfaced: {skill}"
 
 
-def test_orchestration_routes_repository_setup_to_harness():
-    orchestration = (ROOT / "skills/mso-orchestration/SKILL.md").read_text()
-
-    for marker in [
-        "mso-workflow-repository-setup",
-        "mso-harness-setup",
-        "[F-0]",
-        "[F]",
-        "workflow_repository.yaml",
-        "harness_setup_input.yaml",
-    ]:
-        assert marker in orchestration
+def test_runtime_manifest_name_matches_directory():
+    """manifest.json(선언)의 name 이 디렉토리(실재)와 일치한다."""
+    for skill in sorted(RUNTIME_SKILLS):
+        manifest_path = SKILLS / skill / "manifest.json"
+        assert manifest_path.exists(), f"missing manifest.json: {skill}"
+        assert _manifest(skill)["name"] == skill, (
+            f"{skill}: manifest name mismatch ({_manifest(skill)['name']!r})"
+        )
 
 
-def test_runtime_harness_config_schema_accepts_example():
-    skill = MODULES / "mso-harness-setup"
-    schema = _json(skill / "schemas/runtime_harness_config.schema.json")
-    sample = _yaml(skill / "configs/runtime-harness.example.yaml")
-
-    assert _schema_errors(schema, sample) == []
-
-
-def test_canonical_event_schema_accepts_contract_sample():
-    skill = MODULES / "mso-harness-setup"
-    schema = _json(skill / "schemas/canonical_event.schema.json")
-    sample = {
-        "event": {
-            "id": "evt_contract_001",
-            "timestamp": "2026-05-12T08:00:00Z",
-            "lifecycle": {
-                "phase": "execution.post",
-                "state_transition": "tool_completed",
-            },
-        },
-        "provider": {
-            "name": "codex",
-            "runtime_id": "contract-test",
-            "native_event": "tool_result",
-            "native_payload_ref": None,
-            "native_payload": {"tool": "apply_patch"},
-        },
-        "capability": {
-            "category": "filesystem.write",
-            "operation": "edit",
-            "target": "README.md",
-            "risk_level": "medium",
-        },
-        "execution": {
-            "tool_name": "apply_patch",
-            "duration_ms": 10,
-            "status": "success",
-            "error_type": None,
-            "error_message": None,
-        },
-        "semantic": {
-            "entropy_delta": 0.01,
-            "relevance_score": 0.95,
-            "topology_stability": "stable",
-            "loop_risk": 0.01,
-            "boundary_status": "inside",
-        },
-        "governance": {
-            "policy_decision": "allow",
-            "requires_review": False,
-            "escalation_triggered": False,
-            "policy_ids": ["filesystem_write_medium_risk"],
-            "review_reason": None,
-        },
-        "audit": {
-            "run_id": "contract-run",
-            "correlation_id": "corr-contract-001",
-            "trace_id": None,
-            "checkpoint_id": None,
-        },
-    }
-
-    assert _schema_errors(schema, sample) == []
+def test_runtime_manifest_depends_on_resolve():
+    """manifest 가 선언한 mso-* depends_on 이 실재 스킬을 가리킨다 (dangling 방지)."""
+    for skill in sorted(RUNTIME_SKILLS):
+        for dep in _manifest(skill).get("depends_on") or []:
+            if not (isinstance(dep, str) and dep.startswith("mso-")):
+                continue
+            if dep in PLANNED_SKILLS:
+                continue
+            assert (SKILLS / dep).is_dir(), f"{skill} depends_on missing skill: {dep}"
 
 
-def test_workflow_repository_schema_accepts_contract_sample():
-    skill = MODULES / "mso-workflow-repository-setup"
-    schema = _json(skill / "schemas/workflow_repository.schema.json")
-    sample = {
-        "workflow": {
-            "id": "wf-repo-ops",
-            "objective": "repository operating contract",
-            "scope": "reusable",
-            "lifecycle_states": ["draft", "active", "archived"],
-        },
-        "scaffolding": {
-            "directories": ["design", "memory", "harness", "governance", "optimizer", "audit"],
-            "artifact_slots": ["workflow_repository.yaml", "harness_setup_input.yaml", "memory_layer.md"],
-        },
-        "memory": {
-            "classes": ["runtime_state", "audit_memory", "retrieval_memory", "optimizer_memory"],
-        },
-        "governance": {
-            "hooks": ["PreCompact", "Stop"],
-            "state_triggers": ["audit_log_updated", "optimizer_threshold_crossed"],
-        },
-        "harness_input": {
-            "required_inputs": ["workflow-design", "scaffolding-design"],
-            "optional_inputs": ["mental-model"],
-        },
-    }
-
-    assert _schema_errors(schema, sample) == []
+def test_orchestration_routes_runtime_layer():
+    """v0.3.1 통합 회귀 방지: orchestration 이 Runtime/NLU 3종을 라우팅 언급한다."""
+    text = (SKILLS / "mso-orchestration" / "SKILL.md").read_text()
+    for skill in sorted(RUNTIME_SKILLS):
+        assert skill in text, f"orchestration no longer routes: {skill}"
 
 
-def test_readme_states_v030_operating_target():
+def test_readme_reflects_current_version_and_structure():
+    """README 헤더 버전과 핵심 구조 어휘가 v0.3.2 와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-
-    assert "Repository Environment Operating" in readme
-    assert "v0.3.0의 목표" in readme
-    assert "Personal Memory" in readme
-    assert "Repository Governance" in readme
-    assert "Decision Control" in readme
-    assert "user-decision" in readme
-    assert "agent-decision" in readme
+    assert "MSO) v0.3.2" in readme, "README header is not v0.3.2"
+    assert "스킬 구성" in readme
+    assert "Work-Memory" in readme
