@@ -13,13 +13,22 @@ work-memory-check.sh 넛지가 알림을 띄우면, 이 기준으로 어떤 entr
 
 | 타입 | 언제 남기나 | 필수 |
 |---|---|---|
-| **IN** issue-note | 문제를 발견한 즉시 (해결 전) | `metadata.severity`, `status` |
+| **IN** issue-note | 문제를 **발견했거나 해결한 직후** — 끊을 틈 없이 같은 턴에 고쳤다면 IN을 회고로 남기고 TS와 함께 기록 | `metadata.severity`, `status` |
 | **AD** agent-decision | 대안이 **둘 이상이고 득실이 갈리는** 판단을 내려 실행할 때 | `metadata.rationale`, `alternatives`, `confidence` |
 | **UD** user-decision | 사용자가 방향·정책·구조를 명시적으로 결정할 때 (structural 태그 → repo-ADR) | `metadata.scope` |
 | **TS** trouble-shooting | 문제를 해결·종결할 때 | `root_cause`, `fix_summary`, `resolved-by` 관계 |
 
+> **IN/TS는 회고 기록이 정상이다.** UD는 *사용자 발화*라는 외부 트리거가 있어 자연히 인지되지만, IN/TS는 에이전트 내부 작업에서만 촉발돼 끊을 지점이 없다. 그래서 **아래 트리거 이벤트를 IN/TS 기록 앵커로 삼는다** — 이 순간을 지나쳤다면 IN+TS를 함께 회고로 남긴다:
+>
+> - 테스트가 red→green 으로 바뀐 직후
+> - fix/revert 성격의 변경(버그·회귀·설정 오류 수정)을 검증한 직후
+> - `fix:`/`revert:` 성격의 커밋을 만들기 직전
+> - 시도가 막혀 접근을 바꾸기로 한 순간 (막힌 시도 = IN, 우회 = TS)
+>
+> "이미 고쳤으니 기록이 늦었다"는 누락 사유가 아니다. 늦은 IN+TS 쌍이 누락된 IN+TS보다 항상 낫다.
+
 - AD를 사용자가 채택하면, 이어지는 UD를 `followed-by`로 연결한다.
-- IN ↔ TS는 `resolved-by`/`caused-by`로 연결한다.
+- IN ↔ TS는 `resolved-by`/`caused-by`로 연결한다. 같은 턴에 함께 기록할 때도 두 entry를 모두 남기고 관계로 잇는다 (TS 단독 기록 금지 — 원인 추적이 끊긴다).
 
 ### insight-record — 추상화 그래디언트 (회고 흐름, 파일 변경과 무관)
 

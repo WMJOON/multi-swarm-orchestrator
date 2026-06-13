@@ -1,5 +1,17 @@
 # 변경 이력
 
+## v0.3.3 (2026-06-13)
+
+> **IN/TS 비대칭 누락 보완 — UD는 사용자 발화라는 외부 트리거로 잘 기록되지만, issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다.** 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 구체적 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, Stop 넛지에 fix 성격 변경 탐지를 더해 IN+TS 공동 기록을 별도로 환기한다. 스킬 수 8개 유지.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| `assets/work-memory-judgment.md` | IN 기준 "문제 발견 즉시(해결 전)" → "발견했거나 해결한 직후 — 같은 턴에 고쳤다면 IN+TS 회고 공동 기록". 트리거 이벤트(red→green·fix 검증·`fix:`/`revert:` 커밋·접근 전환) 명시. "이미 고쳤으니 늦었다"는 누락 사유 아님 + TS 단독 기록 금지 명문화 |
+| `SKILL.md` 원리 6 | IN/TS 회고 기록 정상·트리거 앵커·TS 단독 금지를 always-on 책임에 반영. 넛지 섹션에 (1b) IN/TS 넛지 추가 |
+| `hooks/work-memory-check.sh` | (1b) IN/TS 넛지 추가 — fix/revert 성격 커밋(WM 최신 기록 이후) 또는 working-tree 변경이 있는데 IN/TS 기록 대기가 없으면 IN+TS 공동 기록 권유. 비차단(exit 0) 유지 |
+
 ## v0.3.2 (2026-06-10)
 
 > **기록 판단 넛지 레이어 추가 — 무엇을 했는지(자동 로깅)와 무엇을 기록할지(판단)를 분리.** `auditlog`/`worklog` 자동 로깅 위에, track/insight entry 를 *언제* 남길지 상기시키는 비차단 hook(`work-memory-check.sh`)을 더했다. `mso-repository-setup --hook` 은 hook 을 프로젝트 `.claude/scripts/` 로 copy-form 등록해 절대경로 의존 없이 CI·타 머신 이식성을 확보한다. 스킬 수는 8개 유지.

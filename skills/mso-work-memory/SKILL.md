@@ -24,7 +24,7 @@ description: >
 3. **공통 스키마** — id, type, title, text, tags, created_at, relations, metadata
 4. **그래프 임베드** — `relations: [{type, target}]` 로 entry 간 인과 관계 표현 (별도 DB 불필요)
 5. **zvec 시맨틱 검색** — `text` 필드 임베딩, `tags` 필터
-6. **선제 기록 책임** — 사용자가 요청하기를 기다리지 말고, 향후 작업·구조에 지속 영향을 주는 결정(UD/AD)·이슈(IN)·해결(TS)을 에이전트가 스스로 판단해 먼저 기록한다. 단발성 지시·사소한 수정·질문은 제외. AD는 대안이 둘 이상이고 득실이 갈릴 때 `metadata.rationale/alternatives/confidence`와 함께 기록하고, 사용자가 채택하면 이어지는 UD를 `followed-by`로 연결한다. *이 행동 규약은 always-on이어야 효과가 있으므로, 프로젝트는 이 책임 항목을 상시 로드되는 rules(CLAUDE.md/AGENTS.md 등)에도 둔다 — 이 스킬은 '어떻게(절차·CLI·스키마)'를 소유한다.*
+6. **선제 기록 책임** — 사용자가 요청하기를 기다리지 말고, 향후 작업·구조에 지속 영향을 주는 결정(UD/AD)·이슈(IN)·해결(TS)을 에이전트가 스스로 판단해 먼저 기록한다. 단발성 지시·사소한 수정·질문은 제외. AD는 대안이 둘 이상이고 득실이 갈릴 때 `metadata.rationale/alternatives/confidence`와 함께 기록하고, 사용자가 채택하면 이어지는 UD를 `followed-by`로 연결한다. **IN/TS는 회고 기록이 정상이다** — UD는 사용자 발화라는 외부 트리거가 있어 잘 남지만, IN/TS는 에이전트 내부 작업에서만 촉발돼 누락되기 쉽다. 테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환을 IN/TS 기록 앵커로 삼고, 같은 턴에 발견+해결했다면 IN+TS를 함께 회고로 남긴다(TS 단독 금지 — 원인 추적이 끊긴다). *이 행동 규약은 always-on이어야 효과가 있으므로, 프로젝트는 이 책임 항목을 상시 로드되는 rules(CLAUDE.md/AGENTS.md 등)에도 둔다 — 이 스킬은 '어떻게(절차·CLI·스키마)'를 소유한다.*
 
 ## 디렉토리 구조 (프로젝트 측)
 
@@ -148,7 +148,8 @@ python wm_node.py reindex
 `auditlog`/`worklog` 는 자동 로깅이지만, **track-record/insight-record entry 를 언제 남길지**에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 Stop/PreCompact 에서 비차단 넛지를 띄운다:
 
 1. **track 넛지** — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.
-2. **insight 넛지** — 종결된 TS 이후 EP 회고가 없으면 → episode 회고 권유 (EP→PT→PR 추상화 유도).
+2. **IN/TS 넛지** — fix/revert 성격의 커밋·working-tree 변경이 있는데 IN/TS 기록 대기가 없으면 → IN+TS 회고 공동 기록 권유. UD는 사용자 발화 트리거로 잘 남지만 IN/TS는 내부 작업에서만 촉발돼 누락되기 쉬운 약점을 별도로 환기한다.
+3. **insight 넛지** — 종결된 TS 이후 EP 회고가 없으면 → episode 회고 권유 (EP→PT→PR 추상화 유도).
 
 판단 *기준* 텍스트는 [assets/work-memory-judgment.md](assets/work-memory-judgment.md) 를 프로젝트의 상시 로드 rules(CLAUDE.md/AGENTS.md)에 드롭인한다 — 핵심 원리 6(always-on 위임)과 일치. `mso-repository-setup` 의 `init.py --hook` 가 이 훅을 Stop/PreCompact 에 자동 등록한다.
 
