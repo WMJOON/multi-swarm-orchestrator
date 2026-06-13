@@ -147,9 +147,9 @@ python wm_node.py reindex
 
 `auditlog`/`worklog` 는 자동 로깅이지만, **track-record/insight-record entry 를 언제 남길지**에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 비차단 넛지를 띄운다.
 
-> **전달 의미론이 핵심이다.** Claude Code 훅의 plain stdout 은 `SessionStart`·`UserPromptSubmit` 에서만 모델 컨텍스트로 주입된다. `Stop`·`PreCompact`·`SessionEnd` 의 plain stdout 은 **디버그 로그 전용 — 모델에 도달하지 않는다.** 그래서 넛지가 *에이전트에 실제로 도달*하도록 이벤트별 전달 방식을 달리한다:
-> - **Stop** — 훅이 `hookSpecificOutput.additionalContext` JSON 을 출력해 **비차단으로 다음 턴에 주입**(`decision:block` 아님 — 작업을 막지 않고 컨텍스트만 더한다). `stop_hook_active=true` 면 재넛지하지 않아 루프 방지.
-> - **SessionStart(compact/resume)** — plain stdout 이 컴팩트/재개 직후 컨텍스트로 주입된다. 넓은 세션 회고를 여기서 한다.
+> **전달 의미론이 핵심이다.** Claude Code 훅의 plain stdout 은 `SessionStart`·`UserPromptSubmit` 에서만 모델 컨텍스트로 주입된다(공식 문서 명시). `Stop`·`PreCompact`·`SessionEnd` 의 plain stdout 은 **디버그 로그 전용 — 모델에 도달하지 않는다.** 그래서 넛지가 *에이전트에 도달*하도록 이벤트별 전달 방식을 달리한다:
+> - **Stop** — 훅이 `hookSpecificOutput.additionalContext` JSON 을 출력한다. 문서상 "non-error feedback that continues the conversation" — 즉 `decision:block`(작업 차단) 과 달리 컨텍스트를 더해 대화를 잇는다. ⚠️ **실측 1회 확인 권장**: 이 경로가 실제로 다음 턴에 주입되는지는 문서 근거이며, 미기록 상태가 남아 있으면 Stop 에서 회고용 턴이 한 번 더 들 수 있다. 안 닿으면 `UserPromptSubmit`(plain stdout 무조건 주입) 으로 대체. `stop_hook_active=true` 시 재넛지 생략(루프 가드 — 단, 이 가드와 무관하게 IN/TS 기록 시 `ts_dirty>0`/`fix_commits=0` 로 자가 억제됨).
+> - **SessionStart(compact/resume)** — plain stdout 이 컴팩트/재개 직후 컨텍스트로 주입된다(문서 명시 경로). 넓은 세션 회고를 여기서 한다.
 > - **PreCompact·SessionEnd** — 출력이 모델에 도달하지 않으므로 work-memory-check 를 **등록하지 않는다**.
 
 1. **track 넛지** *(Stop·SessionStart)* — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.

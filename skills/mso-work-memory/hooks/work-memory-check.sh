@@ -10,7 +10,8 @@
 #   SessionStart / UserPromptSubmit → plain stdout 주입됨.
 #   Stop / PreCompact / SessionEnd → plain stdout 은 디버그 로그 전용(모델 미도달).
 # 따라서 넛지가 *에이전트에 실제로 도달*하려면 이벤트별로 전달 방식을 달리한다:
-#   • Stop          → hookSpecificOutput.additionalContext JSON (비차단으로 다음 턴 주입)
+#   • Stop          → hookSpecificOutput.additionalContext JSON (문서상 "continues
+#                     the conversation" — 실측 1회 확인 권장. 안 닿으면 UserPromptSubmit 대체)
 #   • SessionStart  → plain stdout (compact/resume 직후 회고 컨텍스트로 주입)
 #   • PreCompact/SessionEnd → 출력이 모델에 도달하지 않으므로 등록하지 않음(early exit).
 #

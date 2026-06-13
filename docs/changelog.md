@@ -2,7 +2,7 @@
 
 ## v0.3.3 (2026-06-13)
 
-> **IN/TS 비대칭 누락 보완 + 넛지 전달 메커니즘 수정.** UD는 사용자 발화라는 외부 트리거로 잘 기록되지만 issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다. (a) 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, (b) fix 커밋 탐지(1b)·세션 회고(4) 넛지를 더했다. **핵심: 기존 넛지는 Stop/PreCompact 의 plain stdout 으로 떠서 모델에 도달하지 않았다(디버그 로그 전용).** 전달을 이벤트별로 교정 — Stop 은 `hookSpecificOutput.additionalContext` JSON 으로 비차단 주입, 넓은 회고는 SessionStart(compact/resume)의 plain stdout 으로 주입. 스킬 수 8개 유지.
+> **IN/TS 비대칭 누락 보완 + 넛지 전달 메커니즘 수정.** UD는 사용자 발화라는 외부 트리거로 잘 기록되지만 issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다. (a) 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, (b) fix 커밋 탐지(1b)·세션 회고(4) 넛지를 더했다. **핵심: 기존 넛지는 Stop/PreCompact 의 plain stdout 으로 떠서 모델에 도달하지 않았다(공식 문서상 plain stdout 주입은 SessionStart·UserPromptSubmit 한정).** 전달을 이벤트별로 교정 — Stop 은 `hookSpecificOutput.additionalContext` JSON, 넓은 회고는 SessionStart(compact/resume)의 plain stdout. ⚠️ additionalContext-on-Stop 의 실제 주입 여부는 **문서 근거이며 실측 1회 확인 필요**(안 닿으면 UserPromptSubmit 으로 대체). 스킬 수 8개 유지.
 
 ### Changed
 
