@@ -182,9 +182,18 @@ def _load_entries(path: Path):
                 if not line:
                     continue
                 try:
-                    yield path, line_num, json.loads(line)
+                    parsed = json.loads(line)
                 except json.JSONDecodeError as e:
                     yield path, line_num, {"_parse_error": str(e), "_line": line[:80]}
+                    continue
+                # bare string/숫자/배열 라인은 entry(dict) 가 아니므로 PARSE 이슈로 보고.
+                if not isinstance(parsed, dict):
+                    yield path, line_num, {
+                        "_parse_error": f"non-dict 라인 ({type(parsed).__name__})",
+                        "_line": line[:80],
+                    }
+                    continue
+                yield path, line_num, parsed
         return
     for jf in path.rglob("*.jsonl"):
         yield from _load_entries(jf)
@@ -283,13 +292,19 @@ def _build_graph():
     in_edges = {}   # id → [(source, type)]
 
     for jf in root.rglob("*.jsonl"):
-        for line in jf.read_text(encoding="utf-8").splitlines():
+        for line_num, line in enumerate(jf.read_text(encoding="utf-8").splitlines(), 1):
             line = line.strip()
             if not line:
                 continue
             try:
                 e = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            # JSONL 불변식: 한 줄 = 한 객체. bare string/숫자/배열 라인(예: pretty-print
+            # 으로 멀티라인 분해된 entry 의 잔여 줄)은 dict 가 아니므로 skip + 경고.
+            if not isinstance(e, dict):
+                print(f"[WARN] {jf.name}:{line_num} 비-dict jsonl 라인 skip "
+                      f"({type(e).__name__}): {line[:60]}", file=sys.stderr)
                 continue
             eid = e.get("id")
             if not eid:
