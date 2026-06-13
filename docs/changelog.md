@@ -2,15 +2,16 @@
 
 ## v0.3.3 (2026-06-13)
 
-> **IN/TS 비대칭 누락 보완 — UD는 사용자 발화라는 외부 트리거로 잘 기록되지만, issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다.** 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 구체적 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, Stop 넛지에 fix 성격 변경 탐지를 더해 IN+TS 공동 기록을 별도로 환기한다. 스킬 수 8개 유지.
+> **IN/TS 비대칭 누락 보완 — UD는 사용자 발화라는 외부 트리거로 잘 기록되지만, issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다.** 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 구체적 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, fix 커밋 탐지(1b)와 **세션 경계 회고 점검(4)** 을 더해 IN+TS 공동 기록을 환기한다. Stop(매 턴)은 커밋 기반 thin, 넓은 회고는 PreCompact·SessionEnd 전용으로 분리해 나그 피로를 방지. 스킬 수 8개 유지.
 
 ### Changed
 
 | 변경 | 내용 |
 |------|------|
 | `assets/work-memory-judgment.md` | IN 기준 "문제 발견 즉시(해결 전)" → "발견했거나 해결한 직후 — 같은 턴에 고쳤다면 IN+TS 회고 공동 기록". 트리거 이벤트(red→green·fix 검증·`fix:`/`revert:` 커밋·접근 전환) 명시. "이미 고쳤으니 늦었다"는 누락 사유 아님 + TS 단독 기록 금지 명문화 |
-| `SKILL.md` 원리 6 | IN/TS 회고 기록 정상·트리거 앵커·TS 단독 금지를 always-on 책임에 반영. 넛지 섹션에 (1b) IN/TS 넛지 추가 |
-| `hooks/work-memory-check.sh` | (1b) IN/TS 넛지 추가 — fix/revert 성격 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기가 없으면 IN+TS 공동 기록 권유. **track 넛지(WORTHY_PATHS)와 독립** — 버그는 오케스트레이션 경로 밖에서도 나므로 fix 커밋 단독으로 판단. 신호원은 커밋 메시지(의도 판별 가능)로 한정. 비차단(exit 0) 유지 |
+| `SKILL.md` 원리 6 / 넛지 섹션 | IN/TS 회고 기록 정상·트리거 앵커·TS 단독 금지를 always-on 책임에 반영. 넛지 섹션에 (1b) IN/TS·(4) 세션 회고 넛지 추가 |
+| `hooks/work-memory-check.sh` | (1b) IN/TS 넛지 — fix/revert 성격 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기 없으면 IN+TS 권유. **track 넛지(WORTHY_PATHS)와 독립**(버그는 경로 밖에서도 발생) · 신호원은 커밋 메시지로 한정. **(4) 세션 경계 회고 넛지** — 미커밋 소스 변경(WM 밖)이 남아 IN/TS 기록 대기 없으면 세션 통째 IN/TS 점검 권유. `hook_event_name`(stdin)으로 PreCompact·SessionEnd 에서만 발동 — Stop(매 턴) 나그 방지. 비차단(exit 0) 유지 |
+| `mso-repository-setup` init.py / settings-hook-snippet.json | work-memory-check 훅을 **SessionEnd 에도 등록** — 컴팩트 없이 끝나는 짧은 세션의 회고 점검 누락 방지. (Stop·PreCompact·SessionEnd 3개 이벤트) |
 
 ## v0.3.2 (2026-06-10)
 

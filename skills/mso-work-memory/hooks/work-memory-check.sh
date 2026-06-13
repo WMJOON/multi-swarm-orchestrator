@@ -5,10 +5,13 @@
 # MSO 약점 보완: auditlog/worklog 는 자동 로깅이지만, "track-record/insight-record
 # entry 를 언제 남길지"에 대한 판단 트리거가 없었다. 이 훅이 그 넛지를 제공한다.
 #
-# 두 가지 판단:
-#  (1) track-record 넛지 — "결정 가치 있는" 변경이 work-memory 최신 기록보다 앞서면
-#      UD/AD/IN/TS 를 남기라고 알림.
-#  (2) insight-record 넛지 — 종결된 TS 가 있는데 그 뒤 EP(회고)가 없으면 회고를 권유.
+# 판단 (Stop 은 매 턴 발동 → 드문 이벤트만; 넓은 회고는 세션 경계 전용):
+#  (1)  track-record 넛지 — "결정 가치 있는" 변경이 work-memory 최신 기록보다 앞서면
+#       UD/AD/IN/TS 를 남기라고 알림. [Stop·PreCompact·SessionEnd]
+#  (1b) IN/TS 넛지 — fix/revert 성격 커밋이 WM 최신 기록 이후 있으면 IN+TS 권유. [동일]
+#  (2)  insight-record 넛지 — 종결된 TS 뒤 EP(회고)가 없으면 회고 권유. [동일]
+#  (3b) 세션 경계 회고 — 미커밋 소스 변경이 남아 있으면 세션 통째 IN/TS 점검 권유.
+#       [PreCompact·SessionEnd 전용] — Stop(매 턴)에 두면 작업 내내 반복 나그가 된다.
 #
 # 환경변수:
 #   WM_WORTHY_PATHS  공백 구분 경로 목록. 프로젝트가 "결정 가치 있는" 경로를 지정.
@@ -16,6 +19,13 @@
 #   WORKMEM_DIR      work-memory 루트 (미설정 시 agent-context/work-memory, repo-relative)
 #   CLAUDE_PROJECT_DIR  프로젝트 루트 (미설정 시 git toplevel)
 set -uo pipefail
+
+# stdin 의 hook payload 에서 이벤트명 추출 (jq 비의존, 파이프일 때만 읽어 수동 실행 차단 방지).
+HOOK_EVENT=""
+if [ ! -t 0 ]; then
+  _payload=$(cat 2>/dev/null || true)
+  HOOK_EVENT=$(printf '%s' "$_payload" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+fi
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 cd "$ROOT" 2>/dev/null || exit 0
@@ -77,6 +87,19 @@ ts_dirty="${ts_dirty:-0}"
 
 if [ "$fix_commits" -gt 0 ] && [ "$ts_dirty" -eq 0 ]; then
   echo "[work-memory] fix/revert 성격의 커밋이 $WM 최신 기록 이후 있는데 issue-note(IN)/trouble-shooting(TS) 기록이 없습니다. 같은 턴에 발견+해결했더라도 IN+TS 를 함께 회고로 남기세요 (TS 단독 금지 — IN 으로 원인을 잇습니다). 회고 기록은 늦어도 정상입니다."
+fi
+
+# ── (3b) 세션 경계 회고 점검 — PreCompact / SessionEnd 전용 ─────────────
+# 미커밋 작업의 의도(버그/기능)는 git 으로 알 수 없으므로, Stop(매 턴)에 두면
+# 기능 작업 도중에도 해소 불가능한 나그가 된다. 대신 세션 경계(드물게 1회)에서
+# "이번 세션 통틀어 IN/TS 남길 것 없나"를 회고 행동으로 점검한다.
+if [ "$HOOK_EVENT" = "PreCompact" ] || [ "$HOOK_EVENT" = "SessionEnd" ]; then
+  # WM 밖(소스·문서) 미커밋 변경. ts_dirty(IN/TS 기록 대기)는 위 (1b)에서 계산됨.
+  src_dirty=$(git status --porcelain 2>/dev/null | grep -v "$WM" | grep -c . || true)
+  src_dirty="${src_dirty:-0}"
+  if [ "$src_dirty" -gt 0 ] && [ "${ts_dirty:-0}" -eq 0 ]; then
+    echo "[work-memory] (세션 회고) 커밋 전 소스 변경이 남아 있습니다. 이번 세션을 통틀어 막힌 시도·디버깅·버그 수정이 있었다면 issue-note(IN)+trouble-shooting(TS) 로 회고 기록하세요 — 단순 기능 추가/리팩터뿐이면 건너뜁니다."
+  fi
 fi
 
 # ── (2) insight-record 넛지 ────────────────────────────────────────────

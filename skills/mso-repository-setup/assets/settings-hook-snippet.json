@@ -43,6 +43,16 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "WM_WORTHY_PATHS=\"agent-context/workflow agent-context/index .claude CLAUDE.md\" WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/work-memory-check.sh"
+          }
+        ]
+      }
     ]
   }
 }

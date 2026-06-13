@@ -280,9 +280,12 @@ def cmd_hook(target: Path, worthy_paths: str | None = None):
 
     # PostToolUse — auditlog (도구 호출 감사 로그)
     _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
-    # Stop / PreCompact — worklog 스냅샷 + work-memory-check 넛지
+    # Stop / PreCompact — worklog 스냅샷
     for event, matcher in (("Stop", None), ("PreCompact", "auto")):
         _upsert_hook(hooks_section, event, matcher, worklog_cmd, "worklog.py")
+    # work-memory-check 넛지 — Stop(매 턴, 커밋 기반 thin) + PreCompact·SessionEnd(세션 경계 회고).
+    # SessionEnd 도 등록: 컴팩트 없이 끝나는 짧은 세션의 회고 점검을 놓치지 않기 위함.
+    for event, matcher in (("Stop", None), ("PreCompact", "auto"), ("SessionEnd", None)):
         _upsert_hook(hooks_section, event, matcher, check_cmd, "work-memory-check.sh")
 
     settings_path.write_text(
@@ -290,7 +293,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None):
         encoding="utf-8",
     )
     print(f"  + .claude/scripts/ 복사: {', '.join(copied)}")
-    print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog·work-memory-check)")
+    print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + Stop·PreCompact·SessionEnd work-memory-check)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
     print()
