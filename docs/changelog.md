@@ -2,16 +2,16 @@
 
 ## v0.3.3 (2026-06-13)
 
-> **IN/TS 비대칭 누락 보완 — UD는 사용자 발화라는 외부 트리거로 잘 기록되지만, issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다.** 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 구체적 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, fix 커밋 탐지(1b)와 **세션 경계 회고 점검(4)** 을 더해 IN+TS 공동 기록을 환기한다. Stop(매 턴)은 커밋 기반 thin, 넓은 회고는 PreCompact·SessionEnd 전용으로 분리해 나그 피로를 방지. 스킬 수 8개 유지.
+> **IN/TS 비대칭 누락 보완 + 넛지 전달 메커니즘 수정.** UD는 사용자 발화라는 외부 트리거로 잘 기록되지만 issue-note(IN)/trouble-shooting(TS)는 에이전트 내부 작업에서만 촉발돼 누락되기 쉬웠다. (a) 판단 기준(상시 로드 레버)에 "IN/TS 회고 기록 정상" + 트리거 앵커(테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환)를 명시하고, (b) fix 커밋 탐지(1b)·세션 회고(4) 넛지를 더했다. **핵심: 기존 넛지는 Stop/PreCompact 의 plain stdout 으로 떠서 모델에 도달하지 않았다(디버그 로그 전용).** 전달을 이벤트별로 교정 — Stop 은 `hookSpecificOutput.additionalContext` JSON 으로 비차단 주입, 넓은 회고는 SessionStart(compact/resume)의 plain stdout 으로 주입. 스킬 수 8개 유지.
 
 ### Changed
 
 | 변경 | 내용 |
 |------|------|
 | `assets/work-memory-judgment.md` | IN 기준 "문제 발견 즉시(해결 전)" → "발견했거나 해결한 직후 — 같은 턴에 고쳤다면 IN+TS 회고 공동 기록". 트리거 이벤트(red→green·fix 검증·`fix:`/`revert:` 커밋·접근 전환) 명시. "이미 고쳤으니 늦었다"는 누락 사유 아님 + TS 단독 기록 금지 명문화 |
-| `SKILL.md` 원리 6 / 넛지 섹션 | IN/TS 회고 기록 정상·트리거 앵커·TS 단독 금지를 always-on 책임에 반영. 넛지 섹션에 (1b) IN/TS·(4) 세션 회고 넛지 추가 |
-| `hooks/work-memory-check.sh` | (1b) IN/TS 넛지 — fix/revert 성격 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기 없으면 IN+TS 권유. **track 넛지(WORTHY_PATHS)와 독립**(버그는 경로 밖에서도 발생) · 신호원은 커밋 메시지로 한정. **(4) 세션 경계 회고 넛지** — 미커밋 소스 변경(WM 밖)이 남아 IN/TS 기록 대기 없으면 세션 통째 IN/TS 점검 권유. `hook_event_name`(stdin)으로 PreCompact·SessionEnd 에서만 발동 — Stop(매 턴) 나그 방지. 비차단(exit 0) 유지 |
-| `mso-repository-setup` init.py / settings-hook-snippet.json | work-memory-check 훅을 **SessionEnd 에도 등록** — 컴팩트 없이 끝나는 짧은 세션의 회고 점검 누락 방지. (Stop·PreCompact·SessionEnd 3개 이벤트) |
+| `SKILL.md` 원리 6 / 넛지 섹션 | IN/TS 회고 기록 정상·트리거 앵커·TS 단독 금지를 always-on 책임에 반영. 넛지 섹션에 전달 의미론(이벤트별 주입 방식) + (1b)·(4) 넛지 문서화. 훅=백스톱, always-on 텍스트=주 레버 명시 |
+| `hooks/work-memory-check.sh` | **넛지 전달 메커니즘 교정** — Stop 은 `hookSpecificOutput.additionalContext` JSON(비차단, 다음 턴 주입; `stop_hook_active` 루프 가드), SessionStart 는 plain stdout. stdin 파싱을 python3 로(BSD/GNU sed `\|` 차이 비의존). **(1b) IN/TS 넛지** — fix/revert 커밋(WM 최신 기록 이후) 있는데 IN/TS 대기 없으면 IN+TS 권유, track 넛지(WORTHY_PATHS)와 독립. **(4) 세션 회고 넛지** — 미커밋 소스 변경(WM 밖) 남아 IN/TS 대기 없으면 점검 권유, SessionStart 전용. 비차단(exit 0) |
+| `mso-repository-setup` init.py / settings-hook-snippet.json | work-memory-check 등록을 **출력이 모델에 도달하는 이벤트로 한정** — Stop + SessionStart(compact·resume). PreCompact·SessionEnd 등록 제거(plain stdout 미도달). worklog 는 Stop·PreCompact 유지 |
 
 ## v0.3.2 (2026-06-10)
 

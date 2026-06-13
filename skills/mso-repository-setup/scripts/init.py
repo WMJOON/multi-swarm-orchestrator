@@ -280,20 +280,23 @@ def cmd_hook(target: Path, worthy_paths: str | None = None):
 
     # PostToolUse — auditlog (도구 호출 감사 로그)
     _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
-    # Stop / PreCompact — worklog 스냅샷
+    # Stop / PreCompact — worklog 스냅샷 (파일 기록 — stdout 전달 의미론과 무관)
     for event, matcher in (("Stop", None), ("PreCompact", "auto")):
         _upsert_hook(hooks_section, event, matcher, worklog_cmd, "worklog.py")
-    # work-memory-check 넛지 — Stop(매 턴, 커밋 기반 thin) + PreCompact·SessionEnd(세션 경계 회고).
-    # SessionEnd 도 등록: 컴팩트 없이 끝나는 짧은 세션의 회고 점검을 놓치지 않기 위함.
-    for event, matcher in (("Stop", None), ("PreCompact", "auto"), ("SessionEnd", None)):
-        _upsert_hook(hooks_section, event, matcher, check_cmd, "work-memory-check.sh")
+    # work-memory-check 넛지 — 출력이 *모델 컨텍스트에 도달하는* 이벤트에만 등록한다.
+    #   Stop          → 훅이 hookSpecificOutput.additionalContext JSON 으로 비차단 주입
+    #   SessionStart  → plain stdout 이 컨텍스트로 주입됨 (compact/resume 직후 세션 회고)
+    # PreCompact·SessionEnd 의 plain stdout 은 모델에 도달하지 않으므로 등록하지 않는다.
+    _upsert_hook(hooks_section, "Stop", None, check_cmd, "work-memory-check.sh")
+    for matcher in ("compact", "resume"):
+        _upsert_hook(hooks_section, "SessionStart", matcher, check_cmd, "work-memory-check.sh")
 
     settings_path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(f"  + .claude/scripts/ 복사: {', '.join(copied)}")
-    print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + Stop·PreCompact·SessionEnd work-memory-check)")
+    print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + Stop·SessionStart[compact,resume] work-memory-check)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
     print()

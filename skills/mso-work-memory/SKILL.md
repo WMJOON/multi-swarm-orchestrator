@@ -145,14 +145,19 @@ python wm_node.py reindex
 
 ## 기록 판단 넛지 (work-memory-check.sh)
 
-`auditlog`/`worklog` 는 자동 로깅이지만, **track-record/insight-record entry 를 언제 남길지**에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 Stop/PreCompact/SessionEnd 에서 비차단 넛지를 띄운다. **Stop 은 매 턴 발동하므로 드문-이벤트(커밋 기반) 넛지만 두고, 넓은 회고 점검은 세션 경계(PreCompact·SessionEnd) 전용**으로 분리해 매 턴 반복 나그를 피한다:
+`auditlog`/`worklog` 는 자동 로깅이지만, **track-record/insight-record entry 를 언제 남길지**에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 비차단 넛지를 띄운다.
 
-1. **track 넛지** *(Stop·경계)* — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.
-2. **IN/TS 넛지** *(Stop·경계)* — fix/revert 성격의 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기가 없으면 → IN+TS 회고 공동 기록 권유. track 넛지(WORTHY_PATHS)와 **독립** — 버그는 오케스트레이션 경로 밖 평범한 소스에서도 나므로 fix 커밋 단독으로 판단한다.
-3. **insight 넛지** *(Stop·경계)* — 종결된 TS 이후 EP 회고가 없으면 → episode 회고 권유 (EP→PT→PR 추상화 유도).
-4. **세션 회고 넛지** *(PreCompact·SessionEnd 전용)* — 미커밋 소스 변경(WM 밖)이 남아 있고 IN/TS 기록 대기가 없으면 → "이번 세션 통틀어 IN/TS 점검" 권유. 커밋 안 한 디버깅·수정을 세션 경계에서 한 번 회고하게 한다. 미커밋 작업의 의도는 git 으로 알 수 없어 Stop(매 턴)에는 두지 않는다. `hook_event_name`(stdin)으로 분기.
+> **전달 의미론이 핵심이다.** Claude Code 훅의 plain stdout 은 `SessionStart`·`UserPromptSubmit` 에서만 모델 컨텍스트로 주입된다. `Stop`·`PreCompact`·`SessionEnd` 의 plain stdout 은 **디버그 로그 전용 — 모델에 도달하지 않는다.** 그래서 넛지가 *에이전트에 실제로 도달*하도록 이벤트별 전달 방식을 달리한다:
+> - **Stop** — 훅이 `hookSpecificOutput.additionalContext` JSON 을 출력해 **비차단으로 다음 턴에 주입**(`decision:block` 아님 — 작업을 막지 않고 컨텍스트만 더한다). `stop_hook_active=true` 면 재넛지하지 않아 루프 방지.
+> - **SessionStart(compact/resume)** — plain stdout 이 컴팩트/재개 직후 컨텍스트로 주입된다. 넓은 세션 회고를 여기서 한다.
+> - **PreCompact·SessionEnd** — 출력이 모델에 도달하지 않으므로 work-memory-check 를 **등록하지 않는다**.
 
-판단 *기준* 텍스트는 [assets/work-memory-judgment.md](assets/work-memory-judgment.md) 를 프로젝트의 상시 로드 rules(CLAUDE.md/AGENTS.md)에 드롭인한다 — 핵심 원리 6(always-on 위임)과 일치. `mso-repository-setup` 의 `init.py --hook` 가 이 훅을 Stop/PreCompact 에 자동 등록한다.
+1. **track 넛지** *(Stop·SessionStart)* — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.
+2. **IN/TS 넛지** *(Stop·SessionStart)* — fix/revert 성격의 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기가 없으면 → IN+TS 회고 공동 기록 권유. track 넛지(WORTHY_PATHS)와 **독립** — 버그는 오케스트레이션 경로 밖 평범한 소스에서도 나므로 fix 커밋 단독으로 판단한다.
+3. **insight 넛지** *(Stop·SessionStart)* — 종결된 TS 이후 EP 회고가 없으면 → episode 회고 권유 (EP→PT→PR 추상화 유도).
+4. **세션 회고 넛지** *(SessionStart 전용)* — 미커밋 소스 변경(WM 밖)이 남아 있고 IN/TS 기록 대기가 없으면 → "직전 세션 통틀어 IN/TS 점검" 권유. 미커밋 작업의 의도(버그/기능)는 git 으로 알 수 없어 Stop(매 턴)에 두면 나그가 되므로, 컴팩트/재개 직후의 회고 시점에만 띄운다.
+
+판단 *기준* 텍스트는 [assets/work-memory-judgment.md](assets/work-memory-judgment.md) 를 프로젝트의 상시 로드 rules(CLAUDE.md/AGENTS.md)에 드롭인한다 — 핵심 원리 6(always-on 위임)과 일치. *상시 로드 텍스트가 주 레버이고, 이 훅은 도달하는 백스톱이다.* `mso-repository-setup` 의 `init.py --hook` 가 이 훅을 Stop·SessionStart(compact/resume)에 자동 등록한다.
 
 ## Hook 통합 (auditlog 자동)
 
