@@ -59,22 +59,24 @@ fi
 
 # ── (1b) IN/TS 넛지 ────────────────────────────────────────────────────
 # UD 는 사용자 발화 트리거가 있어 잘 남지만, IN/TS 는 에이전트 내부 작업에서만
-# 촉발돼 누락되기 쉽다. fix 성격의 커밋/변경이 WM 최신 기록보다 앞서면 별도로 환기.
-# (working tree 변경도 포함 — Stop 시점엔 아직 커밋 전일 수 있다.)
+# 촉발돼 누락되기 쉽다. 버그 수정은 WORTHY_PATHS(오케스트레이션 레이어) 밖의
+# 평범한 소스에서도 나므로, 이 넛지는 track 넛지(track_remind)와 독립적으로
+# 판단한다 — fix/revert 성격의 커밋이 WM 최신 기록 이후 존재하면 환기.
+# 신호원: 커밋 메시지(의도 판별 가능). working-tree 변경은 파일명만 보여
+# 의도를 알 수 없어(예: fixture.py) 신호로 쓰지 않는다.
 wm_commit_iso=$(git log -1 --format=%cI -- "$WM" 2>/dev/null || true)
 since_arg=""
 [ -n "$wm_commit_iso" ] && since_arg="--since=$wm_commit_iso"
 fix_commits=$(git log $since_arg --regexp-ignore-case \
   --grep='^fix' --grep='^revert' --grep='bug' --grep='regression' --grep='회귀' --grep='버그' \
   --format=%h 2>/dev/null | grep -c . || true)
-fix_dirty=$(git status --porcelain 2>/dev/null | grep -ciE 'fix|revert' || true)
-fix_commits="${fix_commits:-0}"; fix_dirty="${fix_dirty:-0}"
+fix_commits="${fix_commits:-0}"
 # IN/TS 디렉토리에 working-tree 대기분이 있으면 이미 기록 중 → 생략
 ts_dirty=$(git status --porcelain -- "$WM/track-record/trouble-shooting" "$WM/track-record/issue-note" 2>/dev/null | grep -c . || true)
 ts_dirty="${ts_dirty:-0}"
 
-if [ "$track_remind" -eq 1 ] && [ "$ts_dirty" -eq 0 ] && { [ "$fix_commits" -gt 0 ] || [ "$fix_dirty" -gt 0 ]; }; then
-  echo "[work-memory] fix 성격의 변경이 있었는데 issue-note(IN)/trouble-shooting(TS) 기록이 없습니다. 같은 턴에 발견+해결했더라도 IN+TS 를 함께 회고로 남기세요 (TS 단독 금지 — IN 으로 원인을 잇습니다). 회고 기록은 늦어도 정상입니다."
+if [ "$fix_commits" -gt 0 ] && [ "$ts_dirty" -eq 0 ]; then
+  echo "[work-memory] fix/revert 성격의 커밋이 $WM 최신 기록 이후 있는데 issue-note(IN)/trouble-shooting(TS) 기록이 없습니다. 같은 턴에 발견+해결했더라도 IN+TS 를 함께 회고로 남기세요 (TS 단독 금지 — IN 으로 원인을 잇습니다). 회고 기록은 늦어도 정상입니다."
 fi
 
 # ── (2) insight-record 넛지 ────────────────────────────────────────────

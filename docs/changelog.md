@@ -10,7 +10,7 @@
 |------|------|
 | `assets/work-memory-judgment.md` | IN 기준 "문제 발견 즉시(해결 전)" → "발견했거나 해결한 직후 — 같은 턴에 고쳤다면 IN+TS 회고 공동 기록". 트리거 이벤트(red→green·fix 검증·`fix:`/`revert:` 커밋·접근 전환) 명시. "이미 고쳤으니 늦었다"는 누락 사유 아님 + TS 단독 기록 금지 명문화 |
 | `SKILL.md` 원리 6 | IN/TS 회고 기록 정상·트리거 앵커·TS 단독 금지를 always-on 책임에 반영. 넛지 섹션에 (1b) IN/TS 넛지 추가 |
-| `hooks/work-memory-check.sh` | (1b) IN/TS 넛지 추가 — fix/revert 성격 커밋(WM 최신 기록 이후) 또는 working-tree 변경이 있는데 IN/TS 기록 대기가 없으면 IN+TS 공동 기록 권유. 비차단(exit 0) 유지 |
+| `hooks/work-memory-check.sh` | (1b) IN/TS 넛지 추가 — fix/revert 성격 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기가 없으면 IN+TS 공동 기록 권유. **track 넛지(WORTHY_PATHS)와 독립** — 버그는 오케스트레이션 경로 밖에서도 나므로 fix 커밋 단독으로 판단. 신호원은 커밋 메시지(의도 판별 가능)로 한정. 비차단(exit 0) 유지 |
 
 ## v0.3.2 (2026-06-10)
 

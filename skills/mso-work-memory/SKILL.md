@@ -148,7 +148,7 @@ python wm_node.py reindex
 `auditlog`/`worklog` 는 자동 로깅이지만, **track-record/insight-record entry 를 언제 남길지**에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 Stop/PreCompact 에서 비차단 넛지를 띄운다:
 
 1. **track 넛지** — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.
-2. **IN/TS 넛지** — fix/revert 성격의 커밋·working-tree 변경이 있는데 IN/TS 기록 대기가 없으면 → IN+TS 회고 공동 기록 권유. UD는 사용자 발화 트리거로 잘 남지만 IN/TS는 내부 작업에서만 촉발돼 누락되기 쉬운 약점을 별도로 환기한다.
+2. **IN/TS 넛지** — fix/revert 성격의 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기가 없으면 → IN+TS 회고 공동 기록 권유. track 넛지(WORTHY_PATHS)와 **독립** — 버그는 오케스트레이션 경로 밖 평범한 소스에서도 나므로 fix 커밋 단독으로 판단한다. UD는 사용자 발화 트리거로 잘 남지만 IN/TS는 내부 작업에서만 촉발돼 누락되기 쉬운 약점을 별도로 환기한다.
 3. **insight 넛지** — 종결된 TS 이후 EP 회고가 없으면 → episode 회고 권유 (EP→PT→PR 추상화 유도).
 
 판단 *기준* 텍스트는 [assets/work-memory-judgment.md](assets/work-memory-judgment.md) 를 프로젝트의 상시 로드 rules(CLAUDE.md/AGENTS.md)에 드롭인한다 — 핵심 원리 6(always-on 위임)과 일치. `mso-repository-setup` 의 `init.py --hook` 가 이 훅을 Stop/PreCompact 에 자동 등록한다.
