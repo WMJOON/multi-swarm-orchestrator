@@ -22,6 +22,21 @@ id_rules:
   - "파일명 = id + '.jsonl' (예: IN-0042.jsonl)"
   - "auditlog/worklog 는 일별·시각별 자동 생성"
 
+# ─── 타입 정의 (머신리더블 SSOT) ─────────────────────────
+# wm_node.py 가 이 섹션에서 TYPE_PREFIX/TYPE_DIR 를 읽는다(없으면 work-memory 기본값).
+# 다른 스코프(예: user-memory)는 이 섹션만 교체해 같은 엔진을 재사용한다.
+# 위 id_patterns 는 사람용 설명 미러 — 변경 시 함께 맞춘다.
+types:
+  issue-note:       {prefix: IN, dir: track-record/issue-note}
+  agent-decision:   {prefix: AD, dir: track-record/agent-decision}
+  user-decision:    {prefix: UD, dir: track-record/user-decision}
+  trouble-shooting: {prefix: TS, dir: track-record/trouble-shooting}
+  episode:          {prefix: EP, dir: insight-record/episodes}
+  pattern:          {prefix: PT, dir: insight-record/patterns}
+  principle:        {prefix: PR, dir: insight-record/principles}
+  auditlog:         {prefix: AU, dir: auditlog}
+  worklog:          {prefix: WL, dir: worklog}
+
 # ─── 공통 필수 필드 (모든 entry) ────────────────────────
 required_fields:
   id: "예: IN-0042"

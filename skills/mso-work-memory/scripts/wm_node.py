@@ -28,7 +28,11 @@ from pathlib import Path
 
 import yaml
 
-TYPE_PREFIX = {
+# ─── 타입·relation 어휘 (schema-driven, 하위호환) ────────────────────────
+# 기본값 = work-memory 표준(7 entry + auditlog/worklog). WORKMEM_DIR/schema.yaml 에
+# 머신리더블 `types:` / `relation_types:` 가 있으면 그것으로 override → 같은 엔진을
+# 다른 스코프(예: user-memory UC/UP/UF)로 재사용. 없으면 이 기본값(기존 동작 보존).
+_DEFAULT_TYPE_PREFIX = {
     "issue-note": "IN",
     "agent-decision": "AD",
     "user-decision": "UD",
@@ -40,7 +44,7 @@ TYPE_PREFIX = {
     "worklog": "WL",
 }
 
-TYPE_DIR = {
+_DEFAULT_TYPE_DIR = {
     "issue-note": "track-record/issue-note",
     "agent-decision": "track-record/agent-decision",
     "user-decision": "track-record/user-decision",
@@ -52,13 +56,42 @@ TYPE_DIR = {
     "worklog": "worklog",
 }
 
-REQUIRED_FIELDS = ["id", "type", "title", "text", "tags", "created_at"]
+REQUIRED_FIELDS = ["id", "type", "title", "text", "tags", "created_at"]  # 스코프 불변
 
-ALLOWED_RELATIONS = {
+_DEFAULT_ALLOWED_RELATIONS = {
     "raised", "followed-by", "resolved-by", "caused-by",
     "analyzed-in", "shows-pattern", "generalized-in", "crystallized-in",
     "references", "supersedes", "refines", "depends-on",
 }
+
+
+def _load_vocab():
+    """WORKMEM_DIR/schema.yaml 의 `types:`/`relation_types:` 로 어휘 결정.
+    없거나 파싱 실패 시 work-memory 기본값(하위호환). `types:` 항목은
+    {<type>: {prefix, dir}} 형태. relation_types 는 dict(설명)/list 허용 → 키만 사용."""
+    tp, td = dict(_DEFAULT_TYPE_PREFIX), dict(_DEFAULT_TYPE_DIR)
+    ar = set(_DEFAULT_ALLOWED_RELATIONS)
+    sp = Path(os.environ.get("WORKMEM_DIR", "./agent-context/work-memory")).resolve() / "schema.yaml"
+    try:
+        s = yaml.safe_load(open(sp, encoding="utf-8")) or {}
+    except Exception:
+        return tp, td, ar
+    types = s.get("types")
+    if isinstance(types, dict) and types:
+        try:
+            tp = {k: v["prefix"] for k, v in types.items()}
+            td = {k: v["dir"] for k, v in types.items()}
+        except (KeyError, TypeError):
+            tp, td = dict(_DEFAULT_TYPE_PREFIX), dict(_DEFAULT_TYPE_DIR)
+    rtv = s.get("relation_types")
+    if isinstance(rtv, dict) and rtv:
+        ar = set(rtv.keys())
+    elif isinstance(rtv, list) and rtv:
+        ar = set(rtv)
+    return tp, td, ar
+
+
+TYPE_PREFIX, TYPE_DIR, ALLOWED_RELATIONS = _load_vocab()
 
 
 def workmem_root() -> Path:

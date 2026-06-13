@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.3.3
+# Multi-Swarm Orchestrator (MSO) v0.3.4
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 

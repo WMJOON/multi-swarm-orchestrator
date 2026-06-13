@@ -98,8 +98,8 @@ def test_orchestration_routes_runtime_layer():
 
 
 def test_readme_reflects_current_version_and_structure():
-    """README 헤더 버전과 핵심 구조 어휘가 v0.3.3 과 일치한다."""
+    """README 헤더 버전과 핵심 구조 어휘가 v0.3.4 와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.3.3" in readme, "README header is not v0.3.3"
+    assert "MSO) v0.3.4" in readme, "README header is not v0.3.4"
     assert "스킬 구성" in readme
     assert "Work-Memory" in readme
