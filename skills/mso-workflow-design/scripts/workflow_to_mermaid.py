@@ -9,7 +9,7 @@ Workflow YAML to Mermaid Diagram Converter
 
 사용법:
   python workflow_to_mermaid.py --global
-  python workflow_to_mermaid.py --module 01.consultdata
+  python workflow_to_mermaid.py --module 01.ingestion
   python workflow_to_mermaid.py --dependencies
 """
 
@@ -577,7 +577,7 @@ def main():
     parser.add_argument(
         "--module",
         type=str,
-        help="Generate module workflow flowchart (e.g., 01.consultdata)"
+        help="Generate module workflow flowchart (e.g., 01.ingestion)"
     )
     parser.add_argument(
         "--dependencies",
@@ -588,12 +588,12 @@ def main():
     parser.add_argument(
         "--deliverables",
         type=str,
-        help="Generate deliverables tree (e.g., 01.consultdata)"
+        help="Generate deliverables tree (e.g., 01.ingestion)"
     )
     parser.add_argument(
         "--timeline",
         type=str,
-        help="Generate timeline gantt chart (e.g., 01.consultdata)"
+        help="Generate timeline gantt chart (e.g., 01.ingestion)"
     )
     parser.add_argument(
         "--all",

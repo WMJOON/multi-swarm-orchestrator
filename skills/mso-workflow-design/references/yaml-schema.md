@@ -141,7 +141,7 @@ step 노드의 `directories` 항목.
 
 | Role | 의미 | 예 |
 |------|------|---|
-| `input` | 이 step이 읽어오는 소스 | `01.hand-off-policy/` |
+| `input` | 이 step이 읽어오는 소스 | `01.routing/` |
 | `output` | 이 step이 생성/배포하는 결과 | `02.draft/` |
 | `reference` | 읽기 전용 참고 자료 | `00.framework/` |
 | `instruction` | 실행 규칙·정책 문서 | `tier1_patterns.csv` |
@@ -187,7 +187,7 @@ step 노드의 `directories` 항목.
 ```yaml
 module:
   name: AI Chatbot Policy Framework
-  id: 02.AI-Chatbot-Policy
+  id: 02.policy-engine
   version: "1.0.0"
   owner: owner@example.com
   created: 2026-05-21
@@ -204,7 +204,7 @@ development:
       status: completed
       directories:
         - role: output
-          path: 01.hand-off-policy/
+          path: 01.routing/
       deliverables:
         - golden_dataset_v1.0.0.csv
         - tier1_patterns_v1.0.0.csv
@@ -218,7 +218,7 @@ development:
           label: "요구사항 분석"
           directories:
             - role: input
-              path: 01.hand-off-policy/
+              path: 01.routing/
           deliverables:
             - 변경 요구사항 문서
 
@@ -227,7 +227,7 @@ development:
           label: "hand-off 파일을 draft 폴더로 복제"
           directories:
             - role: input
-              path: 01.hand-off-policy/
+              path: 01.routing/
             - role: output
               path: 02.draft/
 
@@ -258,7 +258,7 @@ development:
           label: "기존 hand-off 파일을 history로 이동"
           directories:
             - role: input
-              path: 01.hand-off-policy/
+              path: 01.routing/
             - role: output
               path: 99.history-policy/
 
@@ -269,7 +269,7 @@ development:
             - role: input
               path: 02.draft/
             - role: output
-              path: 01.hand-off-policy/
+              path: 01.routing/
 
 testing:
   id: testing

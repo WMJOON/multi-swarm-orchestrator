@@ -89,7 +89,7 @@ testing:
   status: active
   directories:
     - role: input
-      path: 01.hand-off-policy/
+      path: 01.routing/
     - role: output
       path: 02.draft/
   deliverables:
@@ -238,10 +238,10 @@ MOTIF는 모든 step/phase에 **동일하게 적용되는 구조 단위**다.
 
 | Module | Extension | Purpose |
 |--------|-----------|---------|
-| 01.consultdata | agent_package | 분석 에이전트 패키지 정의 |
-| 02.AI-Chatbot-Policy | governance | 정책 버전 관리 및 변경 제어 |
-| 03.sensitive-data-masking | compliance | 규정 준수 항목 (GDPR, CCPA) |
-| 04.AIKON7 | communications | 협업 체계 및 연락처 |
+| 01.ingestion | agent_package | 분석 에이전트 패키지 정의 |
+| 02.policy-engine | governance | 정책 버전 관리 및 변경 제어 |
+| 03.data-masking | compliance | 규정 준수 항목 (GDPR, CCPA) |
+| 04.vendor-x | communications | 협업 체계 및 연락처 |
 | 10.RAG-Corpus-Dataset | data_governance | 저장, 접근, 백업 정책 |
 
 ---
