@@ -1,6 +1,6 @@
 ---
 name: mso-intent-analytics
-version: "0.3.1"
+version: "0.3.4"
 description: >
   MSO 도메인 NLU 어휘의 단일 정본(registry) + intent-레벨 analytics 의 집.
   LinkML schema(nlu_intent.yaml) · TTL instances · SKOS taxonomy · intent matrix를 소유.
@@ -14,7 +14,7 @@ triggers: []
 depends_on: []
 ---
 
-# MSO Intent Analytics (v0.3.1, 구 mso-intent-registry)
+# MSO Intent Analytics (v0.3.4, 구 mso-intent-registry)
 
 MSO NLU 레이어. 현재 **registry(데이터 skill)** — 정본 데이터 + lookup API. 런타임 로직 없음.
 

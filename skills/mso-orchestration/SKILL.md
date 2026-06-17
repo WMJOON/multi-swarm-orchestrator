@@ -1,6 +1,6 @@
 ---
 name: mso-orchestration
-version: "0.3.1"
+version: "0.3.4"
 description: "MSO 스킬 팩 라우터. §11 NLU 재편: utterance→intent 는 UUG(uug-grounding) 위임, MSO 는 intent→action(mso-intent-analytics 뒷단 dispatch). name-only 라우팅."
 triggers:
   - "mso 시작"
@@ -27,7 +27,7 @@ triggers:
   - "reprompt 분석"
 ---
 
-# MSO Orchestration (v0.3.1)
+# MSO Orchestration (v0.3.4)
 
 MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 적절한 sub-skill 로 안내한다.
 
@@ -172,7 +172,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
   → 회고 시점: `wm_node.py new episode --related TS-NNNN:analyzed-in`
 ```
 
-### Conversation Analytics (v0.3.1)
+### Conversation Analytics (v0.3.4)
 ```
 사용자: "이번 주 전환 패턴 분석해줘"
   → mso-orchestration: mso-conversation-analytics 안내

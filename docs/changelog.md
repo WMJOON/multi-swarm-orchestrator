@@ -1,6 +1,6 @@
 # 변경 이력
 
-## Unreleased — §11 NLU 경계 재편 (2026-06-17)
+## v0.3.4 — §11 NLU 경계 재편 (2026-06-17)
 
 > **utterance→intent = UUG / intent→action = MSO.** NLU 앞단(자연어→intent 분류)을 UUG(`01_user-utterance-grounding`)로 흡수하고, MSO 는 intent→action(뒷단 slot/dispatch)만 보유. 스킬 8→7.
 
@@ -13,11 +13,11 @@
 | `mso-orchestration` | 운영 명령 라우팅 = UUG `ug ground`→intent_id→`mso-intent-analytics` dispatch. utterance-grounding 라우팅 제거, conversation-analytics de-route. |
 | UUG `uug-grounding` | namespace-agnostic 멀티-레지스트리 lookup + `projects.yaml intent_registry` + 도메인 intent commit 정책(MSO decisiveness 동등, fixture 84%≥80%). |
 
-> **비고**: 구조 변경이나 버전 헤더(v0.3.4)는 유지 — 정식 버전 bump(→v0.4.0)는 후속(모든 SKILL.md version 필드 일괄).
+> **비고**: 이 §11·TTL 작업은 **v0.3.4 에 포함**(2026-06-17). 모든 SKILL.md `version` 필드를 v0.3.4 로 통일(미선언 4개 스킬 포함). v0.4.0 bump 는 보류.
 >
 > ⚠ **capability 회귀 (미해소)**: 구 `mso-utterance-grounding/slots/inference/serve.py` 는 **실제 Lv30 LLM(Claude Haiku) fallback + Lv20 모델 경로**를 가졌고, Lv10 keyword-miss(~20%)를 프로덕션에서 복구했다. 앞단 제거로 이 serve.py 가 삭제됐고 **UUG 의 Lv30 은 미빌드(후속)** → keyword-miss 발화의 LLM 복구 경로가 현재 **없음**. 비회귀 측정(UUG 84% ≥ MSO 80%)은 **양쪽 `GROUNDING_SKIP_LLM=1` Lv10-only** 수치라 이 Lv30 격차를 반영하지 않는다. serve.py 로직은 git history 에 보존 — UUG Lv30 으로 포팅 필요(미결).
 
-## Unreleased — workflow TTL TBox/ABox + SHACL/DAG 검증 (2026-06-17)
+## v0.3.4 — workflow TTL TBox/ABox + SHACL/DAG 검증 (2026-06-17)
 
 > **workflow 구조를 DL TBox/ABox 로 형식화.** `schemas/*.yaml` 이 단일 SSOT, TBox 온톨로지·SHACL shape 는 그로부터 *생성*된 파생물(drift 0). intent 쪽 TTL 과 그래프 패러다임 수렴. mso-workflow-design 만 해당, 스킬 수 불변.
 
