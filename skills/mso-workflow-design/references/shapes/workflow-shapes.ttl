@@ -1,0 +1,68 @@
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix wf:   <https://mso.dev/ontology/workflow#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# !!! 생성물 — 직접 편집 금지. 소스: references/schemas/*.yaml
+# !!! 재생성: python scripts/schemas_to_tbox.py
+# 전역 DAG·교차-스킬·branch.on 유효성은 SHACL core 불가 → wf_to_ttl.py SPARQL.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+wf:StatusShape a sh:NodeShape ; sh:targetSubjectsOf wf:status ;
+    sh:property [ sh:path wf:status ; sh:minCount 1 ;
+                  sh:in ( "completed" "active" "pending" ) ;
+                  sh:message "status 는 completed|active|pending 중 하나" ] .
+
+wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:judge ; sh:minCount 1 ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" ) ; sh:message "judge: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:owner ; sh:datatype xsd:string ; sh:message "owner: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:sla ; sh:datatype xsd:string ; sh:message "sla: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:threshold ; sh:datatype xsd:string ; sh:message "threshold: schema 제약 위반" ] ;
+    sh:or (
+        [ sh:not [ sh:property [ sh:path wf:judge ; sh:in ( "HITL" "HITLFE" ) ; sh:minCount 1 ] ] ]
+        [ sh:property [ sh:path wf:owner ; sh:minCount 1 ] ]
+    ) ;
+    sh:or (
+        [ sh:not [ sh:property [ sh:path wf:judge ; sh:in ( "HITLFE" ) ; sh:minCount 1 ] ] ]
+        [ sh:property [ sh:path wf:threshold ; sh:minCount 1 ] ]
+    ) .
+
+wf:GroupShape a sh:NodeShape ; sh:targetClass wf:Group ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] .
+
+wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:showWrapper ; sh:datatype xsd:boolean ; sh:message "showWrapper: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:defaultJudge ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" ) ; sh:message "defaultJudge: schema 제약 위반" ] .
+
+wf:StepShape a sh:NodeShape ; sh:targetClass wf:Step ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:instruction ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "instruction: schema 제약 위반" ] .
+
+wf:ValidationShape a sh:NodeShape ; sh:targetClass wf:Validation ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:harness ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "harness: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:passCriteria ; sh:minCount 1 ; sh:message "passCriteria: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:onFail ; sh:in ( "block" "retry" "manual_review" ) ; sh:message "onFail: schema 제약 위반" ] .
+
+wf:WorkflowRefShape a sh:NodeShape ; sh:targetClass wf:WorkflowRef ;
+    sh:property [ sh:path wf:ref ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "ref: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:module ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "module: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:harnessPropagate ; sh:datatype xsd:boolean ; sh:message "harnessPropagate: schema 제약 위반" ] .
+
+# ─── 그래프 층 range (schema 없음) ──────────────────────────────────────────────
+wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
+    sh:property [ sh:path wf:dependsOn ; sh:class wf:Phase ;
+                  sh:message "dependsOn 타깃은 wf:Phase 여야 함" ] ;
+    sh:property [ sh:path wf:hasNode ; sh:class wf:Node ;
+                  sh:message "hasNode 타깃은 wf:Node 여야 함" ] .
+wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
+    sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
+                  sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .
+wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
+    sh:property [ sh:path wf:milestoneOf ; sh:class wf:Phase ;
+                  sh:message "milestoneOf 타깃은 wf:Phase 여야 함" ] .
+

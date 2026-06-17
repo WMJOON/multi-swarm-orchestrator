@@ -1,10 +1,10 @@
 project:
-  name: AI Chatbot 1.0 - Global Workflow
+  name: AI Chatbot 1.0 - Root Workflow
   id: workflow-00
   version: "1.0.0"
   description: >
-    전체 프로젝트의 오케스트레이션 워크플로우.
-    각 모듈의 워크플로우를 조율하고 의존성을 관리한다.
+    한 프로젝트의 root-workflow(프로젝트 루트). 그 프로젝트의 모듈 sub-workflow 들을
+    조율하고 의존성을 관리한다. (전 프로젝트를 가로지르는 global 층은 UUG 영역.)
   owner: owner@example.com
   created: 2026-05-21
 

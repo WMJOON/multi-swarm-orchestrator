@@ -19,8 +19,16 @@ fields:
     required: true
     type: string
     description: |
-      사람이 읽는 행위 설명. 권장 패턴: '{동사} {목적어} [{맥락}]'.
-      동사 어휘는 프로젝트 컨벤션으로 정의.
+      사람이 읽는 행위 설명(서술격). 권장 패턴: '{동사} {목적어} [{맥락}]'.
+      동사 어휘는 프로젝트 컨벤션으로 정의. '무엇인지'를 나타냄 — directive 아님.
+
+  instruction:
+    required: true
+    type: string
+    description: |
+      실행 지시(지시격/directive). 실행 주체가 '이걸 하라'는 명령 본문.
+      label 이 '무엇인지' 서술이라면 instruction 은 실제 수행 지침이다.
+      instruction 없는 Step 은 라벨만 있는 비실행 노드 → SHACL StepShape 위반.
 
   status:
     required: true
@@ -61,4 +69,5 @@ fields:
 structural_invariants:
   - "id 는 워크플로우 내 unique"
   - "label 비어있지 않음"
+  - "instruction 비어있지 않음 (지시격 — 실행 지시. SHACL StepShape 강제)"
   - "directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"

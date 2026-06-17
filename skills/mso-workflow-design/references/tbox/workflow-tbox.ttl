@@ -1,0 +1,88 @@
+@prefix wf:   <https://mso.dev/ontology/workflow#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# !!! 생성물 — 직접 편집 금지. 소스: references/schemas/*.yaml
+# !!! 재생성: python scripts/schemas_to_tbox.py
+# ═══════════════════════════════════════════════════════════════════════════════
+
+wf: a owl:Ontology ;
+    rdfs:label "MSO Workflow Ontology"@ko ;
+    rdfs:comment "schemas/*.yaml 에서 생성된 TBox. ABox 는 이 타입에 정합해야 한다."@ko ;
+    owl:versionInfo "0.2.0" .
+
+
+# ─── 클래스 (schema type) ──────────────────────────────────────────────────────
+wf:Node a owl:Class ; rdfs:label "Node"@ko ; rdfs:comment "실행 노드 상위."@ko .
+wf:Decision a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Decision"@ko ;
+    rdfs:comment "분기/판단 노드. automation_gate가 여기에 속함. | invariants: id 는 워크플로우 내 unique judge ∈ {HITL, HITLFE, HOTL, HOOTL} branches[].on 은 judge_branch_conditions[judge] 에 속해야 함 HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"@ko .
+wf:Group a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Group"@ko ;
+    rdfs:comment "여러 노드를 Mermaid subgraph로 묶는 컨테이너. | invariants: id 는 워크플로우 내 unique steps 비어있지 않음"@ko .
+wf:Phase a owl:Class ; rdfs:label "Phase"@ko ;
+    rdfs:comment "워크플로우의 단계(phase) 컨테이너. | invariants: id 비어있지 않음 status ∈ {completed, active, pending} steps 또는 workflows 둘 중 하나는 존재해야 함 (둘 다 비면 ERROR) workflows[] 각 항목은 workflow_ref.schema.yaml 의 invariant 를 따름"@ko .
+wf:Step a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Step"@ko ;
+    rdfs:comment "실행 작업 노드. I/O는 선택적. | invariants: id 는 워크플로우 내 unique label 비어있지 않음 instruction 비어있지 않음 (지시격 — 실행 지시. SHACL StepShape 강제) directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"@ko .
+wf:Validation a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Validation"@ko ;
+    rdfs:comment "자동 검증 하네스 노드. 스크립트·테스트 러너·스키마 검증기 등이 자동으로 pass/fail 을 판정하는 게이트. decision(사람/모델 판단) 과 명확히 구분. | invariants: id 는 워크플로우 내 unique label 비어있지 않음 harness 비어있지 않음 (자동 실행 주체가 명시되어야 함) pass_criteria 최소 1개 이상 decision 의 judge 와 혼용 금지 — validation 은 자동 판정, decision 은 판단 주체 필요 directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"@ko .
+wf:WorkflowRef a owl:Class ; rdfs:label "WorkflowRef"@ko ;
+    rdfs:comment "계층 workflow 참조. root workflow YAML 의 `phase.workflows[]` 또는 모듈 workflow YAML 의 `sub_workflow:` 필드에서 사용. sub workflow 의 phase/group id 를 anchor 로 가리켜 subgraph 형태로 통합한다. | invariants: ref 비어있지 않음 module 비어있지 않음 ref 의 file path 는 scaffold module:{module}.path 의 자손이어야 함 (cross-skill invariant) ref 의 anchor (있을 경우) 는 sub 파일 내 phase/group id 와 일치해야 함 module 필드 값은 ref 파일 자체가 선언한 module id 와 동일해야 함"@ko .
+
+# ─── Property (schema fields) ──────────────────────────────────────────────────
+wf:artifacts a owl:DatatypeProperty ; rdfs:label "artifacts"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
+wf:defaultJudge a owl:DatatypeProperty ; rdfs:label "defaultJudge"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
+wf:deliverables a owl:DatatypeProperty ; rdfs:label "deliverables"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Step, Validation"@ko .
+wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:harness a owl:DatatypeProperty ; rdfs:label "harness"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
+wf:harnessPropagate a owl:DatatypeProperty ; rdfs:label "harnessPropagate"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:boolean .
+wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
+wf:judge a owl:DatatypeProperty ; rdfs:label "judge"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Group, Phase, Step, Validation"@ko .
+wf:module a owl:DatatypeProperty ; rdfs:label "module"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
+wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
+wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:passCriteria a owl:DatatypeProperty ; rdfs:label "passCriteria"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
+wf:ref a owl:DatatypeProperty ; rdfs:label "ref"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
+wf:showWrapper a owl:DatatypeProperty ; rdfs:label "showWrapper"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
+wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Phase, Step, Validation"@ko .
+wf:subSteps a owl:DatatypeProperty ; rdfs:label "subSteps"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
+wf:successCriteria a owl:DatatypeProperty ; rdfs:label "successCriteria"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
+wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:validation a owl:DatatypeProperty ; rdfs:label "validation"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
+
+# ─── 그래프 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────────────
+wf:Module    a owl:Class ; rdfs:label "Module"@ko ;
+    rdfs:comment "critical_dependencies 의 from/to 단위. (schema 없음)"@ko .
+wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;
+    rdfs:comment "특정 Phase 를 가리키는 마일스톤. (schema 없음)"@ko .
+
+wf:dependsOn a owl:ObjectProperty ; rdfs:label "dependsOn"@ko ;
+    rdfs:domain wf:Phase ; rdfs:range wf:Phase ;
+    rdfs:comment "root 템플릿 phases[].dependencies. 비순환(DAG) — SPARQL 검증. (phase.schema 엔 없음)"@ko .
+wf:criticalDep a owl:ObjectProperty ; rdfs:label "criticalDep"@ko ;
+    rdfs:domain wf:Module ; rdfs:range wf:Module ;
+    rdfs:comment "critical_dependencies from→to. 비순환 검사 대상."@ko .
+wf:milestoneOf a owl:ObjectProperty ; rdfs:label "milestoneOf"@ko ;
+    rdfs:domain wf:Milestone ; rdfs:range wf:Phase .
+wf:hasNode a owl:ObjectProperty ; rdfs:label "hasNode"@ko ;
+    rdfs:domain wf:Phase ; rdfs:range wf:Node ;
+    rdfs:comment "phase.steps[] 평탄화 에지."@ko .
+wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
+    rdfs:domain wf:Node ;
+    rdfs:comment "step.directories[] 항목(blank node: dirRole+dirPath). 라운드트립 가능."@ko .
+wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:string ;
+    rdfs:comment "directory.role (input/output/reference/instruction 등)."@ko .
+wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
+    rdfs:comment "directory.path. 교차-스킬(scaffold) 멤버십 대상."@ko .
+
+# 통제어휘 (skos)
+wf:JudgeScheme a skos:ConceptScheme ; skos:prefLabel "Judge Levels"@ko .
+wf:HITL a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HITL" .
+wf:HITLFE a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HITLFE" .
+wf:HOTL a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HOTL" .
+wf:HOOTL a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HOOTL" .
+
