@@ -6,8 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 _SHACL_PATH = (
-    Path(__file__).parent.parent.parent.parent
-    / "mso-intent-registry" / "generated" / "nlu_intent.shacl.ttl"
+    Path(__file__).parent.parent / "generated" / "nlu_intent.shacl.ttl"
 )
 
 

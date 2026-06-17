@@ -1,6 +1,6 @@
 """
-mso-intent-registry — Lookup API
-mso-utterance-grounding 및 mso-conversation-analytics 에서 호출.
+mso-intent-analytics — Lookup API
+UUG(uug-grounding) 멀티-레지스트리 브리지 + 뒷단 dispatch(pipeline.py) + conversation-analytics 에서 호출.
 RDFLib 기반, 별도 서버 없음.
 """
 from __future__ import annotations

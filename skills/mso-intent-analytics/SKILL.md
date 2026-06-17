@@ -1,10 +1,12 @@
 ---
-name: mso-intent-registry
+name: mso-intent-analytics
 version: "0.3.1"
 description: >
-  MSO 도메인 NLU 어휘의 단일 정본 보관소.
+  MSO 도메인 NLU 어휘의 단일 정본(registry) + intent-레벨 analytics 의 집.
   LinkML schema(nlu_intent.yaml) · TTL instances · SKOS taxonomy · intent matrix를 소유.
-  mso-utterance-grounding · mso-conversation-analytics에 lookup API를 제공한다.
+  registry SoT 는 UUG(uug-grounding)가 멀티-레지스트리 브리지로 소비.
+  (구 mso-intent-registry 개명 — §11.) ⚠ analytics(intent 사용·매칭 측정, tier-escalation
+  신호 흡수)는 §11.1 상 이 스킬 귀속이나 미구현 — registry 부분만 가동.
 schema_owner: true
 schema_path: references/schemas/nlu_intent.yaml
 role: data
@@ -12,9 +14,11 @@ triggers: []
 depends_on: []
 ---
 
-# MSO Intent Registry (v0.3.1)
+# MSO Intent Analytics (v0.3.1, 구 mso-intent-registry)
 
-MSO NLU 레이어의 **데이터 skill**. 런타임 로직 없음 — 정본 데이터 + lookup API만.
+MSO NLU 레이어. 현재 **registry(데이터 skill)** — 정본 데이터 + lookup API. 런타임 로직 없음.
+
+> **개명·역할 (§11/§11.1)**: `mso-intent-registry` → `mso-intent-analytics`. registry(Intent/SlotSpec/IntentMatrix SoT)는 그대로 유지하고 UUG 가 소비. 그 위에 얹힐 intent-레벨 analytics(사용·매칭 측정, 최적화) + mso-conversation-analytics 의 **tier-escalation 폐루프 신호**는 이 스킬이 받기로 결정(§11.1)됐으나 **아직 미구현**.
 
 ## 파일 구조
 
@@ -44,7 +48,7 @@ from mso_intent_registry.lookup import (
 ## Build (M1 DoD)
 
 ```bash
-cd repository-test/skills/mso-intent-registry
+cd repository-test/skills/mso-intent-analytics
 bash tools/build.sh
 ```
 

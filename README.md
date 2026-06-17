@@ -186,10 +186,10 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
     ├── [Infra]
     │   └──> mso-work-memory        JSONL entry · auditlog · worklog · graph
     │
-    └── [Runtime/NLU — v0.3.1 신규]
-        ├──> mso-utterance-grounding    자연어 발화 → GroundedCommand
-        │       └── mso-intent-registry  Intent/SlotSpec/Taxonomy 정본 (lookup API)
-        └──> mso-conversation-analytics  turns.jsonl 분석 · 환류 · Tier escalation 신호
+    └── [Runtime/NLU — §11 재편]
+        │   앞단(utterance→intent) = UUG(uug-grounding, 01_user-utterance-grounding, repo 밖)
+        ├──> mso-intent-analytics  registry SoT(lookup) + 뒷단 dispatch(pipeline)
+        └──> mso-conversation-analytics  ⚠ de-routed — 분석 메서드 UUG 흡수 대기 (직접 호출만)
 ```
 
 | 스킬 | 레이어 | 핵심 스크립트 |
@@ -199,9 +199,10 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
 | `mso-scaffold-design` | Design | `sf_node.py` |
 | `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py` |
 | `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py`, `hooks/work-memory-check.sh` |
-| `mso-utterance-grounding` *(v0.3.1)* | Runtime | `slots/` 4-slot pipeline (input_norm→rules→inference→script) |
-| `mso-intent-registry` *(v0.3.1)* | Data | `src/lookup.py`, `references/schemas/nlu_intent.yaml` (LinkML) |
-| `mso-conversation-analytics` *(v0.3.1)* | Observability | `src/analytics.py`, `src/transitions.py` (DuckDB) |
+| `mso-intent-analytics` *(§11)* | Data+Runtime | `src/lookup.py`(registry), `src/pipeline.py`(뒷단 dispatch), `references/schemas/nlu_intent.yaml` (LinkML) |
+| `mso-conversation-analytics` *(de-routed)* | Observability | `src/analytics.py` (DuckDB) — UUG 흡수 대기, 직접 호출만 |
+
+> **§11 NLU 경계 재편**: utterance→intent 분류(앞단)는 UUG(`01_user-utterance-grounding`)로 흡수, intent→action(뒷단 slot/dispatch)만 MSO(`mso-intent-analytics`). 구 `mso-utterance-grounding` 해체, `mso-intent-registry`→`mso-intent-analytics` 개명. 7 스킬.
 
 ---
 

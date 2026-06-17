@@ -1,76 +1,64 @@
 """
-script slot — Grounding Pipeline 메인 진입점.
-input_norm → rules → (inference) → slot_filler → resolver → validator → turn_writer
-→ GroundedCommand 반환
+dispatch — Grounding Pipeline 뒷단 (intent → GroundedCommand).
+
+slot_filler → resolver → validator → turn_writer → GroundedCommand 반환.
+
+§11: utterance→intent 분류(앞단: normalize/router/serve)는 UUG(uug-grounding)로 흡수됐다.
+이 모듈은 **뒷단만** — 이미 해석된 intent_id 를 받아 slot 채움·target 해소·검증·기록한다.
+orchestration 이 `ug ground` 로 얻은 intent_id 를 넘긴다(디커플: UUG import 없음).
+lookup 과 같은 스킬(mso-intent-analytics)에 co-located.
 """
 from __future__ import annotations
 
-import os
 import sys
 import time
 from pathlib import Path
 
-# ─── 경로 주입 ───────────────────────────────────────────────
-_SKILL_DIR = Path(__file__).parent.parent.parent
-_REGISTRY_SRC = _SKILL_DIR.parent / "mso-intent-registry" / "src"
-for p in [str(_REGISTRY_SRC), str(_SKILL_DIR / "slots" / "input_norm"),
-          str(_SKILL_DIR / "slots" / "rules"),
-          str(_SKILL_DIR / "slots" / "inference"),
-          str(_SKILL_DIR / "slots" / "script")]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+# ─── 경로 주입 (sibling 모듈: 같은 src/) ─────────────────────
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 from normalize   import normalize                # type: ignore
-from router      import route, _load_keywords    # type: ignore
-from serve       import classify                 # type: ignore
 from slot_filler import fill_slots               # type: ignore
 from resolver    import resolve_target           # type: ignore
 from validator   import validate                 # type: ignore
 from turn_writer import append_turn, new_turn_id # type: ignore
-from lookup      import list_intents, lookup_intent  # type: ignore
+from lookup      import lookup_intent            # type: ignore
 
 
 def ground(
     utterance: str,
+    intent_id: str,
     session_context: dict | None = None,
     prev_turn_id: str | None = None,
     write_turn: bool = True,
-    skip_llm: bool | None = None,
 ) -> dict:
     """
-    utterance → GroundedCommand dict.
+    (utterance, intent_id) → GroundedCommand dict.
 
     Parameters
     ----------
-    utterance       : 오퍼레이터 발화
+    utterance       : 오퍼레이터 발화 (slot 추출용 원문)
+    intent_id       : UUG(uug-grounding)가 해석한 intent_id. **필수** — 앞단(분류)은
+                      UUG 가 담당(§11). orchestration 이 `ug ground` 결과를 넘긴다.
     session_context : SessionContext dict (optional)
     prev_turn_id    : 직전 turn ID (optional)
     write_turn      : turns.jsonl append 여부 (테스트 시 False)
-    skip_llm        : True면 inference slot LLM 호출 건너뜀
 
     Returns
     -------
-    GroundedCommand dict (output.schema.json 준수)
+    GroundedCommand dict (schemas/output.schema.json 준수). tier="UUG".
     """
     t_start = time.monotonic()
     ctx = session_context or {}
     session_id = ctx.get("session_id", "local:anonymous:0")
     turn_id    = new_turn_id()
 
-    # ── 1. input_norm ──────────────────────────────────────
+    # ── 1. input_norm (slot 추출 전처리) ───────────────────
     norm = normalize(utterance)
 
-    # ── 2. rules (Lv10) ───────────────────────────────────
-    keywords   = _load_keywords()
-    intent_id, confidence = route(norm, keywords)
-    tier = "Lv10"
-
-    # ── 3. inference fallback (Lv30/Lv20) ─────────────────
-    if intent_id is None:
-        all_intents = list_intents()
-        intent_id, confidence, tier = classify(norm, all_intents, skip_llm=skip_llm)
-
-    # ── 4. script: slot_filler + resolver + validator ──────
+    # ── 2. 뒷단: slot_filler + resolver + validator ────────
     intent = lookup_intent(intent_id) if intent_id else None
 
     if intent:
@@ -81,12 +69,11 @@ def ground(
             # SHACL 실패도 reprompt로 처리
             reprompt_needed = True
             for v in violations:
-                # violation 메시지에서 슬롯 이름 파싱 (간단 방식)
                 for spec in intent.get("slot_specs", []):
                     if spec["slot_name"] in v and spec["slot_name"] not in reprompt_slots:
                         reprompt_slots.append(spec["slot_name"])
     else:
-        slots_filled   = {}
+        slots_filled    = {}
         reprompt_needed = False
         reprompt_slots  = []
         target_id       = None
@@ -99,15 +86,15 @@ def ground(
         "target_id":       target_id,
         "target_concepts": target_concepts,
         "slots":           slots_filled,
-        "confidence":      confidence,
-        "tier":            tier,
+        "confidence":      1.0 if intent else 0.0,
+        "tier":            "UUG",
         "reprompt_needed": reprompt_needed,
         "reprompt_slots":  reprompt_slots,
         "session_id":      session_id,
         "turn_id":         turn_id,
     }
 
-    # ── 5. turns.jsonl append ──────────────────────────────
+    # ── 3. turns.jsonl append ──────────────────────────────
     if write_turn:
         append_turn(
             turn_id=turn_id,

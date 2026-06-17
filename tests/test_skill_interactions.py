@@ -26,20 +26,30 @@ CORE_SKILLS = {
     "mso-work-memory",
 }
 
-# v0.3.1 Utterance Grounding Layer (Runtime/NLU) — manifest.json 보유
+# NLU/Runtime 레이어 (§11 재편 후) — manifest.json 보유, orchestration 라우팅 대상
+#   mso-intent-analytics = registry SoT + 뒷단 dispatch(slot/resolve/validate/turn).
+#   앞단(utterance→intent)은 UUG(uug-grounding)로 흡수 — 이 repo 밖.
 RUNTIME_SKILLS = {
-    "mso-utterance-grounding",
-    "mso-intent-registry",
+    "mso-intent-analytics",
+}
+
+# present 하지만 orchestration 라우팅에서 de-route 됨 (§11.1: 분석 메서드 UUG 흡수 대기).
+# 흡수 완료 후 제거 예정 — 그때까지 capability 보존 위해 잔존.
+PENDING_ABSORB_SKILLS = {
     "mso-conversation-analytics",
 }
 
-ALL_SKILLS = CORE_SKILLS | RUNTIME_SKILLS
+ALL_SKILLS = CORE_SKILLS | RUNTIME_SKILLS | PENDING_ABSORB_SKILLS
 
-# v0.2.2 에서 폐기된 스킬 — 되살아나면 구조 회귀
+# 폐기된 스킬 — 되살아나면 구조 회귀
+#   v0.2.2: execution-design/harness-setup/workflow-repository-setup
+#   §11 재편: utterance-grounding(해체) / intent-registry(→intent-analytics 개명)
 DEPRECATED_SKILLS = {
     "mso-execution-design",
     "mso-harness-setup",
     "mso-workflow-repository-setup",
+    "mso-utterance-grounding",
+    "mso-intent-registry",
 }
 
 # orchestration SKILL.md 가 라우팅을 *예정* 으로만 언급하는 미래 스킬
@@ -71,7 +81,7 @@ def test_deprecated_v022_layout_removed():
 
 def test_runtime_manifest_name_matches_directory():
     """manifest.json(선언)의 name 이 디렉토리(실재)와 일치한다."""
-    for skill in sorted(RUNTIME_SKILLS):
+    for skill in sorted(RUNTIME_SKILLS | PENDING_ABSORB_SKILLS):
         manifest_path = SKILLS / skill / "manifest.json"
         assert manifest_path.exists(), f"missing manifest.json: {skill}"
         assert _manifest(skill)["name"] == skill, (
@@ -80,8 +90,9 @@ def test_runtime_manifest_name_matches_directory():
 
 
 def test_runtime_manifest_depends_on_resolve():
-    """manifest 가 선언한 mso-* depends_on 이 실재 스킬을 가리킨다 (dangling 방지)."""
-    for skill in sorted(RUNTIME_SKILLS):
+    """manifest 가 선언한 mso-* depends_on 이 실재 스킬을 가리킨다 (dangling 방지).
+    utterance-grounding 해체 후 depends_on 에 그 이름이 남으면 dangling → 실패."""
+    for skill in sorted(RUNTIME_SKILLS | PENDING_ABSORB_SKILLS):
         for dep in _manifest(skill).get("depends_on") or []:
             if not (isinstance(dep, str) and dep.startswith("mso-")):
                 continue
@@ -91,10 +102,16 @@ def test_runtime_manifest_depends_on_resolve():
 
 
 def test_orchestration_routes_runtime_layer():
-    """v0.3.1 통합 회귀 방지: orchestration 이 Runtime/NLU 3종을 라우팅 언급한다."""
+    """orchestration 이 NLU/Runtime(intent-analytics)을 라우팅 언급한다."""
     text = (SKILLS / "mso-orchestration" / "SKILL.md").read_text()
     for skill in sorted(RUNTIME_SKILLS):
         assert skill in text, f"orchestration no longer routes: {skill}"
+
+
+def test_dissolved_utterance_grounding_not_routed():
+    """§11: utterance-grounding 해체 회귀 방지 — orchestration 이 더는 라우팅하지 않는다."""
+    text = (SKILLS / "mso-orchestration" / "SKILL.md").read_text()
+    assert "mso-utterance-grounding" not in text, "해체된 utterance-grounding 라우팅 잔존"
 
 
 def test_readme_reflects_current_version_and_structure():

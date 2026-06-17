@@ -1,5 +1,22 @@
 # 변경 이력
 
+## Unreleased — §11 NLU 경계 재편 (2026-06-17)
+
+> **utterance→intent = UUG / intent→action = MSO.** NLU 앞단(자연어→intent 분류)을 UUG(`01_user-utterance-grounding`)로 흡수하고, MSO 는 intent→action(뒷단 slot/dispatch)만 보유. 스킬 8→7.
+
+### Changed
+| 변경 | 내용 |
+|------|------|
+| `mso-intent-registry` → `mso-intent-analytics` | 개명. registry SoT 유지 + 뒷단 dispatch(`src/pipeline.py`) 흡수. role `data`→`data+runtime`. (analytics 본체·tier-escalation 흡수는 미구현 — §11.1) |
+| `mso-utterance-grounding` | **해체.** 앞단(normalize/router/serve)은 UUG 흡수로 제거. 뒷단(slot_filler/resolver/validator/turn_writer/pipeline)은 `mso-intent-analytics/src/` 로 이전. `pipeline.ground(utterance, intent_id)` — intent_id 는 UUG 가 공급(디커플). |
+| `mso-conversation-analytics` | **de-route.** orchestration 라우팅에서 제외(잔존). 분석 메서드는 UUG(`uug-pattern-analytics`) 흡수 대기 — 흡수 완료 후 제거. depends_on → `mso-intent-analytics`. |
+| `mso-orchestration` | 운영 명령 라우팅 = UUG `ug ground`→intent_id→`mso-intent-analytics` dispatch. utterance-grounding 라우팅 제거, conversation-analytics de-route. |
+| UUG `uug-grounding` | namespace-agnostic 멀티-레지스트리 lookup + `projects.yaml intent_registry` + 도메인 intent commit 정책(MSO decisiveness 동등, fixture 84%≥80%). |
+
+> **비고**: 구조 변경이나 버전 헤더(v0.3.4)는 유지 — 정식 버전 bump(→v0.4.0)는 후속(모든 SKILL.md version 필드 일괄).
+>
+> ⚠ **capability 회귀 (미해소)**: 구 `mso-utterance-grounding/slots/inference/serve.py` 는 **실제 Lv30 LLM(Claude Haiku) fallback + Lv20 모델 경로**를 가졌고, Lv10 keyword-miss(~20%)를 프로덕션에서 복구했다. 앞단 제거로 이 serve.py 가 삭제됐고 **UUG 의 Lv30 은 미빌드(후속)** → keyword-miss 발화의 LLM 복구 경로가 현재 **없음**. 비회귀 측정(UUG 84% ≥ MSO 80%)은 **양쪽 `GROUNDING_SKIP_LLM=1` Lv10-only** 수치라 이 Lv30 격차를 반영하지 않는다. serve.py 로직은 git history 에 보존 — UUG Lv30 으로 포팅 필요(미결).
+
 ## v0.3.4 (2026-06-13)
 
 > **work-memory 엔진 타입 어휘를 schema-driven 화 — 같은 엔진을 다른 스코프로 재사용 가능.** `wm_node.py` 가 타입 prefix/dir(과 relation 어휘)을 하드코딩 대신 `WORKMEM_DIR/schema.yaml` 의 `types:`/`relation_types:` 에서 읽는다. **하위호환**: `types:` 섹션이 없으면 기존 work-memory 7타입 기본값으로 fallback(기존 프로젝트 무영향). 이로써 동일 엔진(jsonl+zvec+graph)을 user-memory(UC/UP/UF) 같은 다른 스코프로 재사용 — `user-utterance-grounding` user-memory 레이어의 토대. 스킬 수 8개 유지.
@@ -55,7 +72,7 @@
 | 추가 | 내용 |
 |------|------|
 | `mso-utterance-grounding` | 자연어 발화 → `GroundedCommand` 변환 Smart Tool. 4-slot pipeline(input_norm→rules→inference→script). Lv10 keyword 라우터 + Lv30 LLM fallback, analytics 누적 후 Lv20 경량 모델로 escalation-down |
-| `mso-intent-registry` | MSO 도메인 NLU 어휘 단일 정본. LinkML schema(`nlu_intent.yaml`) · TTL instances · SKOS taxonomy · intent matrix 소유. `lookup.py` lookup API(list_intents/lookup_intent/lookup_target) 제공 |
+| `mso-intent-analytics` | MSO 도메인 NLU 어휘 단일 정본. LinkML schema(`nlu_intent.yaml`) · TTL instances · SKOS taxonomy · intent matrix 소유. `lookup.py` lookup API(list_intents/lookup_intent/lookup_target) 제공 |
 | `mso-conversation-analytics` | `turns.jsonl`을 DuckDB in-memory로 분석. 전환 행렬·퍼널·reprompt율·미해결 발화 측정 + Closed-loop 환류 보고서 + Tier Escalation 신호 생성 (`duckdb` 선택 의존성) |
 
 ### Changed

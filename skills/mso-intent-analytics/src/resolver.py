@@ -1,15 +1,9 @@
 """
-script slot — Target Resolver
-entity_ref 후보를 slots_filled에서 찾아 mso-intent-registry.lookup_target() 호출.
+dispatch — Target Resolver
+entity_ref 후보를 slots_filled에서 찾아 lookup_target() 호출.
+(mso-intent-analytics 내부 모듈 — lookup 과 co-located.)
 """
 from __future__ import annotations
-import sys
-from pathlib import Path
-
-_REGISTRY_SRC = Path(__file__).parent.parent.parent.parent / \
-    "mso-intent-registry" / "src"
-if str(_REGISTRY_SRC) not in sys.path:
-    sys.path.insert(0, str(_REGISTRY_SRC))
 
 # entity_ref로 쓸 수 있는 슬롯 이름 (우선순위 순)
 _ENTITY_REF_SLOTS = ["ticket_ref", "run_ref", "workflow_ref", "gate_ref"]

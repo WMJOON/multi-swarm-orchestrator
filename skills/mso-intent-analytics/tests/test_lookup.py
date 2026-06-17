@@ -1,6 +1,6 @@
 """
-mso-intent-registry Lookup API smoke tests (M2 DoD)
-실행: cd repository-test/skills/mso-intent-registry && python -m pytest tests/ -v
+mso-intent-analytics Lookup API smoke tests (M2 DoD)
+실행: cd repository-test/skills/mso-intent-analytics && python -m pytest tests/ -v
 """
 import sys
 from pathlib import Path

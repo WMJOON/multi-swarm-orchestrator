@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12",
   "title": "GroundedCommand",
-  "description": "Thin Agent 입력 계약. mso-utterance-grounding 출력.",
+  "description": "Thin Agent 입력 계약. mso-intent-analytics 뒷단 dispatch(pipeline.ground) 출력.",
   "type": "object",
   "required": ["intent_id", "slots", "tier", "session_id", "turn_id"],
   "properties": {
