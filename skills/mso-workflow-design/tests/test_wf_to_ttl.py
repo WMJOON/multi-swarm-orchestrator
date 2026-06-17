@@ -322,6 +322,25 @@ def test_ttl_to_wf_cli_gate_blocks_yaml(tmp_path):
     assert "phases:" not in out.stdout
 
 
+def test_x_extension_namespace_ignored(tmp_path):
+    """top-level x_* 확장 키(소비자 도메인 필드, 예: MSM 실행 계약)는 phase 로 오인되지 않는다."""
+    import wf_node
+    doc = {
+        "collect": {"id": "collect", "label": "C", "status": "active",
+                    "steps": [{"type": "step", "id": "c-s-01", "label": "작업",
+                               "instruction": "하라", "status": "active"}]},
+        "x_msm": {"kind": "pipeline", "inputs": [{"path": "a"}],
+                  "governance": {"hitl_required": True}},
+    }
+    p = _write(tmp_path, "ext.yaml", doc)
+    # wf_node: x_msm 이 phase 로 안 잡힘
+    phases = {k for k, _ in wf_node._collect_phases(doc)}
+    assert "collect" in phases and "x_msm" not in phases
+    # wf_to_ttl: 정합 통과 (x_msm 무시)
+    res = wf_to_ttl.validate(p)
+    assert res["ok"], res
+
+
 def test_generated_ttl_in_sync_with_schemas():
     """TBox/SHACL 가 schemas 에서 생성된 현재 상태와 일치(drift 가드). 불일치면 재생성 필요."""
     out = subprocess.run(

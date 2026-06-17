@@ -376,6 +376,8 @@ def _collect_phases(doc: dict) -> list[tuple[str, dict]]:
     for key, val in doc.items():
         if key in RESERVED_TOP_KEYS:
             continue
+        if key.startswith("x_") or key.startswith("x-"):
+            continue  # 확장 네임스페이스(OpenAPI x- 패턴) — 소비자(MSM 등) 도메인 필드. phase 아님.
         if isinstance(val, dict):
             out.append((key, val))
     return out

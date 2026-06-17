@@ -27,6 +27,11 @@ description: >
 > 로 개명. 시각화 소비자(`workflow_to_mermaid.py`)의 `--global`·`01-global-workflow.md` 어휘 정정은
 > 2단계(소비자 이관)로 유보.
 
+> **확장 네임스페이스 (`x_*`)**: MSO 구조를 baseline 으로 쓰는 소비자(예: MSM)는 도메인 필드를
+> top-level `x_<consumer>:` 키에 둔다(OpenAPI `x-` 패턴). wf_node·wf_to_ttl 은 `x_*`/`x-*` 최상위
+> 키를 **phase 가 아닌 확장으로 무시**한다 → 한 워크플로가 MSO 구조 검증을 통과하면서 소비자
+> 실행 메타(예: MSM `x_msm`: inputs/outputs/runtime/governance)를 함께 실을 수 있다.
+
 ## Abstraction Principle
 
 이 스킬은 **구조적 검증**과 **judge taxonomy** 만 강제한다. 네이밍 패턴·동사 어휘·phase 이름·directory role 어휘 등은 **프로젝트 영역**.
