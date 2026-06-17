@@ -39,6 +39,11 @@ index.yaml                    →   모듈·디렉토리 구조 SSOT
 workflow/*.yaml               →   phase · step · decision · validation 노드
   + wf_node.py validate            스키마 검증 / judge 수준 검증
   + wf_node.py harness-manifest    CI manifest (validation 노드 추출)
+  + wf_to_ttl.py validate          ABox(TTL) 투영 → SHACL(shape) + SPARQL(비순환 DAG)
+
+TTL TBox/ABox                 ↔   workflow 형상의 그래프 표현 (파생)
+  schemas/*.yaml = SSOT            schemas_to_tbox.py → tbox/ + shapes/ 생성(drift 가드)
+  ttl_to_wf.py                     역방향: TTL → SHACL 게이트 → YAML 승격(ingestion)
 
 Markdown · Mermaid            ←   변환 산출물 (직접 편집 금지)
 ```
@@ -197,7 +202,7 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
 | `mso-orchestration` | — | — |
 | `mso-repository-setup` | Ops | `init.py` |
 | `mso-scaffold-design` | Design | `sf_node.py` |
-| `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py` |
+| `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py`, `wf_to_ttl.py`·`schemas_to_tbox.py`·`ttl_to_wf.py` (TTL TBox/ABox 검증) |
 | `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py`, `hooks/work-memory-check.sh` |
 | `mso-intent-analytics` *(§11)* | Data+Runtime | `src/lookup.py`(registry), `src/pipeline.py`(뒷단 dispatch), `references/schemas/nlu_intent.yaml` (LinkML) |
 | `mso-conversation-analytics` *(de-routed)* | Observability | `src/analytics.py` (DuckDB) — UUG 흡수 대기, 직접 호출만 |

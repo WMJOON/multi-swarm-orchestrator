@@ -17,6 +17,26 @@
 >
 > ⚠ **capability 회귀 (미해소)**: 구 `mso-utterance-grounding/slots/inference/serve.py` 는 **실제 Lv30 LLM(Claude Haiku) fallback + Lv20 모델 경로**를 가졌고, Lv10 keyword-miss(~20%)를 프로덕션에서 복구했다. 앞단 제거로 이 serve.py 가 삭제됐고 **UUG 의 Lv30 은 미빌드(후속)** → keyword-miss 발화의 LLM 복구 경로가 현재 **없음**. 비회귀 측정(UUG 84% ≥ MSO 80%)은 **양쪽 `GROUNDING_SKIP_LLM=1` Lv10-only** 수치라 이 Lv30 격차를 반영하지 않는다. serve.py 로직은 git history 에 보존 — UUG Lv30 으로 포팅 필요(미결).
 
+## Unreleased — workflow TTL TBox/ABox + SHACL/DAG 검증 (2026-06-17)
+
+> **workflow 구조를 DL TBox/ABox 로 형식화.** `schemas/*.yaml` 이 단일 SSOT, TBox 온톨로지·SHACL shape 는 그로부터 *생성*된 파생물(drift 0). intent 쪽 TTL 과 그래프 패러다임 수렴. mso-workflow-design 만 해당, 스킬 수 불변.
+
+### Added
+| 항목 | 내용 |
+|------|------|
+| `scripts/schemas_to_tbox.py` | schemas/*.yaml → TBox(`references/tbox/workflow-tbox.ttl`) + SHACL(`references/shapes/workflow-shapes.ttl`) 생성. `required`→minCount, `enum`→sh:in, `required_when`→조건부 sh:or. `--check` drift 가드. |
+| `scripts/wf_to_ttl.py` | workflow YAML → ABox(TTL) 투영 + 검증: pyshacl(로컬 shape, ABox↔TBox 정합) + SPARQL(`?x (dependsOn\|criticalDep)+ ?x` 비순환) + 교차-스킬(`--index`, scaffold 경로 멤버십, `wf_node._resolve_scaffold` 재사용). |
+| `scripts/ttl_to_wf.py` | 역방향 TTL→YAML ingestion. SHACL+비순환 **게이트 통과분만** YAML 승격(불량 차단). schema-구동 카디널리티 재구성. |
+| `references/tbox/`, `references/shapes/` | 생성물(직접편집 금지). 클래스(Phase/Node⊃Step·Decision·Validation·Group, WorkflowRef/Module/Milestone) + property + judge/status 통제어휘. |
+
+### Changed
+| 변경 | 내용 |
+|------|------|
+| `references/schemas/step.schema.yaml` | `instruction`(지시격 — 실행 지시) **필수** 추가. label(서술) ↔ instruction(지시) 구분. |
+| `assets/global-workflow-template.yaml` → `root-workflow-template.yaml` | 개명. 층위 어휘 정립: `global`=UUG(엄브렐러 루트) / `root-workflow`+`sub-workflow`=MSO(프로젝트 내, 타입 아닌 위치). |
+
+> **SSOT 방향(§11.2)**: workflow SSOT-of-record = YAML. TTL 은 (a) 검증·그래프 파생, (b) ttl_to_wf 의 생성/수기 ingestion 입력. hook 은 TTL 직접 소비 안 함 — CLI subprocess 호출(exit code 만), rdflib 부재 시 wf_node(pyyaml) 구조검증으로 degrade.
+
 ## v0.3.4 (2026-06-13)
 
 > **work-memory 엔진 타입 어휘를 schema-driven 화 — 같은 엔진을 다른 스코프로 재사용 가능.** `wm_node.py` 가 타입 prefix/dir(과 relation 어휘)을 하드코딩 대신 `WORKMEM_DIR/schema.yaml` 의 `types:`/`relation_types:` 에서 읽는다. **하위호환**: `types:` 섹션이 없으면 기존 work-memory 7타입 기본값으로 fallback(기존 프로젝트 무영향). 이로써 동일 엔진(jsonl+zvec+graph)을 user-memory(UC/UP/UF) 같은 다른 스코프로 재사용 — `user-utterance-grounding` user-memory 레이어의 토대. 스킬 수 8개 유지.
