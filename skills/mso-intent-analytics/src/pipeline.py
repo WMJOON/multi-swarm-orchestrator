@@ -106,3 +106,40 @@ def ground(
         )
 
     return grounded
+
+
+# ─── CLI 진입점 (§11 배선: UUG→MSO subprocess 경계) ──────────────
+# UUG(uug-grounding)가 앞단(utterance→intent)을 끝낸 뒤, 도메인 intent 의
+# 뒷단(slot→target→validate→turn)을 이 CLI 로 위임한다. 프로세스 경계로
+# 디커플 — MSO 는 UUG 를 import 하지 않고 stdout JSON 만 계약으로 노출한다.
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    import json
+
+    ap = argparse.ArgumentParser(
+        prog="mso-dispatch",
+        description="MSO intent→action 뒷단 (intent_id → GroundedCommand JSON).",
+    )
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    g = sub.add_parser("ground", help="intent_id + 발화 → GroundedCommand JSON (stdout)")
+    g.add_argument("--intent-id", required=True, help="UUG 가 해석한 intent_id (필수)")
+    g.add_argument("--utterance", required=True, help="slot 추출용 원문 발화")
+    g.add_argument("--session-context", default=None, help="SessionContext JSON (선택)")
+    g.add_argument("--no-write", action="store_true", help="turns.jsonl append 생략(테스트)")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "ground":
+        ctx = json.loads(args.session_context) if args.session_context else None
+        grounded = ground(
+            args.utterance,
+            intent_id=args.intent_id,
+            session_context=ctx,
+            write_turn=not args.no_write,
+        )
+        print(json.dumps(grounded, ensure_ascii=False))
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

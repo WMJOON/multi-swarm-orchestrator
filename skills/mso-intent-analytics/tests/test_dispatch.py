@@ -145,3 +145,37 @@ def test_e2e_reprompt_when_ticket_missing():
     assert r["intent_id"] == "dispatch_ticket"
     assert r["reprompt_needed"] is True
     assert "ticket_ref" in r["reprompt_slots"]
+
+
+# ─── CLI 진입점 (§11 배선: UUG→MSO subprocess 계약) ──────────
+
+def test_cli_ground_emits_grounded_command_json():
+    """UUG 가 subprocess 로 부르는 계약: stdout 은 GroundedCommand JSON 한 줄."""
+    import subprocess
+
+    out = subprocess.run(
+        [sys.executable, str(_SRC / "pipeline.py"), "ground",
+         "--intent-id", "dispatch_ticket",
+         "--utterance", "ticket-217 재실행", "--no-write"],
+        capture_output=True, text=True, check=True,
+    )
+    grounded = json.loads(out.stdout)
+    assert grounded["intent_id"] == "dispatch_ticket"
+    assert grounded["tier"] == "UUG"
+    assert grounded["slots"]["ticket_ref"] == "ticket-217"
+    assert grounded["target_id"] == "ticket-217"
+    assert grounded["reprompt_needed"] is False
+
+
+def test_cli_ground_reprompt_path():
+    import subprocess
+
+    out = subprocess.run(
+        [sys.executable, str(_SRC / "pipeline.py"), "ground",
+         "--intent-id", "dispatch_ticket",
+         "--utterance", "재실행해줘", "--no-write"],
+        capture_output=True, text=True, check=True,
+    )
+    grounded = json.loads(out.stdout)
+    assert grounded["reprompt_needed"] is True
+    assert "ticket_ref" in grounded["reprompt_slots"]
