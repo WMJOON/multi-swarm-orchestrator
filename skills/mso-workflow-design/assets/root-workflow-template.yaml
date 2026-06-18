@@ -15,10 +15,10 @@ phases:
     status: completed
     dependencies: []
     workflows:
-      - ref: 01.consultdata/01.consultdata-workflow-00.yaml#discovery
-      - ref: 02.AI-Chatbot-Policy/02.AI-Chatbot-Policy-workflow-00.yaml#discovery
-      - ref: 03.sensitive-data-masking/03.sensitive-data-masking-workflow-00.yaml#discovery
-      - ref: 04.AIKON7/04.AIKON7-workflow-00.yaml#discovery
+      - ref: 01.ingestion/01.ingestion-workflow-00.yaml#discovery
+      - ref: 02.policy-engine/02.policy-engine-workflow-00.yaml#discovery
+      - ref: 03.data-masking/03.data-masking-workflow-00.yaml#discovery
+      - ref: 04.vendor-x/04.vendor-x-workflow-00.yaml#discovery
       - ref: 10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#discovery
 
   - id: phase-02-development
@@ -28,10 +28,10 @@ phases:
     dependencies: [phase-01-discovery]
     parallel: true
     workflows:
-      - ref: 01.consultdata/01.consultdata-workflow-00.yaml#development
-      - ref: 02.AI-Chatbot-Policy/02.AI-Chatbot-Policy-workflow-00.yaml#development
-      - ref: 03.sensitive-data-masking/03.sensitive-data-masking-workflow-00.yaml#development
-      - ref: 04.AIKON7/04.AIKON7-workflow-00.yaml#development
+      - ref: 01.ingestion/01.ingestion-workflow-00.yaml#development
+      - ref: 02.policy-engine/02.policy-engine-workflow-00.yaml#development
+      - ref: 03.data-masking/03.data-masking-workflow-00.yaml#development
+      - ref: 04.vendor-x/04.vendor-x-workflow-00.yaml#development
       - ref: 10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#development
 
   - id: phase-03-testing
@@ -41,10 +41,10 @@ phases:
     dependencies: [phase-02-development]
     parallel: true
     workflows:
-      - ref: 01.consultdata/01.consultdata-workflow-00.yaml#testing
-      - ref: 02.AI-Chatbot-Policy/02.AI-Chatbot-Policy-workflow-00.yaml#testing
-      - ref: 03.sensitive-data-masking/03.sensitive-data-masking-workflow-00.yaml#testing
-      - ref: 04.AIKON7/04.AIKON7-workflow-00.yaml#testing
+      - ref: 01.ingestion/01.ingestion-workflow-00.yaml#testing
+      - ref: 02.policy-engine/02.policy-engine-workflow-00.yaml#testing
+      - ref: 03.data-masking/03.data-masking-workflow-00.yaml#testing
+      - ref: 04.vendor-x/04.vendor-x-workflow-00.yaml#testing
       - ref: 10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#testing
 
   - id: phase-04-documentation
@@ -53,10 +53,10 @@ phases:
     status: completed
     dependencies: [phase-03-testing]
     workflows:
-      - ref: docs/01-consultdata.md
+      - ref: docs/01-ingestion.md
       - ref: docs/02-chatbot-policy.md
-      - ref: docs/03-sensitive-data-masking.md
-      - ref: docs/04-aikon7-rag-eval.md
+      - ref: docs/03-data-masking.md
+      - ref: docs/04-vendor-x-rag-eval.md
       - ref: docs/10-rag-corpus-dataset.md
 
   - id: phase-05-delivery
@@ -65,7 +65,7 @@ phases:
     status: pending
     dependencies: [phase-04-documentation]
     workflows:
-      - ref: 04.AIKON7/2026-05-13 전달 문서/분석_결과_보고서.md
+      - ref: 04.vendor-x/2026-05-13 docs/analysis-report.md
 
 milestones:
   - id: m-core-modules-ready
@@ -88,8 +88,8 @@ milestones:
 
 key_decisions:
   - decision: RAG 평가 엔진을 GitHub submodule로 관리
-    rationale: 독립적인 버전 관리, AIKON7 협업 용이성
-    impact_modules: [04.AIKON7]
+    rationale: 독립적인 버전 관리, VendorX 협업 용이성
+    impact_modules: [04.vendor-x]
 
   - decision: 모듈별 상세 문서화 (Level 1 ~ Level 4)
     rationale: 다양한 사용자 유형(관리자, 개발자, 데이터 사이언티스트)을 위한 진행적 공개
@@ -100,20 +100,20 @@ key_decisions:
     impact_modules: [documentation]
 
 critical_dependencies:
-  - from: 02.AI-Chatbot-Policy
-    to: 01.consultdata
+  - from: 02.policy-engine
+    to: 01.ingestion
     description: 정책 수립을 위한 상담 데이터 분석 필요
 
-  - from: 03.sensitive-data-masking
-    to: 01.consultdata
+  - from: 03.data-masking
+    to: 01.ingestion
     description: PII 마스킹 테스트셋 구축을 위한 실제 상담 데이터 필요
 
-  - from: 04.AIKON7
+  - from: 04.vendor-x
     to: 10.RAG-Corpus-Dataset
     description: RAG 평가 엔진의 테스트셋 필요
 
-  - from: 04.AIKON7
-    to: 02.AI-Chatbot-Policy
+  - from: 04.vendor-x
+    to: 02.policy-engine
     description: 라우팅 정책이 RAG 평가 평가 기준에 포함됨
 
 success_criteria:
@@ -121,4 +121,4 @@ success_criteria:
   - test_coverage_rag_eval: "RAG 평가 엔진 테스트셋 3,955 QA 이상"
   - masking_accuracy: "PII 마스킹 정확도 95% 이상"
   - policy_validation: "정책 프레임워크 v1.0 검증 완료"
-  - stakeholder_approval: "AIKON7 벤더 협업 완료 및 승인"
+  - stakeholder_approval: "VendorX 벤더 협업 완료 및 승인"

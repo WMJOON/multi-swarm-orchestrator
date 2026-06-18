@@ -95,7 +95,7 @@ IN ──raised──> AD/UD ──followed-by──> ... ──resolved-by─�
     {"type": "resolved-by", "target": "TS-0017"}
   ],
   "metadata": {
-    "module": "02.AI-Chatbot-Policy",
+    "module": "02.policy-engine",
     "severity": "minor"
   }
 }

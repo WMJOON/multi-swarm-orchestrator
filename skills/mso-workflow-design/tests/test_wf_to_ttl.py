@@ -373,7 +373,7 @@ def test_workflowref_and_branches_roundtrip_lossless(tmp_path):
         "project": {"id": "p0", "name": "P0", "version": "1.0",
                     "owner": "o@x", "created": "2026-01-01", "description": "d"},
         "workflow": {"id": "lifecycle", "slug": "lifecycle", "description": "메인 사이클"},
-        "module": {"id": "04.AIKON7", "name": "AIKON7", "version": "1.0.0"},
+        "module": {"id": "04.vendor-x", "name": "VendorX", "version": "1.0.0"},
         "meta": {"author": "me", "tags": ["a", "b"], "nested": {"k": 1}},
         "x_msm": {"kind": "pipeline", "governance": {"hitl_required": True}},
         "phases": [{
@@ -418,7 +418,7 @@ def test_workflowref_and_branches_roundtrip_lossless(tmp_path):
     assert out["milestones"][0]["date"] == "2026-02-01"
     # top-level 메타 블록(workflow/module/meta/x_*) 무손실
     assert out["workflow"] == {"id": "lifecycle", "slug": "lifecycle", "description": "메인 사이클"}
-    assert out["module"] == {"id": "04.AIKON7", "name": "AIKON7", "version": "1.0.0"}
+    assert out["module"] == {"id": "04.vendor-x", "name": "VendorX", "version": "1.0.0"}
     assert out["meta"]["nested"] == {"k": 1} and out["meta"]["tags"] == ["a", "b"]
     assert out["x_msm"]["governance"] == {"hitl_required": True}
 

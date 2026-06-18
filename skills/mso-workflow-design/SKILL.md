@@ -169,8 +169,8 @@ phase-01-discovery:
   label: 발견 & 계획
   status: active
   workflows:
-    - ref: 02.AI-Chatbot-Policy/workflow/02.AI-Chatbot-Policy-workflow-00.yaml#discovery
-      module: 02.AI-Chatbot-Policy        # required (scaffold module id 와 일치)
+    - ref: 02.policy-engine/workflow/02.policy-engine-workflow-00.yaml#discovery
+      module: 02.policy-engine        # required (scaffold module id 와 일치)
       harness_propagate: true             # default true
 ```
 
@@ -198,7 +198,7 @@ phase-01-discovery:
 ```bash
 cd workflow/scripts
 python validate_workflow.py            # 전체 검증
-python validate_workflow.py --module 04.AIKON7  # 단일 모듈
+python validate_workflow.py --module 04.vendor-x  # 단일 모듈
 python validate_workflow.py --strict   # warning까지 error로 승격
 ```
 
@@ -278,11 +278,11 @@ python ttl_to_wf.py  workflow/workflow-00.abox.ttl -o workflow/workflow-00.yaml
 단일 모듈 YAML을 받아 mermaid 다이어그램 + phase 테이블(ID/Type/Title/State/Output/Validation) + 메타데이터를 하나의 .md로 출력한다.
 
 ```bash
-python workflow_to_markdown.py workflow/04.AIKON7/04.AIKON7-workflow-00.yaml
-# → workflow/04.AIKON7/04.AIKON7-workflow-00.md
+python workflow_to_markdown.py workflow/04.vendor-x/04.vendor-x-workflow-00.yaml
+# → workflow/04.vendor-x/04.vendor-x-workflow-00.md
 
-python workflow_to_markdown.py workflow/04.AIKON7/04.AIKON7-workflow-00.yaml \
-  -o workflow/04.AIKON7/04.AIKON7-workflow.md
+python workflow_to_markdown.py workflow/04.vendor-x/04.vendor-x-workflow-00.yaml \
+  -o workflow/04.vendor-x/04.vendor-x-workflow.md
 ```
 
 - 노드 형태: step → `[]`, decision → `{}` (마름모), validation → `{{}}` (육각형), group → `([])`
@@ -315,7 +315,7 @@ python workflow_to_mermaid.py --all    # 자동으로 validate_workflow.py 선�
 개별 다이어그램만 생성:
 ```bash
 python workflow_to_mermaid.py --global
-python workflow_to_mermaid.py --module 01.consultdata
+python workflow_to_mermaid.py --module 01.ingestion
 python workflow_to_mermaid.py --dependencies
 ```
 
@@ -342,16 +342,16 @@ deliverables:
 
 ### Module ID 일관성
 디렉토리명 = `module.id` = YAML 파일명 prefix.  
-예: `04.AIKON7/` 디렉토리 → `id: 04.AIKON7` → `04.AIKON7-workflow-00.yaml`
+예: `04.vendor-x/` 디렉토리 → `id: 04.vendor-x` → `04.vendor-x-workflow-00.yaml`
 
 ### Dependencies는 모듈 ID로 참조
 ```yaml
 dependencies:
   - requires: 상담 데이터 분석 결과
-    source: 01.consultdata
+    source: 01.ingestion
     status: ready
   - provides: 라우팅 정책
-    consumers: [04.AIKON7]
+    consumers: [04.vendor-x]
 ```
 
 ## 검증 체크리스트

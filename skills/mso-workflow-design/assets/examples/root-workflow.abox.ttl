@@ -2,30 +2,30 @@
 @prefix wf: <https://mso.dev/ontology/workflow#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-<https://mso.dev/ontology/workflow#criticaldep/02.AI-Chatbot-Policy__01.consultdata> a wf:CriticalDependency ;
-    wf:cdFrom "02.AI-Chatbot-Policy" ;
-    wf:cdTo "01.consultdata" ;
+<https://mso.dev/ontology/workflow#criticaldep/02.policy-engine__01.ingestion> a wf:CriticalDependency ;
+    wf:cdFrom "02.policy-engine" ;
+    wf:cdTo "01.ingestion" ;
     wf:description "정책 수립을 위한 상담 데이터 분석 필요" .
 
-<https://mso.dev/ontology/workflow#criticaldep/03.sensitive-data-masking__01.consultdata> a wf:CriticalDependency ;
-    wf:cdFrom "03.sensitive-data-masking" ;
-    wf:cdTo "01.consultdata" ;
+<https://mso.dev/ontology/workflow#criticaldep/03.data-masking__01.ingestion> a wf:CriticalDependency ;
+    wf:cdFrom "03.data-masking" ;
+    wf:cdTo "01.ingestion" ;
     wf:description "PII 마스킹 테스트셋 구축을 위한 실제 상담 데이터 필요" .
 
-<https://mso.dev/ontology/workflow#criticaldep/04.AIKON7__02.AI-Chatbot-Policy> a wf:CriticalDependency ;
-    wf:cdFrom "04.AIKON7" ;
-    wf:cdTo "02.AI-Chatbot-Policy" ;
+<https://mso.dev/ontology/workflow#criticaldep/04.vendor-x__02.policy-engine> a wf:CriticalDependency ;
+    wf:cdFrom "04.vendor-x" ;
+    wf:cdTo "02.policy-engine" ;
     wf:description "라우팅 정책이 RAG 평가 평가 기준에 포함됨" .
 
-<https://mso.dev/ontology/workflow#criticaldep/04.AIKON7__10.RAG-Corpus-Dataset> a wf:CriticalDependency ;
-    wf:cdFrom "04.AIKON7" ;
+<https://mso.dev/ontology/workflow#criticaldep/04.vendor-x__10.RAG-Corpus-Dataset> a wf:CriticalDependency ;
+    wf:cdFrom "04.vendor-x" ;
     wf:cdTo "10.RAG-Corpus-Dataset" ;
     wf:description "RAG 평가 엔진의 테스트셋 필요" .
 
 <https://mso.dev/ontology/workflow#keydecision/14d03a75> a wf:KeyDecision ;
     wf:decisionText "RAG 평가 엔진을 GitHub submodule로 관리" ;
-    wf:impactModule "04.AIKON7" ;
-    wf:rationale "독립적인 버전 관리, AIKON7 협업 용이성" .
+    wf:impactModule "04.vendor-x" ;
+    wf:rationale "독립적인 버전 관리, VendorX 협업 용이성" .
 
 <https://mso.dev/ontology/workflow#keydecision/41cdf440> a wf:KeyDecision ;
     wf:decisionText "모듈별 상세 문서화 (Level 1 ~ Level 4)" ;
@@ -55,11 +55,11 @@
     wf:milestoneOf <https://mso.dev/ontology/workflow#phase/phase-03-testing> ;
     wf:status "pending" .
 
-<https://mso.dev/ontology/workflow#module/03.sensitive-data-masking> a wf:Module ;
-    wf:criticalDep <https://mso.dev/ontology/workflow#module/01.consultdata> .
+<https://mso.dev/ontology/workflow#module/03.data-masking> a wf:Module ;
+    wf:criticalDep <https://mso.dev/ontology/workflow#module/01.ingestion> .
 
-<https://mso.dev/ontology/workflow#module/04.AIKON7> a wf:Module ;
-    wf:criticalDep <https://mso.dev/ontology/workflow#module/02.AI-Chatbot-Policy>,
+<https://mso.dev/ontology/workflow#module/04.vendor-x> a wf:Module ;
+    wf:criticalDep <https://mso.dev/ontology/workflow#module/02.policy-engine>,
         <https://mso.dev/ontology/workflow#module/10.RAG-Corpus-Dataset> .
 
 <https://mso.dev/ontology/workflow#project/workflow-00> a wf:Project ;
@@ -84,24 +84,24 @@
 
 <https://mso.dev/ontology/workflow#sc/stakeholder_approval> a wf:SuccessCriterion ;
     wf:scKey "stakeholder_approval" ;
-    wf:scValue "AIKON7 벤더 협업 완료 및 승인" .
+    wf:scValue "VendorX 벤더 협업 완료 및 승인" .
 
 <https://mso.dev/ontology/workflow#sc/test_coverage_rag_eval> a wf:SuccessCriterion ;
     wf:scKey "test_coverage_rag_eval" ;
     wf:scValue "RAG 평가 엔진 테스트셋 3,955 QA 이상" .
 
-<https://mso.dev/ontology/workflow#module/02.AI-Chatbot-Policy> a wf:Module ;
-    wf:criticalDep <https://mso.dev/ontology/workflow#module/01.consultdata> .
+<https://mso.dev/ontology/workflow#module/02.policy-engine> a wf:Module ;
+    wf:criticalDep <https://mso.dev/ontology/workflow#module/01.ingestion> .
 
 <https://mso.dev/ontology/workflow#module/10.RAG-Corpus-Dataset> a wf:Module .
 
 <https://mso.dev/ontology/workflow#phase/phase-01-discovery> a wf:Phase ;
     wf:description "모듈별 요구사항 분석, 범위 정의, 리소스 할당" ;
     wf:label "발견 & 계획 (Discovery & Planning)" ;
-    wf:refersTo "01.consultdata/01.consultdata-workflow-00.yaml#discovery",
-        "02.AI-Chatbot-Policy/02.AI-Chatbot-Policy-workflow-00.yaml#discovery",
-        "03.sensitive-data-masking/03.sensitive-data-masking-workflow-00.yaml#discovery",
-        "04.AIKON7/04.AIKON7-workflow-00.yaml#discovery",
+    wf:refersTo "01.ingestion/01.ingestion-workflow-00.yaml#discovery",
+        "02.policy-engine/02.policy-engine-workflow-00.yaml#discovery",
+        "03.data-masking/03.data-masking-workflow-00.yaml#discovery",
+        "04.vendor-x/04.vendor-x-workflow-00.yaml#discovery",
         "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#discovery" ;
     wf:status "completed" .
 
@@ -109,10 +109,10 @@
     wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-03-testing> ;
     wf:description "최종 산출물 문서화, 사용자 가이드, 인계 문서 작성" ;
     wf:label "문서화 & 전달 (Documentation & Delivery)" ;
-    wf:refersTo "docs/01-consultdata.md",
+    wf:refersTo "docs/01-ingestion.md",
         "docs/02-chatbot-policy.md",
-        "docs/03-sensitive-data-masking.md",
-        "docs/04-aikon7-rag-eval.md",
+        "docs/03-data-masking.md",
+        "docs/04-vendor-x-rag-eval.md",
         "docs/10-rag-corpus-dataset.md" ;
     wf:status "completed" .
 
@@ -120,20 +120,20 @@
     wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-04-documentation> ;
     wf:description "최종 검수, 벤더 인계, 운영 인수인계" ;
     wf:label "인계 & 배포 (Handoff & Deployment)" ;
-    wf:refersTo "04.AIKON7/2026-05-13 전달 문서/분석_결과_보고서.md" ;
+    wf:refersTo "04.vendor-x/2026-05-13 docs/analysis-report.md" ;
     wf:status "pending" .
 
-<https://mso.dev/ontology/workflow#module/01.consultdata> a wf:Module .
+<https://mso.dev/ontology/workflow#module/01.ingestion> a wf:Module .
 
 <https://mso.dev/ontology/workflow#phase/phase-02-development> a wf:Phase ;
     wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-01-discovery> ;
     wf:description "각 모듈의 핵심 기능 개발 및 구현" ;
     wf:label "개발 & 구현 (Development & Implementation)" ;
     wf:parallel true ;
-    wf:refersTo "01.consultdata/01.consultdata-workflow-00.yaml#development",
-        "02.AI-Chatbot-Policy/02.AI-Chatbot-Policy-workflow-00.yaml#development",
-        "03.sensitive-data-masking/03.sensitive-data-masking-workflow-00.yaml#development",
-        "04.AIKON7/04.AIKON7-workflow-00.yaml#development",
+    wf:refersTo "01.ingestion/01.ingestion-workflow-00.yaml#development",
+        "02.policy-engine/02.policy-engine-workflow-00.yaml#development",
+        "03.data-masking/03.data-masking-workflow-00.yaml#development",
+        "04.vendor-x/04.vendor-x-workflow-00.yaml#development",
         "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#development" ;
     wf:status "completed" .
 
@@ -142,10 +142,10 @@
     wf:description "각 모듈의 품질 검증, 성능 벤치마크, 통합 테스트" ;
     wf:label "테스트 & 평가 (Testing & Evaluation)" ;
     wf:parallel true ;
-    wf:refersTo "01.consultdata/01.consultdata-workflow-00.yaml#testing",
-        "02.AI-Chatbot-Policy/02.AI-Chatbot-Policy-workflow-00.yaml#testing",
-        "03.sensitive-data-masking/03.sensitive-data-masking-workflow-00.yaml#testing",
-        "04.AIKON7/04.AIKON7-workflow-00.yaml#testing",
+    wf:refersTo "01.ingestion/01.ingestion-workflow-00.yaml#testing",
+        "02.policy-engine/02.policy-engine-workflow-00.yaml#testing",
+        "03.data-masking/03.data-masking-workflow-00.yaml#testing",
+        "04.vendor-x/04.vendor-x-workflow-00.yaml#testing",
         "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#testing" ;
     wf:status "active" .
 
