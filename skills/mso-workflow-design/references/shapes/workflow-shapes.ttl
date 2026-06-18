@@ -14,6 +14,10 @@ wf:StatusShape a sh:NodeShape ; sh:targetSubjectsOf wf:status ;
                   sh:in ( "completed" "active" "pending" ) ;
                   sh:message "status 는 completed|active|pending 중 하나" ] .
 
+wf:BranchShape a sh:NodeShape ; sh:targetClass wf:Branch ;
+    sh:property [ sh:path wf:on ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "on: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:goto ; sh:datatype xsd:string ; sh:message "goto: schema 제약 위반" ] .
+
 wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
@@ -35,6 +39,8 @@ wf:GroupShape a sh:NodeShape ; sh:targetClass wf:Group ;
 
 wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:parallel ; sh:datatype xsd:boolean ; sh:message "parallel: schema 제약 위반" ] ;
     sh:property [ sh:path wf:showWrapper ; sh:datatype xsd:boolean ; sh:message "showWrapper: schema 제약 위반" ] ;
     sh:property [ sh:path wf:defaultJudge ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" ) ; sh:message "defaultJudge: schema 제약 위반" ] .
 
@@ -58,7 +64,12 @@ wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:property [ sh:path wf:dependsOn ; sh:class wf:Phase ;
                   sh:message "dependsOn 타깃은 wf:Phase 여야 함" ] ;
     sh:property [ sh:path wf:hasNode ; sh:class wf:Node ;
-                  sh:message "hasNode 타깃은 wf:Node 여야 함" ] .
+                  sh:message "hasNode 타깃은 wf:Node 여야 함" ] ;
+    sh:property [ sh:path wf:hasWorkflowRef ; sh:class wf:WorkflowRef ;
+                  sh:message "hasWorkflowRef 타깃은 wf:WorkflowRef 여야 함" ] .
+wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
+    sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
+                  sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
 wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .

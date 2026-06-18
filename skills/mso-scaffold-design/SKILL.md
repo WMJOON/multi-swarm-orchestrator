@@ -69,17 +69,17 @@ description: >
 ```yaml
 # root index.yaml
 modules:
-  - id: 02.AI-Chatbot-Policy
-    path: 02.AI-Chatbot-Policy/
-    sub_index: 02.AI-Chatbot-Policy/index.yaml   # 명시 (자동 발견 X)
+  - id: 02.policy-engine
+    path: 02.policy-engine/
+    sub_index: 02.policy-engine/index.yaml   # 명시 (자동 발견 X)
 ```
 
 ```yaml
-# 02.AI-Chatbot-Policy/index.yaml (sub)
+# 02.policy-engine/index.yaml (sub)
 project:
-  id: 02.Chatbot-1.0       # root project.id 와 일치 필수
+  id: 02.assistant-v1.0       # root project.id 와 일치 필수
 modules:
-  - id: 02.AI-Chatbot-Policy
+  - id: 02.policy-engine
     path: ./
     subdirs:
       - path: 01.staging/
@@ -168,27 +168,27 @@ python sf_node.py tree index.yaml
 
 ### Module ID = 디렉토리명
 ```yaml
-- id: 04.AIKON7          # 디렉토리명과 동일
-  path: 04.AIKON7/       # 디렉토리명 + 슬래시
+- id: 04.vendor-x          # 디렉토리명과 동일
+  path: 04.vendor-x/       # 디렉토리명 + 슬래시
 ```
 
 ### Subdir path는 모듈 path 기준 상대경로
 ```yaml
 modules:
-  - id: 01.consultdata
-    path: 01.consultdata/
+  - id: 01.ingestion
+    path: 01.ingestion/
     subdirs:
-      - path: 02.data/    # 01.consultdata/02.data/ 를 의미
+      - path: 02.data/    # 01.ingestion/02.data/ 를 의미
 ```
 
 ### References는 모듈 ID로 참조
 ```yaml
 modules:
-  - id: 02.AI-Chatbot-Policy
+  - id: 02.policy-engine
     references:
-      - consumes: 01.consultdata        # 다른 모듈 id
+      - consumes: 01.ingestion        # 다른 모듈 id
         artifacts: [상담 데이터 분석 결과]
-      - provides_to: [04.AIKON7]
+      - provides_to: [04.vendor-x]
         artifacts: [라우팅 정책]
 ```
 

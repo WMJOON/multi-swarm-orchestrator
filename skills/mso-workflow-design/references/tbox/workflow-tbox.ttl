@@ -18,6 +18,8 @@ wf: a owl:Ontology ;
 
 # ─── 클래스 (schema type) ──────────────────────────────────────────────────────
 wf:Node a owl:Class ; rdfs:label "Node"@ko ; rdfs:comment "실행 노드 상위."@ko .
+wf:Branch a owl:Class ; rdfs:label "Branch"@ko ;
+    rdfs:comment "decision 노드의 조건별 분기. decision.branches[] 의 각 항목. on(조건) → goto(이동 node id) 매핑. 생략 시 sequential next. | invariants: on 비어있지 않음 on 은 부모 decision 의 judge_branch_conditions[judge] 에 속해야 함 (SHACL core 불가 → SPARQL/prose)"@ko .
 wf:Decision a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Decision"@ko ;
     rdfs:comment "분기/판단 노드. automation_gate가 여기에 속함. | invariants: id 는 워크플로우 내 unique judge ∈ {HITL, HITLFE, HOTL, HOOTL} branches[].on 은 judge_branch_conditions[judge] 에 속해야 함 HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"@ko .
 wf:Group a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Group"@ko ;
@@ -35,20 +37,23 @@ wf:WorkflowRef a owl:Class ; rdfs:label "WorkflowRef"@ko ;
 wf:artifacts a owl:DatatypeProperty ; rdfs:label "artifacts"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:defaultJudge a owl:DatatypeProperty ; rdfs:label "defaultJudge"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:deliverables a owl:DatatypeProperty ; rdfs:label "deliverables"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Step, Validation"@ko .
-wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Phase"@ko .
+wf:goto a owl:DatatypeProperty ; rdfs:label "goto"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:harness a owl:DatatypeProperty ; rdfs:label "harness"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
 wf:harnessPropagate a owl:DatatypeProperty ; rdfs:label "harnessPropagate"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:boolean .
 wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:judge a owl:DatatypeProperty ; rdfs:label "judge"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Group, Phase, Step, Validation"@ko .
 wf:module a owl:DatatypeProperty ; rdfs:label "module"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
+wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
 wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:parallel a owl:DatatypeProperty ; rdfs:label "parallel"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
 wf:passCriteria a owl:DatatypeProperty ; rdfs:label "passCriteria"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
 wf:ref a owl:DatatypeProperty ; rdfs:label "ref"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
 wf:showWrapper a owl:DatatypeProperty ; rdfs:label "showWrapper"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
 wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Phase, Step, Validation"@ko .
+wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Group, Phase, Step, Validation"@ko .
 wf:subSteps a owl:DatatypeProperty ; rdfs:label "subSteps"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:successCriteria a owl:DatatypeProperty ; rdfs:label "successCriteria"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
@@ -78,6 +83,43 @@ wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:str
     rdfs:comment "directory.role (input/output/reference/instruction 등)."@ko .
 wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
     rdfs:comment "directory.path. 교차-스킬(scaffold) 멤버십 대상."@ko .
+
+# ─── 구조화 링크 (컨테이너 관계 — schema 필드 아님) ──────────────────────────────
+wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
+    rdfs:domain wf:Decision ; rdfs:range wf:Branch ;
+    rdfs:comment "decision.branches[] → Branch 노드(라운드트립)."@ko .
+wf:hasWorkflowRef a owl:ObjectProperty ; rdfs:label "hasWorkflowRef"@ko ;
+    rdfs:domain wf:Phase ; rdfs:range wf:WorkflowRef ;
+    rdfs:comment "phase.workflows[] 중 module 보유 항목 → WorkflowRef 노드(구조화). module 없는 doc-ref 는 wf:refersTo Literal 로 유지(dual-rep)."@ko .
+
+# ─── narrative/meta 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────
+wf:Project a owl:Class ; rdfs:label "Project"@ko ;
+    rdfs:comment "root-workflow 메타(project:). name/version/description/owner/created. (schema 없음)"@ko .
+wf:KeyDecision a owl:Class ; rdfs:label "KeyDecision"@ko ;
+    rdfs:comment "key_decisions[] 항목. decisionText/rationale/impactModule. (schema 없음)"@ko .
+wf:SuccessCriterion a owl:Class ; rdfs:label "SuccessCriterion"@ko ;
+    rdfs:comment "top-level success_criteria[] (scKey→scValue) 항목. (schema 없음)"@ko .
+wf:CriticalDependency a owl:Class ; rdfs:label "CriticalDependency"@ko ;
+    rdfs:comment "critical_dependencies[] 항목(서술 포함). from/to 는 DAG 검사용 wf:criticalDep 에지로도 투영(dual-rep). (schema 없음)"@ko .
+wf:MetaBlock a owl:Class ; rdfs:label "MetaBlock"@ko ;
+    rdfs:comment "top-level non-phase 메타 블록(workflow/module/meta/metadata + 소비자 x_* 확장). 임의 중첩 구조를 canonical JSON literal(rawJson)로 무손실 보존. (schema 없음)"@ko .
+
+wf:blockKey a owl:DatatypeProperty ; rdfs:label "blockKey"@ko ; rdfs:domain wf:MetaBlock ; rdfs:range xsd:string ;
+    rdfs:comment "메타 블록의 원본 top-level 키(workflow/module/meta/x_msm 등)."@ko .
+wf:rawJson a owl:DatatypeProperty ; rdfs:label "rawJson"@ko ; rdfs:domain wf:MetaBlock ; rdfs:range xsd:string ;
+    rdfs:comment "메타 블록 원본을 sort_keys canonical JSON 으로 직렬화(무손실·결정적)."@ko .
+
+wf:version a owl:DatatypeProperty ; rdfs:label "version"@ko ; rdfs:domain wf:Project ; rdfs:range xsd:string .
+wf:created a owl:DatatypeProperty ; rdfs:label "created"@ko ; rdfs:domain wf:Project ; rdfs:range xsd:string .
+wf:decisionText a owl:DatatypeProperty ; rdfs:label "decisionText"@ko ; rdfs:domain wf:KeyDecision ; rdfs:range xsd:string .
+wf:rationale a owl:DatatypeProperty ; rdfs:label "rationale"@ko ; rdfs:domain wf:KeyDecision ; rdfs:range xsd:string .
+wf:impactModule a owl:DatatypeProperty ; rdfs:label "impactModule"@ko ; rdfs:domain wf:KeyDecision ; rdfs:range xsd:string ;
+    rdfs:comment "key_decision.impact_modules[] 항목."@ko .
+wf:scKey a owl:DatatypeProperty ; rdfs:label "scKey"@ko ; rdfs:domain wf:SuccessCriterion ; rdfs:range xsd:string .
+wf:scValue a owl:DatatypeProperty ; rdfs:label "scValue"@ko ; rdfs:domain wf:SuccessCriterion ; rdfs:range xsd:string .
+wf:cdFrom a owl:DatatypeProperty ; rdfs:label "cdFrom"@ko ; rdfs:domain wf:CriticalDependency ; rdfs:range xsd:string .
+wf:cdTo a owl:DatatypeProperty ; rdfs:label "cdTo"@ko ; rdfs:domain wf:CriticalDependency ; rdfs:range xsd:string .
+wf:milestoneDate a owl:DatatypeProperty ; rdfs:label "milestoneDate"@ko ; rdfs:domain wf:Milestone ; rdfs:range xsd:string .
 
 # 통제어휘 (skos)
 wf:JudgeScheme a skos:ConceptScheme ; skos:prefLabel "Judge Levels"@ko .

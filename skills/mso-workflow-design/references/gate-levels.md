@@ -213,10 +213,10 @@ HOTL인데 모니터링 채널 미정의. 사실상 HOOTL.
 
 | Module | Decision Label | Recommended Judge | 이유 |
 |--------|---------------|-----------------|------|
-| 02.AI-Chatbot-Policy | 정책 변경 확정 검토 | HITL | 운영 영향, 롤백 비용 큼 |
-| 02.AI-Chatbot-Policy | 품질 기준 달성 여부 | HITLFE | F1 임계치 기반 에스컬레이션 |
-| 03.sensitive-data-masking | PII 신뢰도 검증 | HITLFE | 재식별 위험 차단 |
-| 04.AIKON7 | Faithfulness 검토 | HITLFE | 환각 의심 케이스 수동 검토 |
+| 02.policy-engine | 정책 변경 확정 검토 | HITL | 운영 영향, 롤백 비용 큼 |
+| 02.policy-engine | 품질 기준 달성 여부 | HITLFE | F1 임계치 기반 에스컬레이션 |
+| 03.data-masking | PII 신뢰도 검증 | HITLFE | 재식별 위험 차단 |
+| 04.vendor-x | Faithfulness 검토 | HITLFE | 환각 의심 케이스 수동 검토 |
 | 10.RAG-Corpus-Dataset | QA 골든셋 라벨 확인 | HITL | 평가 기준 정본 |
 
 ---

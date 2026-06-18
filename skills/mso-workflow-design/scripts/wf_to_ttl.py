@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """wf_to_ttl — workflow YAML 을 RDF(TTL) 그래프로 투영하고 shape 를 검증한다.
 
-설계 결정 (§ derived-TTL, 2026-06-17):
-  YAML 은 사람이 편집하는 *저작 표면*(단일 진실원)으로 유지하고, TTL 은 그래프
-  추론·검증용 *파생 뷰*다. 이 스크립트는 wf_node.py 의 resolve_workflow_tree 로
+설계 결정 (§ TTL-first, 2026-06-18):
+  TTL ABox 가 SSOT-of-record, YAML 은 편집 편의층이다. `serialize` 는 편집층 YAML 을
+  정본 ABox 로 **컴파일**하고(역은 ttl_to_wf — 무손실), `validate` 는 그 그래프를
+  검증한다. 이 스크립트는 wf_node.py 의 resolve_workflow_tree 로
   평탄화한 워크플로 트리를 rdflib 그래프로 투영한 뒤 두 층위로 검증한다:
 
     1) 로컬 shape (pyshacl)   — references/shapes/workflow-shapes.ttl
@@ -23,10 +24,12 @@
 로 가리키면 워크플로 자체 형상이 게이트가 된다(자기 검증).
 """
 import argparse
+import hashlib
+import json
 import sys
 from pathlib import Path
 
-from rdflib import BNode, Graph, Literal, Namespace, RDF, URIRef
+from rdflib import Graph, Literal, Namespace, RDF, URIRef
 from rdflib.namespace import RDFS
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -47,10 +50,18 @@ _TYPE_CLASS = {
 }
 
 
+def _safe(s) -> str:
+    """IRI-안전 슬러그: 영숫자·-._ 외는 _ 로."""
+    return "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(s))
+
+
+def _hash8(s: str) -> str:
+    return hashlib.sha1(str(s).encode("utf-8")).hexdigest()[:8]
+
+
 def _node_uri(node_id: str) -> URIRef:
     # IRI-안전: 공백·# 등을 _ 로. id 는 워크플로 내 unique 라는 전제.
-    safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(node_id))
-    return WF["node/" + safe]
+    return WF["node/" + _safe(node_id)]
 
 
 def _phase_uri(phase_id: str) -> URIRef:
@@ -107,13 +118,114 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef) -> None:
         g.add((nu, RDF.type, WF.Node))   # 명시 상위타입 — 추론 없이 hasNode range(sh:class wf:Node) 성립
         g.add((phase_uri, WF.hasNode, nu))
         _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/judge/owner/...
-        for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 blank node(라운드트립)
+        for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI, 라운드트립)
             if isinstance(d, dict) and d.get("path"):
-                dn = BNode()
+                dn = URIRef(str(nu) + "_dir_" + _safe(d["path"]))
                 g.add((nu, WF.directory, dn))
                 g.add((dn, WF.dirPath, Literal(str(d["path"]))))
                 if d.get("role"):
                     g.add((dn, WF.dirRole, Literal(str(d["role"]))))
+        for b in (n.get("branches") or []):  # 특수: decision.branches[] → wf:Branch 노드(안정 URI)
+            if not isinstance(b, dict):
+                continue
+            # 'on' 미인용 시 YAML 이 True 키로 파싱 → 정규화.
+            on_val = b.get("on", b.get(True))
+            if on_val is None:
+                continue
+            bn = URIRef(str(nu) + "_branch_" + _safe(str(on_val) + "_" + str(b.get("goto") or "")))
+            g.add((nu, WF.hasBranch, bn))
+            g.add((bn, RDF.type, WF.Branch))
+            g.add((bn, WF.on, Literal(str(on_val))))
+            if b.get("goto"):
+                g.add((bn, WF.goto, Literal(str(b["goto"]))))
+
+
+def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
+    """phase.workflows[] 투영. module 보유 → 구조화 wf:WorkflowRef 노드(라운드트립),
+    module 없는 doc-ref → wf:refersTo Literal(dual-rep, 템플릿 호환)."""
+    for ref in (phase.get("workflows") or []):
+        if not isinstance(ref, dict) or not ref.get("ref"):
+            continue
+        if ref.get("module"):
+            wr = URIRef(str(phase_uri) + "_wref_" + _safe(ref["module"]))
+            g.add((phase_uri, WF.hasWorkflowRef, wr))
+            g.add((wr, RDF.type, WF.WorkflowRef))
+            g.add((wr, WF.ref, Literal(str(ref["ref"]))))
+            g.add((wr, WF.module, Literal(str(ref["module"]))))
+            if "harness_propagate" in ref:
+                g.add((wr, WF.harnessPropagate, Literal(bool(ref["harness_propagate"]))))
+        else:
+            g.add((phase_uri, WF.refersTo, Literal(str(ref["ref"]))))
+
+
+# top-level non-phase 메타 블록(wf_node 의 phase-제외 키 + 소비자 x_* 확장).
+# 임의 중첩 구조(scalar/list/dict)를 가질 수 있어 canonical JSON literal 로 무손실 보존.
+_META_BLOCK_KEYS = ("workflow", "module", "meta", "metadata")
+
+
+def _is_meta_block_key(key) -> bool:
+    return key in _META_BLOCK_KEYS or str(key).startswith(("x_", "x-"))
+
+
+def _project_meta_blocks(g: Graph, doc: dict) -> None:
+    """workflow/module/meta/metadata + x_* 확장을 wf:MetaBlock(rawJson) 으로 무손실 투영.
+
+    sort_keys 로 결정적, default=str 로 date 등 비-JSON 타입 안전화. 그래프 역할이 있는
+    project/key_decisions/milestones/critical_dependencies/success_criteria 는 별도 구조화.
+    """
+    for key, val in doc.items():
+        if not _is_meta_block_key(key) or not isinstance(val, (dict, list)):
+            continue
+        bn = WF["metablock/" + _safe(key)]
+        g.add((bn, RDF.type, WF.MetaBlock))
+        g.add((bn, WF.blockKey, Literal(str(key))))
+        g.add((bn, WF.rawJson, Literal(
+            json.dumps(val, sort_keys=True, ensure_ascii=False, default=str))))
+
+
+def _project_narrative(g: Graph, doc: dict) -> None:
+    """root-workflow narrative/meta 층 투영(무손실): project, key_decisions,
+    success_criteria(top-level), critical_dependencies 서술. 그래프 층(criticalDep
+    에지·Module 타입)은 build_graph 본문이 별도 투영(DAG 검사용)."""
+    proj = doc.get("project")
+    if isinstance(proj, dict):
+        pju = WF["project/" + _safe(proj.get("id") or "_root")]
+        g.add((pju, RDF.type, WF.Project))
+        if proj.get("name"):
+            g.add((pju, WF.label, Literal(str(proj["name"]))))
+        if proj.get("version"):
+            g.add((pju, WF.version, Literal(str(proj["version"]))))
+        if proj.get("description"):
+            g.add((pju, WF.description, Literal(str(proj["description"]))))
+        if proj.get("owner"):
+            g.add((pju, WF.owner, Literal(str(proj["owner"]))))
+        if proj.get("created"):
+            g.add((pju, WF.created, Literal(str(proj["created"]))))
+
+    for kd in (doc.get("key_decisions") or []):
+        if not isinstance(kd, dict):
+            continue
+        kn = WF["keydecision/" + _hash8(str(kd.get("decision", "")))]
+        g.add((kn, RDF.type, WF.KeyDecision))
+        if kd.get("decision"):
+            g.add((kn, WF.decisionText, Literal(str(kd["decision"]))))
+        if kd.get("rationale"):
+            g.add((kn, WF.rationale, Literal(str(kd["rationale"]))))
+        for im in (kd.get("impact_modules") or []):
+            g.add((kn, WF.impactModule, Literal(str(im))))
+
+    _project_meta_blocks(g, doc)
+
+    # top-level success_criteria: list-of-single-key-dict (phase 의 list-of-string 과 다름)
+    for sc in (doc.get("success_criteria") or []):
+        if not isinstance(sc, dict):
+            continue
+        for k, v in sc.items():
+            sn = WF["sc/" + _safe(k)]
+            g.add((sn, RDF.type, WF.SuccessCriterion))
+            g.add((sn, WF.scKey, Literal(str(k))))
+            if v is not None:
+                g.add((sn, WF.scValue, Literal(str(v))))
 
 
 def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
@@ -139,9 +251,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 g.add((pu, WF.label, Literal(str(ph.get("label") or ph.get("name") or ph["id"]))))
                 for dep in (ph.get("dependencies") or []):
                     g.add((pu, WF.dependsOn, _phase_uri(dep)))
-                for ref in (ph.get("workflows") or []):
-                    if isinstance(ref, dict) and ref.get("ref"):
-                        g.add((pu, WF.refersTo, Literal(str(ref["ref"]))))
+                _project_workflows(g, pu, ph)
                 _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultJudge/showWrapper/artifacts/successCriteria
                 _project_nodes(g, ph.get("steps", []), pu)
         # ── module 스타일: 이름붙은 phase 키(discovery/development/...) ──
@@ -151,23 +261,39 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 pu = _phase_uri(pid)
                 g.add((pu, RDF.type, WF.Phase))
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
+                _project_workflows(g, pu, phase)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
                 _project_nodes(g, phase.get("steps", []), pu)
 
-        # ── critical_dependencies: 모듈 간 from→to 에지 ──
+        # ── critical_dependencies: DAG 검사용 from→to 에지(Module) + 서술 보존용 노드(dual-rep) ──
         for cd in (doc.get("critical_dependencies") or []):
             if isinstance(cd, dict) and cd.get("from") and cd.get("to"):
                 fu, tu = _module_uri(cd["from"]), _module_uri(cd["to"])
                 g.add((fu, RDF.type, WF.Module))
                 g.add((tu, RDF.type, WF.Module))
                 g.add((fu, WF.criticalDep, tu))
+                cdn = WF["criticaldep/" + _safe(cd["from"]) + "__" + _safe(cd["to"])]
+                g.add((cdn, RDF.type, WF.CriticalDependency))
+                g.add((cdn, WF.cdFrom, Literal(str(cd["from"]))))
+                g.add((cdn, WF.cdTo, Literal(str(cd["to"]))))
+                if cd.get("description"):
+                    g.add((cdn, WF.description, Literal(str(cd["description"]))))
 
-        # ── milestones: phase_ref ──
+        # ── milestones: phase_ref + name/date/status(무손실) ──
         for ms in (doc.get("milestones") or []):
             if isinstance(ms, dict) and ms.get("id") and ms.get("phase_ref"):
                 mu = WF["milestone/" + str(ms["id"])]
                 g.add((mu, RDF.type, WF.Milestone))
                 g.add((mu, WF.milestoneOf, _phase_uri(ms["phase_ref"])))
+                if ms.get("name"):
+                    g.add((mu, WF.label, Literal(str(ms["name"]))))
+                if ms.get("date"):
+                    g.add((mu, WF.milestoneDate, Literal(str(ms["date"]))))
+                if ms.get("status"):
+                    g.add((mu, WF.status, Literal(str(ms["status"]))))
+
+        # ── narrative/meta 층(project, key_decisions, top-level success_criteria) ──
+        _project_narrative(g, doc)
 
     return g, resolved
 

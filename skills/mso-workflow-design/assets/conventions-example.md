@@ -27,10 +27,10 @@
 
 | 모듈 (index.yaml id) | 약어 |
 |--------------------|----|
-| `01.consultdata` | `cd` |
-| `02.AI-Chatbot-Policy` | `acp` |
-| `03.sensitive-data-masking` | `sdm` |
-| `04.AIKON7` | `ai7` |
+| `01.ingestion` | `cd` |
+| `02.policy-engine` | `acp` |
+| `03.data-masking` | `sdm` |
+| `04.vendor-x` | `ai7` |
 | `10.RAG-Corpus-Dataset` | `rcd` |
 
 ### 예시

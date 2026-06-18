@@ -43,7 +43,7 @@ required_fields:
   type: "issue-note | agent-decision | user-decision | trouble-shooting | episode | pattern | principle | auditlog | worklog"
   title: "한 줄 요약 (60자 이내 권장)"
   text: "본문 (markdown 가능, 임베딩 대상)"
-  tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.AI-Chatbot-Policy')"
+  tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.policy-engine')"
   created_at: "ISO 8601 (예: 2026-05-22T15:30:00Z)"
 
 # ─── 선택 필드 ──────────────────────────────────────────
@@ -133,11 +133,11 @@ examples:
     type: issue-note
     title: "라우팅 정책 hand-off 에 timeout 누락"
     text: "v0.9.0 → v1.0.0 정제 과정에서 secondary_evaluation 의 timeout 항목이 사라짐. 백엔드 개발자 영역의 검토 누락이 원인."
-    tags: ["hand-off", "timeout", "policy", "02.AI-Chatbot-Policy"]
+    tags: ["hand-off", "timeout", "policy", "02.policy-engine"]
     created_at: "2026-05-22T15:00:00Z"
     metadata:
       severity: minor
-      module: "02.AI-Chatbot-Policy"
+      module: "02.policy-engine"
       reporter: user
     relations:
       - {type: resolved-by, target: TS-0001}

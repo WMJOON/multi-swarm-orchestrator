@@ -10,7 +10,7 @@ fields:
     type: string
     description: |
       sub workflow YAML 파일 경로 (root YAML 또는 부모 YAML 기준 상대) + 옵션 anchor.
-      예: "02.AI-Chatbot-Policy/workflow/policy-workflow-00.yaml#development".
+      예: "02.policy-engine/workflow/policy-workflow-00.yaml#development".
       anchor (`#...`) 가 있으면 sub 파일의 해당 phase/group id 만 entry point 로 사용.
 
   module:

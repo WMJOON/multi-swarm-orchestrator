@@ -155,10 +155,10 @@ milestones:
 
 # [OPTIONAL] Add module-specific sections below as needed:
 # Examples from existing modules:
-# - agent_package: (consultdata) Define agent package structure
-# - governance: (AI-Chatbot-Policy) Define version/change control
-# - compliance: (sensitive-data-masking) Define regulatory compliance
-# - communications: (AIKON7) Define collaboration channels
+# - agent_package: (ingestion) Define agent package structure
+# - governance: (policy-engine) Define version/change control
+# - compliance: (data-masking) Define regulatory compliance
+# - communications: (VendorX) Define collaboration channels
 # - data_governance: (RAG-Corpus-Dataset) Define storage/backup policies
 
 "[OPTIONAL-SECTION]":
