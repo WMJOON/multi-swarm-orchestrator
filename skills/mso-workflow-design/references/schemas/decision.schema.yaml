@@ -20,6 +20,11 @@ fields:
     type: string
     description: "{동사} {목적어} [{맥락}] 패턴. 검토/평가 동사 권장."
 
+  status:
+    required: true
+    type: enum
+    values: [completed, active, pending]
+
   description:
     required: false
     type: string

@@ -14,6 +14,16 @@ fields:
     required: true
     type: string
 
+  description:
+    required: false
+    type: string
+    description: "phase 의 자유 서술. 시각화 산출물에서 참고."
+
+  parallel:
+    required: false
+    type: bool
+    description: "true 이면 이 phase 의 하위 작업이 병렬 실행됨을 표기(관측성)."
+
   status:
     required: true
     type: enum

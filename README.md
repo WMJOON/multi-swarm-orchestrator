@@ -36,14 +36,15 @@ MSO는 repository를 에이전트의 실행 컨텍스트로 취급한다. 선언
 index.yaml                    →   모듈·디렉토리 구조 SSOT
   + sf_node.py validate            스키마 검증 / 파일시스템 대조
 
-workflow/*.yaml               →   phase · step · decision · validation 노드
-  + wf_node.py validate            스키마 검증 / judge 수준 검증
-  + wf_node.py harness-manifest    CI manifest (validation 노드 추출)
+workflow/*.abox.ttl           →   workflow 정본(SSOT-of-record). phase·step·decision·validation·branch·workflow_ref
   + wf_to_ttl.py validate          ABox(TTL) 투영 → SHACL(shape) + SPARQL(비순환 DAG)
+  + wf_node.py harness-manifest    CI manifest (validation 노드 추출)
 
-TTL TBox/ABox                 ↔   workflow 형상의 그래프 표현 (파생)
+workflow/*.yaml               ←   편집 편의층. TTL 과 양방향 무손실(그래프 동형, narrative meta 포함)
+  + wf_to_ttl.py serialize         YAML → 정본 ABox 컴파일 (커밋 대상)
+  + ttl_to_wf.py                   TTL → YAML 재생성 (SHACL/비순환 게이트 통과분만)
+  + wf_node.py validate            스키마 검증 / judge 수준 검증
   schemas/*.yaml = SSOT            schemas_to_tbox.py → tbox/ + shapes/ 생성(drift 가드)
-  ttl_to_wf.py                     역방향: TTL → SHACL 게이트 → YAML 승격(ingestion)
 
 Markdown · Mermaid            ←   변환 산출물 (직접 편집 금지)
 ```
@@ -219,7 +220,8 @@ project/
 │   ├── index/
 │   │   └── index.yaml              ← scaffold SSOT (mso-scaffold-design)
 │   ├── workflow/
-│   │   └── workflow-00.yaml        ← workflow SSOT (mso-workflow-design)
+│   │   ├── workflow-00.abox.ttl    ← workflow 정본 SSOT-of-record (mso-workflow-design)
+│   │   └── workflow-00.yaml        ← 편집 편의층(TTL 과 무손실 양방향)
 │   └── work-memory/
 │       ├── schema.yaml             ← entry 스키마 정의
 │       ├── auditlog/               ← AU-*.jsonl (hook 자동 기록 — 도구 사용)
@@ -297,7 +299,7 @@ python3 $WM graph IN-0001 --depth 2
 
 **Working System First.** 완벽한 아키텍처보다 실제로 돌아가는 시스템을 먼저 만든다. v0.3.0은 5개 스킬이 실제로 동작하는 것을 검증한 milestone이고, v0.3.1은 그 위에 자연어 발화를 실행 가능한 GroundedCommand로 변환하는 Utterance Grounding Layer 3개 스킬을 더해 8개 스킬 체제로 확장한 milestone이다.
 
-**YAML이 SSOT.** `index.yaml`과 workflow YAML이 정본이다. Markdown·Mermaid는 변환 산출물이지, 편집 대상이 아니다.
+**SSOT 정본.** scaffold 는 `index.yaml`이 정본이고, **workflow 는 TTL ABox(`*.abox.ttl`)가 SSOT-of-record**(YAML 은 무손실 편집 편의층)다. Markdown·Mermaid는 변환 산출물이지, 편집 대상이 아니다.
 
 **Provider-free.** Claude Code, Codex, Gemini CLI 어디서나 동일한 스킬과 스크립트가 동작한다.
 

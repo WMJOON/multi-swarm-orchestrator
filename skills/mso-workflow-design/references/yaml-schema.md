@@ -2,7 +2,7 @@
 
 ## 설계 원칙
 
-- **YAML이 SSOT** — md는 YAML 변환 산출물. 직접 편집 금지.
+- **정본은 TTL ABox(`*.abox.ttl`)** — YAML 은 무손실 편집 편의층(`wf_to_ttl serialize`/`ttl_to_wf` 양방향), md 는 변환 산출물(직접 편집 금지). 이 문서는 그 편집층 YAML 의 문법 스펙.
 - **id는 불변** — worklog·auditlog의 추적 키. 한번 부여하면 변경 금지.
 - **label은 표시용** — 사람이 읽는 이름. id와 분리되어 변경 가능.
 

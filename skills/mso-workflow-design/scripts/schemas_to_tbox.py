@@ -36,9 +36,10 @@ SHAPES_OUT = _DIR.parent / "references" / "shapes" / "workflow-shapes.ttl"
 
 NS = "https://mso.dev/ontology/workflow#"
 
-# type → 클래스명. Node 하위 = 실행 노드. phase/workflow_ref 는 독립.
+# type → 클래스명. Node 하위 = 실행 노드. phase/workflow_ref/branch 는 독립.
 _CLASS = {"step": "Step", "decision": "Decision", "validation": "Validation",
-          "group": "Group", "phase": "Phase", "workflow_ref": "WorkflowRef"}
+          "group": "Group", "phase": "Phase", "workflow_ref": "WorkflowRef",
+          "branch": "Branch"}
 _NODE_SUB = {"Step", "Decision", "Validation", "Group"}
 
 # 직접 property 로 만들지 않는 필드(클래스 타입·식별자·컨테이너·복합).
@@ -110,6 +111,43 @@ wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:str
     rdfs:comment "directory.role (input/output/reference/instruction 등)."@ko .
 wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
     rdfs:comment "directory.path. 교차-스킬(scaffold) 멤버십 대상."@ko .
+
+# ─── 구조화 링크 (컨테이너 관계 — schema 필드 아님) ──────────────────────────────
+wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
+    rdfs:domain wf:Decision ; rdfs:range wf:Branch ;
+    rdfs:comment "decision.branches[] → Branch 노드(라운드트립)."@ko .
+wf:hasWorkflowRef a owl:ObjectProperty ; rdfs:label "hasWorkflowRef"@ko ;
+    rdfs:domain wf:Phase ; rdfs:range wf:WorkflowRef ;
+    rdfs:comment "phase.workflows[] 중 module 보유 항목 → WorkflowRef 노드(구조화). module 없는 doc-ref 는 wf:refersTo Literal 로 유지(dual-rep)."@ko .
+
+# ─── narrative/meta 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────
+wf:Project a owl:Class ; rdfs:label "Project"@ko ;
+    rdfs:comment "root-workflow 메타(project:). name/version/description/owner/created. (schema 없음)"@ko .
+wf:KeyDecision a owl:Class ; rdfs:label "KeyDecision"@ko ;
+    rdfs:comment "key_decisions[] 항목. decisionText/rationale/impactModule. (schema 없음)"@ko .
+wf:SuccessCriterion a owl:Class ; rdfs:label "SuccessCriterion"@ko ;
+    rdfs:comment "top-level success_criteria[] (scKey→scValue) 항목. (schema 없음)"@ko .
+wf:CriticalDependency a owl:Class ; rdfs:label "CriticalDependency"@ko ;
+    rdfs:comment "critical_dependencies[] 항목(서술 포함). from/to 는 DAG 검사용 wf:criticalDep 에지로도 투영(dual-rep). (schema 없음)"@ko .
+wf:MetaBlock a owl:Class ; rdfs:label "MetaBlock"@ko ;
+    rdfs:comment "top-level non-phase 메타 블록(workflow/module/meta/metadata + 소비자 x_* 확장). 임의 중첩 구조를 canonical JSON literal(rawJson)로 무손실 보존. (schema 없음)"@ko .
+
+wf:blockKey a owl:DatatypeProperty ; rdfs:label "blockKey"@ko ; rdfs:domain wf:MetaBlock ; rdfs:range xsd:string ;
+    rdfs:comment "메타 블록의 원본 top-level 키(workflow/module/meta/x_msm 등)."@ko .
+wf:rawJson a owl:DatatypeProperty ; rdfs:label "rawJson"@ko ; rdfs:domain wf:MetaBlock ; rdfs:range xsd:string ;
+    rdfs:comment "메타 블록 원본을 sort_keys canonical JSON 으로 직렬화(무손실·결정적)."@ko .
+
+wf:version a owl:DatatypeProperty ; rdfs:label "version"@ko ; rdfs:domain wf:Project ; rdfs:range xsd:string .
+wf:created a owl:DatatypeProperty ; rdfs:label "created"@ko ; rdfs:domain wf:Project ; rdfs:range xsd:string .
+wf:decisionText a owl:DatatypeProperty ; rdfs:label "decisionText"@ko ; rdfs:domain wf:KeyDecision ; rdfs:range xsd:string .
+wf:rationale a owl:DatatypeProperty ; rdfs:label "rationale"@ko ; rdfs:domain wf:KeyDecision ; rdfs:range xsd:string .
+wf:impactModule a owl:DatatypeProperty ; rdfs:label "impactModule"@ko ; rdfs:domain wf:KeyDecision ; rdfs:range xsd:string ;
+    rdfs:comment "key_decision.impact_modules[] 항목."@ko .
+wf:scKey a owl:DatatypeProperty ; rdfs:label "scKey"@ko ; rdfs:domain wf:SuccessCriterion ; rdfs:range xsd:string .
+wf:scValue a owl:DatatypeProperty ; rdfs:label "scValue"@ko ; rdfs:domain wf:SuccessCriterion ; rdfs:range xsd:string .
+wf:cdFrom a owl:DatatypeProperty ; rdfs:label "cdFrom"@ko ; rdfs:domain wf:CriticalDependency ; rdfs:range xsd:string .
+wf:cdTo a owl:DatatypeProperty ; rdfs:label "cdTo"@ko ; rdfs:domain wf:CriticalDependency ; rdfs:range xsd:string .
+wf:milestoneDate a owl:DatatypeProperty ; rdfs:label "milestoneDate"@ko ; rdfs:domain wf:Milestone ; rdfs:range xsd:string .
 
 # 통제어휘 (skos)
 wf:JudgeScheme a skos:ConceptScheme ; skos:prefLabel "Judge Levels"@ko .
@@ -184,7 +222,12 @@ wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:property [ sh:path wf:dependsOn ; sh:class wf:Phase ;
                   sh:message "dependsOn 타깃은 wf:Phase 여야 함" ] ;
     sh:property [ sh:path wf:hasNode ; sh:class wf:Node ;
-                  sh:message "hasNode 타깃은 wf:Node 여야 함" ] .
+                  sh:message "hasNode 타깃은 wf:Node 여야 함" ] ;
+    sh:property [ sh:path wf:hasWorkflowRef ; sh:class wf:WorkflowRef ;
+                  sh:message "hasWorkflowRef 타깃은 wf:WorkflowRef 여야 함" ] .
+wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
+    sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
+                  sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
 wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .

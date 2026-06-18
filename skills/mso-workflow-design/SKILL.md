@@ -4,7 +4,8 @@ version: "0.3.4"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
-  받아, 그 위에서 동작하는 step·decision·group 노드를 YAML로 선언한다.
+  받아, 그 위에서 동작하는 step·decision·group 노드를 선언한다. 정본(SSOT-of-record)은
+  TTL ABox 이고 YAML 은 무손실 편집 편의층이다(wf_to_ttl/ttl_to_wf 양방향).
   MOTIF 패턴(Phase/Step/Decision/Deliverable/Dependencies/Success Criteria/
   Key Decisions)으로 일관성을 강제하고, 노드 단위 스키마(references/schemas/)와
   wf_node.py 툴로 validate·scaffold를 지원한다. Mermaid 자동 시각화는
@@ -18,7 +19,7 @@ description: >
 
 # MSO Workflow Design v2
 
-**Primary**: Repository Scaffolding 위에 워크플로우(step·decision·group)를 YAML로 규정한다.  
+**Primary**: Repository Scaffolding 위에 워크플로우(step·decision·group)를 규정한다. **정본(SSOT-of-record)은 TTL ABox** 이며, YAML 은 편집 편의층(authoring convenience)이다 — 양방향 무손실 컴파일.  
 **Secondary**: 규정된 워크플로우를 Mermaid로 시각화한다 (관측성, 후순위).
 
 > **워크플로 층위 어휘 (3층)**: `global`(전 프로젝트/엄브렐라 루트) = **UUG 영역**. MSO 는 한
@@ -66,13 +67,19 @@ description: >
 
 > 한쪽 수정이 일어나면 다른 쪽 검토가 필수다.
 
-## SSOT 원칙
+## SSOT 원칙 (TTL-first)
 
-> **YAML이 SSOT(Single Source of Truth)다. md 파일은 YAML을 변환한 시각화 산출물이다.**
+> **TTL ABox(`*.abox.ttl`)가 SSOT-of-record 다. YAML 은 편집 편의층, md/mermaid 는 시각화 산출물이다.**
 >
-> - **수정**: 반드시 YAML을 먼저 수정한다. md를 직접 편집하지 않는다.
-> - **재생성**: YAML 수정 후 `workflow_to_mermaid.py --all`로 md를 재생성한다.
-> - **자동화**: PostToolUse 훅으로 YAML 저장 시 validate + 재생성이 자동 실행된다.
+> 3층 위상: **TTL ABox**(정본·커밋 대상) → **YAML**(편집 편의·재생성 가능) → **md/mermaid**(시각화·읽기 전용).
+>
+> - **편집**: YAML 또는 TTL 어느 쪽이든 편집 가능(둘 다 무손실 변환). 단 **커밋되는 정본은 `.abox.ttl`** 이다.
+> - **컴파일 (YAML → 정본)**: YAML 수정 후 `wf_to_ttl.py serialize`로 `.abox.ttl` 재생성 + `wf_to_ttl.py validate` 게이트 통과 → 커밋.
+> - **역컴파일 (TTL → 편집층)**: TTL 직접 수정·생성 시 `ttl_to_wf.py`로 YAML 재생성(SHACL/비순환 게이트 통과분만 승격).
+> - **무손실**: YAML↔TTL 은 그래프 동형(isomorphic) 수준의 양방향 무손실 — narrative meta(project/key_decisions/milestones/success_criteria) 포함 **전 문서**. 회귀 가드: `tests/test_wf_to_ttl.py::test_template_roundtrip_isomorphic`.
+> - **시각화 재생성**: `workflow_to_mermaid.py --all`로 md 재생성(읽기 전용, 직접 편집 금지).
+>
+> ⚠️ md/YAML 을 정본처럼 직접 손대지 않는다 — 변경은 정본 `.abox.ttl`(또는 편집층 YAML→serialize)로 흐른다.
 
 ## Core Workflow
 
@@ -207,7 +214,7 @@ python validate_workflow.py --strict   # warning까지 error로 승격
 | **schema (SSOT)** | [references/schemas/*.yaml](references/schemas/) | 노드 구조의 단일 진실원. 아래 TBox·SHACL 은 여기서 **생성**된다. |
 | **TBox** (타입, 생성물) | [references/tbox/workflow-tbox.ttl](references/tbox/workflow-tbox.ttl) | 클래스 계층(Phase/Node⊃Step·Decision·Validation·Group, WorkflowRef/Module/Milestone) + property domain/range + 통제어휘(judge skos). |
 | **제약** (생성물) | [references/shapes/workflow-shapes.ttl](references/shapes/workflow-shapes.ttl) | SHACL — 카디널리티·enum·required_when 조건부·range-class. ABox↔TBox 정합 게이트. |
-| **ABox** (인스턴스) | 프로젝트별 workflow (`a wf:Phase` …) | 실제 워크플로. 현 전환기엔 YAML 저작 → `serialize` 로 ABox 투영. (TTL 직접 저작도 가능) |
+| **ABox** (인스턴스, **SSOT-of-record**) | 프로젝트별 workflow (`a wf:Phase` …) `*.abox.ttl` | 실제 워크플로 정본. YAML 편집층에서 `serialize` 로 생성하거나 TTL 직접 저작. **커밋 대상은 이 파일.** |
 
 > **schemas = SSOT, TBox/SHACL = 생성물**: `schemas/*.yaml` 의 `required`/`type`/`enum`/
 > `required_when`/`judge_branch_conditions` 를 `scripts/schemas_to_tbox.py` 가 TBox+SHACL 로
@@ -220,21 +227,20 @@ python validate_workflow.py --strict   # warning까지 error로 승격
 > wf_to_ttl.py SPARQL + 수작업으로 분리 유지. schema 없는 root 개념(dependsOn/Module/
 > Milestone/directory)은 생성기 내 `_GRAPH_OVERLAY` 에 명시.
 
-> **전환 상태(2026-06-17)**: 단계적 이행 중. 1단계(현재) — TBox/ABox 기반 + 검증 확립,
-> 기존 YAML 은 `serialize` 로 ABox 변환해 검증. 2단계(예정) — mermaid/markdown/wf_node
-> 소비자를 TTL 리더로 이관, YAML 은 파생물로 강등. 그때까지 YAML·TTL 병존.
+> **전환 상태(2026-06-18, TTL-first 확립)**: TTL ABox = SSOT-of-record. YAML↔TTL **전 문서 무손실**(그래프 동형) 확보 — narrative meta(project/key_decisions/milestones/success_criteria) + WorkflowRef(module/harness_propagate) + decision.branches(on/goto) + top-level 메타 블록(workflow/module/meta/metadata + 소비자 `x_*` 확장, `wf:MetaBlock` rawJson) 포함. 잔여 후속: mermaid/markdown/wf_node **소비자를 TTL 리더로 이관**(현재는 정본 TTL→YAML 재생성 후 기존 YAML 소비자 사용), group 중첩(nesting) 평탄화는 미해소 한계.
 
 ```bash
-python wf_to_ttl.py serialize workflow/workflow-00.yaml          # YAML → ABox TTL (stdout)
-python wf_to_ttl.py validate  workflow/workflow-00.yaml [--json] # ABox↔TBox 정합, 위반 시 exit 1
+# 정본 컴파일: 편집층 YAML → SSOT-of-record ABox TTL
+python wf_to_ttl.py serialize workflow/workflow-00.yaml > workflow/workflow-00.abox.ttl  # YAML → 정본 ABox (커밋 대상)
+python wf_to_ttl.py validate  workflow/workflow-00.yaml [--json] # ABox↔TBox 정합 게이트, 위반 시 exit 1
 python wf_to_ttl.py validate  workflow/workflow-00.yaml --index index/index.yaml  # +교차-스킬 경로(warning)
-python ttl_to_wf.py  workflow.abox.ttl -o workflow-00.yaml       # 역방향: SHACL 게이트 통과분만 YAML 승격(ingestion)
+# 역컴파일: 정본/수기 TTL → 편집층 YAML (SHACL 게이트 통과분만)
+python ttl_to_wf.py  workflow/workflow-00.abox.ttl -o workflow/workflow-00.yaml
 ```
 
-> **방향 (§11.2)**: YAML 이 SSOT-of-record. `wf_to_ttl serialize`(YAML→TTL)는 검증·그래프용 파생,
-> `ttl_to_wf`(TTL→YAML)는 *생성/수기 TTL* 을 SHACL 게이트 통과 시에만 YAML 로 승격하는 **ingestion**.
-> 게이트 실패 시 YAML 미출력(불량 승격 차단). 라운드트립: phases/nodes 스칼라·리스트·directories 충실;
-> decision.branches·workflow_ref.module 은 현 vocab 미충실(후속).
+> **방향 (TTL-first)**: TTL ABox 가 SSOT-of-record. `wf_to_ttl serialize`(YAML→TTL)는 **편집층 → 정본 컴파일**,
+> `ttl_to_wf`(TTL→YAML)는 정본/수기 TTL 을 SHACL+비순환 게이트 통과 시 편집층 YAML 로 재생성하는 **양방향 무손실**.
+> 게이트 실패 시 YAML 미출력(불량 승격 차단). 라운드트립: phases/nodes 스칼라·리스트·directories·**branches·workflow_ref(module/harness_propagate)·narrative meta·top-level 메타 블록(workflow/module/meta/`x_*`)** 전부 충실(그래프 동형). 단 group 노드 중첩은 평탄화(후속).
 
 검증은 두 엔진으로 분담한다(SHACL 단독으로는 DAG 형상 전체를 못 잡는다):
 
@@ -257,7 +263,7 @@ python ttl_to_wf.py  workflow.abox.ttl -o workflow-00.yaml       # 역방향: SH
 
 ### Step 4. Visualize (Optional, 후순위)
 
-> 시각화는 관측성 산출물이다. workflow YAML이 SSOT이며, 마크다운/Mermaid는 단순 변환물.  
+> 시각화는 관측성 산출물이다. 정본은 TTL ABox(YAML은 편집층)이며, 마크다운/Mermaid는 단순 변환물.  
 > 워크플로우 규정·검증이 완료된 후에만 의미가 있다.
 
 두 가지 변환 스크립트를 제공한다:

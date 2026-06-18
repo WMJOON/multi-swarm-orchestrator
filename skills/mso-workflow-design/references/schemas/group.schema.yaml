@@ -20,6 +20,11 @@ fields:
     type: string
     description: "컨테이너 제목 (예: '정책 업데이트 사이클')"
 
+  status:
+    required: false
+    type: enum
+    values: [completed, active, pending]
+
   steps:
     required: true
     type: list

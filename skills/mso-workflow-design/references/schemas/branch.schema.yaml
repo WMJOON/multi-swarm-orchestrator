@@ -1,0 +1,24 @@
+type: branch
+description: |
+  decision 노드의 조건별 분기. decision.branches[] 의 각 항목.
+  on(조건) → goto(이동 node id) 매핑. 생략 시 sequential next.
+
+fields:
+  # NOTE: 'on' 은 YAML 1.1 boolean(True)로 파싱되므로 키를 반드시 따옴표로 감싼다.
+  # 실제 workflow YAML 의 branches[].on 도 동일 — "on:" 으로 적거나, 미인용 시
+  # 도구가 True→"on" 으로 정규화한다.
+  "on":
+    required: true
+    type: string
+    description: |
+      분기 조건. 부모 decision 의 judge 타입별 허용 조건에 속해야 함
+      (judge_branch_conditions 참조, decision.schema.yaml).
+
+  goto:
+    required: false
+    type: string
+    description: "이동할 node id. 생략 시 sequential next."
+
+structural_invariants:
+  - "on 비어있지 않음"
+  - "on 은 부모 decision 의 judge_branch_conditions[judge] 에 속해야 함 (SHACL core 불가 → SPARQL/prose)"

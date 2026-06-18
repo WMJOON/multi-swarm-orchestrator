@@ -350,6 +350,93 @@ def test_generated_ttl_in_sync_with_schemas():
     assert out.returncode == 0, f"schemas↔TTL drift:\n{out.stderr}"
 
 
+def _roundtrip_iso(src_yaml: Path, tmp_path) -> tuple[bool, int, int]:
+    """YAML→TTL→YAML→TTL 그래프 동형 여부. 동형이면 어떤 필드도 round-trip 에서 누락 안 됨."""
+    from rdflib.compare import to_isomorphic
+    g1, _ = wf_to_ttl.build_graph(src_yaml)
+    doc = ttl_to_wf.graph_to_doc(g1)
+    rt = tmp_path / "roundtrip.yaml"
+    rt.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+    g2, _ = wf_to_ttl.build_graph(rt)
+    return to_isomorphic(g1) == to_isomorphic(g2), len(g1), len(g2)
+
+
+def test_template_roundtrip_isomorphic(tmp_path):
+    """배포 root-workflow 템플릿 전체(narrative meta 포함)가 YAML↔TTL 무손실(그래프 동형)."""
+    ok, n1, n2 = _roundtrip_iso(_ASSETS / "root-workflow-template.yaml", tmp_path)
+    assert ok, f"round-trip 비동형 — 필드 유실(g1={n1}, g2={n2})"
+
+
+def test_workflowref_and_branches_roundtrip_lossless(tmp_path):
+    """module 보유 WorkflowRef + decision.branches + narrative 가 무손실(템플릿이 안 타는 경로)."""
+    doc = {
+        "project": {"id": "p0", "name": "P0", "version": "1.0",
+                    "owner": "o@x", "created": "2026-01-01", "description": "d"},
+        "workflow": {"id": "lifecycle", "slug": "lifecycle", "description": "메인 사이클"},
+        "module": {"id": "04.AIKON7", "name": "AIKON7", "version": "1.0.0"},
+        "meta": {"author": "me", "tags": ["a", "b"], "nested": {"k": 1}},
+        "x_msm": {"kind": "pipeline", "governance": {"hitl_required": True}},
+        "phases": [{
+            "id": "phase-01", "name": "Disc", "status": "active", "parallel": True,
+            "workflows": [
+                {"ref": "m1/m1-workflow-00.yaml#discovery", "module": "m1", "harness_propagate": False},
+                {"ref": "m2/m2-workflow-00.yaml#discovery", "module": "m2"},
+                {"ref": "docs/x.md"},
+            ],
+            "steps": [
+                {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
+                 "judge": "HITL", "owner": "team",
+                 "branches": [{"on": "approved", "goto": "s-02"}, {"on": "rejected"}]},
+                {"type": "step", "id": "s-02", "label": "작업", "status": "active", "instruction": "하라"},
+            ],
+        }],
+        "key_decisions": [{"decision": "use X", "rationale": "fast", "impact_modules": ["m1", "all"]}],
+        "success_criteria": [{"cov": "80%"}, {"acc": "95%"}],
+        "critical_dependencies": [{"from": "m2", "to": "m1", "description": "needs data"}],
+        "milestones": [{"id": "ms1", "name": "MS", "date": "2026-02-01",
+                        "status": "pending", "phase_ref": "phase-01"}],
+    }
+    src = _write(tmp_path, "wf.yaml", doc)
+    ok, n1, n2 = _roundtrip_iso(src, tmp_path)
+    assert ok, f"round-trip 비동형(g1={n1}, g2={n2})"
+
+    # 필드 단위 재구성 확인
+    g, _ = wf_to_ttl.build_graph(src)
+    out = ttl_to_wf.graph_to_doc(g)
+    wfs = {w["ref"]: w for w in out["phases"][0]["workflows"]}
+    assert wfs["m1/m1-workflow-00.yaml#discovery"]["module"] == "m1"
+    assert wfs["m1/m1-workflow-00.yaml#discovery"]["harness_propagate"] is False
+    assert wfs["m2/m2-workflow-00.yaml#discovery"]["module"] == "m2"
+    assert "module" not in wfs["docs/x.md"]              # module 없는 doc-ref 는 refersTo 로
+    dec = [s for s in out["phases"][0]["steps"] if s["id"] == "d-01"][0]
+    assert {tuple(sorted(b.items())) for b in dec["branches"]} == {
+        (("goto", "s-02"), ("on", "approved")), (("on", "rejected"),)}
+    assert out["project"]["version"] == "1.0"
+    assert out["key_decisions"][0]["impact_modules"] == ["all", "m1"]
+    assert {next(iter(d)) for d in out["success_criteria"]} == {"cov", "acc"}
+    assert out["critical_dependencies"][0]["description"] == "needs data"
+    assert out["milestones"][0]["date"] == "2026-02-01"
+    # top-level 메타 블록(workflow/module/meta/x_*) 무손실
+    assert out["workflow"] == {"id": "lifecycle", "slug": "lifecycle", "description": "메인 사이클"}
+    assert out["module"] == {"id": "04.AIKON7", "name": "AIKON7", "version": "1.0.0"}
+    assert out["meta"]["nested"] == {"k": 1} and out["meta"]["tags"] == ["a", "b"]
+    assert out["x_msm"]["governance"] == {"hitl_required": True}
+
+
+def test_unquoted_on_branch_normalized(tmp_path):
+    """미인용 'on:' 은 YAML 이 True 키로 파싱 → 도구가 정규화해 wf:on 으로 투영."""
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [{"type": "decision", "id": "p-d-01", "label": "분기", "status": "active",
+                   "judge": "HOTL", "branches": [{True: "passed", "goto": "n2"}]}],
+    }]}
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "wf.yaml", doc))
+    nu = wf_to_ttl._node_uri("p-d-01")
+    bn = list(g.objects(nu, wf_to_ttl.WF.hasBranch))
+    assert len(bn) == 1
+    assert str(next(g.objects(bn[0], wf_to_ttl.WF.on))) == "passed"
+
+
 def test_cli_validate_exit_code_on_cycle(tmp_path):
     doc = {"phases": [
         {"id": "a", "name": "A", "status": "active", "dependencies": ["b"]},
