@@ -19,6 +19,11 @@ fields:
     type: string
     description: "이동할 node id. 생략 시 sequential next."
 
+  label:
+    required: false
+    type: string
+    description: "분기 엣지 라벨(사람용 설명). Mermaid edge 라벨로 사용. round-trip 보존."
+
 structural_invariants:
   - "on 비어있지 않음"
   - "on 은 부모 decision 의 judge_branch_conditions[judge] 에 속해야 함 (SHACL core 불가 → SPARQL/prose)"

@@ -16,7 +16,8 @@ wf:StatusShape a sh:NodeShape ; sh:targetSubjectsOf wf:status ;
 
 wf:BranchShape a sh:NodeShape ; sh:targetClass wf:Branch ;
     sh:property [ sh:path wf:on ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "on: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:goto ; sh:datatype xsd:string ; sh:message "goto: schema 제약 위반" ] .
+    sh:property [ sh:path wf:goto ; sh:datatype xsd:string ; sh:message "goto: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:label ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] .
 
 wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;

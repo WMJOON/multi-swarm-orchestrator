@@ -138,6 +138,8 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef) -> None:
             g.add((bn, WF.on, Literal(str(on_val))))
             if b.get("goto"):
                 g.add((bn, WF.goto, Literal(str(b["goto"]))))
+            if b.get("label"):
+                g.add((bn, WF.label, Literal(str(b["label"]))))
 
 
 def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:

@@ -43,7 +43,7 @@ wf:harness a owl:DatatypeProperty ; rdfs:label "harness"@ko ; rdfs:domain wf:Val
 wf:harnessPropagate a owl:DatatypeProperty ; rdfs:label "harnessPropagate"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:boolean .
 wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:judge a owl:DatatypeProperty ; rdfs:label "judge"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Group, Phase, Step, Validation"@ko .
+wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Group, Phase, Step, Validation"@ko .
 wf:module a owl:DatatypeProperty ; rdfs:label "module"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
 wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .

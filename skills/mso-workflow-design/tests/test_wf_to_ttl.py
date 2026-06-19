@@ -386,7 +386,7 @@ def test_workflowref_and_branches_roundtrip_lossless(tmp_path):
             "steps": [
                 {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
                  "judge": "HITL", "owner": "team",
-                 "branches": [{"on": "approved", "goto": "s-02"}, {"on": "rejected"}]},
+                 "branches": [{"on": "approved", "goto": "s-02", "label": "승인 → 작업"}, {"on": "rejected"}]},
                 {"type": "step", "id": "s-02", "label": "작업", "status": "active", "instruction": "하라"},
             ],
         }],
@@ -410,7 +410,7 @@ def test_workflowref_and_branches_roundtrip_lossless(tmp_path):
     assert "module" not in wfs["docs/x.md"]              # module 없는 doc-ref 는 refersTo 로
     dec = [s for s in out["phases"][0]["steps"] if s["id"] == "d-01"][0]
     assert {tuple(sorted(b.items())) for b in dec["branches"]} == {
-        (("goto", "s-02"), ("on", "approved")), (("on", "rejected"),)}
+        (("goto", "s-02"), ("label", "승인 → 작업"), ("on", "approved")), (("on", "rejected"),)}
     assert out["project"]["version"] == "1.0"
     assert out["key_decisions"][0]["impact_modules"] == ["all", "m1"]
     assert {next(iter(d)) for d in out["success_criteria"]} == {"cov", "acc"}

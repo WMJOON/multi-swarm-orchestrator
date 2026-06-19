@@ -227,7 +227,7 @@ python validate_workflow.py --strict   # warning까지 error로 승격
 > wf_to_ttl.py SPARQL + 수작업으로 분리 유지. schema 없는 root 개념(dependsOn/Module/
 > Milestone/directory)은 생성기 내 `_GRAPH_OVERLAY` 에 명시.
 
-> **전환 상태(2026-06-18, TTL-first 확립)**: TTL ABox = SSOT-of-record. YAML↔TTL **전 문서 무손실**(그래프 동형) 확보 — narrative meta(project/key_decisions/milestones/success_criteria) + WorkflowRef(module/harness_propagate) + decision.branches(on/goto) + top-level 메타 블록(workflow/module/meta/metadata + 소비자 `x_*` 확장, `wf:MetaBlock` rawJson) 포함. 잔여 후속: mermaid/markdown/wf_node **소비자를 TTL 리더로 이관**(현재는 정본 TTL→YAML 재생성 후 기존 YAML 소비자 사용), group 중첩(nesting) 평탄화는 미해소 한계.
+> **전환 상태(2026-06-18, TTL-first 확립)**: TTL ABox = SSOT-of-record. YAML↔TTL **전 문서 무손실**(그래프 동형) 확보 — narrative meta(project/key_decisions/milestones/success_criteria) + WorkflowRef(module/harness_propagate) + decision.branches(on/goto/label) + top-level 메타 블록(workflow/module/meta/metadata + 소비자 `x_*` 확장, `wf:MetaBlock` rawJson) 포함. 잔여 후속: mermaid/markdown/wf_node **소비자를 TTL 리더로 이관**(현재는 정본 TTL→YAML 재생성 후 기존 YAML 소비자 사용), group 중첩(nesting) 평탄화는 미해소 한계.
 
 ```bash
 # 정본 컴파일: 편집층 YAML → SSOT-of-record ABox TTL
@@ -240,7 +240,7 @@ python ttl_to_wf.py  workflow/workflow-00.abox.ttl -o workflow/workflow-00.yaml
 
 > **방향 (TTL-first)**: TTL ABox 가 SSOT-of-record. `wf_to_ttl serialize`(YAML→TTL)는 **편집층 → 정본 컴파일**,
 > `ttl_to_wf`(TTL→YAML)는 정본/수기 TTL 을 SHACL+비순환 게이트 통과 시 편집층 YAML 로 재생성하는 **양방향 무손실**.
-> 게이트 실패 시 YAML 미출력(불량 승격 차단). 라운드트립: phases/nodes 스칼라·리스트·directories·**branches·workflow_ref(module/harness_propagate)·narrative meta·top-level 메타 블록(workflow/module/meta/`x_*`)** 전부 충실(그래프 동형). 단 group 노드 중첩은 평탄화(후속).
+> 게이트 실패 시 YAML 미출력(불량 승격 차단). 라운드트립: phases/nodes 스칼라·리스트·directories·**branches(on/goto/label)·workflow_ref(module/harness_propagate)·narrative meta·top-level 메타 블록(workflow/module/meta/`x_*`)** 전부 충실(그래프 동형). 단 group 노드 중첩은 평탄화(후속).
 
 검증은 두 엔진으로 분담한다(SHACL 단독으로는 DAG 형상 전체를 못 잡는다):
 

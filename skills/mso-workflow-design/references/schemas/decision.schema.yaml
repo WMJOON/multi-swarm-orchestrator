@@ -79,6 +79,10 @@ fields:
         required: false
         type: string
         description: "이동할 node id. 생략 시 → sequential next"
+      label:
+        required: false
+        type: string
+        description: "분기 엣지 라벨(사람용 설명). Mermaid edge 라벨로 사용."
 
 structural_invariants:
   - "id 는 워크플로우 내 unique"

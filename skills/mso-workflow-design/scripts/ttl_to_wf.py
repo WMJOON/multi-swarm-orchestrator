@@ -110,6 +110,9 @@ def _reconstruct_branches(g: Graph, subj) -> list:
         gv = list(g.objects(bn, W.WF.goto))
         if gv:
             b["goto"] = str(gv[0])
+        lv = list(g.objects(bn, W.WF.label))
+        if lv:
+            b["label"] = str(lv[0])
         if b:
             out.append(b)
     return sorted(out, key=lambda x: (x.get("on", ""), x.get("goto", "")))
