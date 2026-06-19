@@ -263,6 +263,8 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 pu = _phase_uri(pid)
                 g.add((pu, RDF.type, WF.Phase))
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
+                for dep in (phase.get("dependencies") or []):  # module 스타일도 phase-DAG dependsOn 지원
+                    g.add((pu, WF.dependsOn, _phase_uri(dep)))
                 _project_workflows(g, pu, phase)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
                 _project_nodes(g, phase.get("steps", []), pu)
