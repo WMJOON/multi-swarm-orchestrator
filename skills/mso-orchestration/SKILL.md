@@ -1,6 +1,6 @@
 ---
 name: mso-orchestration
-version: "0.3.4"
+version: "0.3.6"
 description: "MSO 스킬 팩 라우터. §11 NLU 재편: utterance→intent 는 UUG(uug-grounding) 위임, MSO 는 intent→action(mso-intent-analytics 뒷단 dispatch). name-only 라우팅."
 triggers:
   - "mso 시작"
@@ -18,6 +18,10 @@ triggers:
   - "pattern 추출"
   - "principle 응축"
   - "harness manifest"
+  - "workflow optimizer"
+  - "LangGraph"
+  - "langgraph 변환"
+  - "workflow TTL 실행"
   - "utterance grounding"
   - "운영 명령"
   - "ticket 재실행"
@@ -27,7 +31,7 @@ triggers:
   - "reprompt 분석"
 ---
 
-# MSO Orchestration (v0.3.4)
+# MSO Orchestration (v0.3.6)
 
 MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 적절한 sub-skill 로 안내한다.
 
@@ -42,7 +46,8 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
         ▼                                                                
 [설계]                                                                   
   mso-scaffold-design         ←── index.yaml SSOT (모듈·subdir·sub_index) 
-  mso-workflow-design         ←── workflow YAML (step/decision/validation)
+  mso-workflow-design         ←── workflow TTL ABox SSOT (step/decision/validation)
+  mso-workflow-optimizer      ←── workflow TTL → LangGraph generated artifact
         ↕ 협업 (multi-turn discussion, v1.0.0+ 예정)                       
   mso-discussion-coworker     ←── 옵션 비교·결정 근거 추적·UD/AD 자동 작성
         │                                                                
@@ -89,10 +94,10 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
         └── principles     (PR-NNNN)  ←── PT 응축 원칙                   
         │                                                                
         ▼                                                                
-[최적화 — trigger]                                                       
-  optimization layer (v1.0.0+ 예정)                                          
-    ├── pattern → workflow 자동 갱신                                     
-    └── principle → policy gate 보완                                     
+[실행 최적화 — generated graph]
+  mso-workflow-optimizer
+    ├── workflow TTL ABox → LangGraph artifact
+    └── provider policy(cost/speed/quality/privacy) → node routing
 ```
 
 ## Sub-skills (name-only)
@@ -103,7 +108,8 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 |---|---|---|
 | **mso-repository-setup** | agent-context/ 부트스트랩 (init/check/migrate) | "mso init", "agent-context 부트스트랩", "워크플로우 디렉토리 생성" |
 | **mso-scaffold-design** | index.yaml SSOT, 계층 sub_index | "스캐폴드 설계", "index.yaml", "모듈 추가", "디렉토리 등록" |
-| **mso-workflow-design** | workflow YAML, 노드 스키마, harness manifest | "워크플로우 설계", "workflow YAML", "judge", "decision 노드", "validation 노드" |
+| **mso-workflow-design** | workflow TTL ABox SSOT, legacy YAML migration/edit layer, 노드 스키마, harness manifest | "워크플로우 설계", "workflow TTL", "workflow YAML", "judge", "decision 노드", "validation 노드" |
+| **mso-workflow-optimizer** | workflow TTL ABox를 LangGraph generated artifact로 컴파일. TTL은 SSOT로 유지하고 provider routing은 정책 파일로 분리 | "workflow optimizer", "LangGraph", "langgraph 변환", "workflow TTL 실행", "Ollama 비용 최적화" |
 | **mso-work-memory** | jsonl entry CRUD, zvec 검색, relations 그래프 | "decision 기록", "trouble-shooting 작성", "episode 회고", "비슷한 사고 검색" |
 | **mso-intent-analytics** *(§11 재편)* | registry SoT (Intent/SlotSpec/IntentMatrix, RDF+LinkML, Lookup API) **+ 뒷단 dispatch** (`pipeline.ground(utterance, intent_id)`: slot_filler→resolver→SHACL validator→turn_writer→GroundedCommand). 앞단(utterance→intent)은 UUG. | "ticket-NNN 재실행", "run-NNN 상태", "audit 조회", "dispatch", "intent 목록", "슬롯 스키마" |
 | ~~구 utterance-grounding~~ | **해체(§11)**: 앞단(utterance→intent)→UUG(uug-grounding), 뒷단→mso-intent-analytics 흡수. 스킬 제거됨 | — |
@@ -118,10 +124,10 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 1. **init·부트스트랩 의도** (예: "프로젝트 처음 셋업", "agent-context 만들어") → `mso-repository-setup`
 2. **구조 정의 의도** (예: "모듈 추가", "subdir 등록", "디렉토리 패턴") → `mso-scaffold-design`
 3. **흐름 정의 의도** (예: "워크플로우 만들어", "결정 게이트", "검증 단계") → `mso-workflow-design`
-4. **discussion 의도** (예: "같이 결정하자", "옵션 비교", "이렇게 vs 저렇게") → `mso-discussion-coworker` *(v1.0.0+)*
-5. **기록·검색·회고 의도** (예: "이 결정 기록해", "비슷한 사고 검색", "패턴 추출") → `mso-work-memory`
-6. **분석·환류 의도** (예: "전환 행렬 보여줘", "reprompt율 분석", "unresolved 발화") → ⚠ de-routed(§11.1). 자동 라우팅 안 함 — `conversation-analytics` 직접 호출(`python src/analytics.py`)만. 분석 메서드 UUG 흡수 후 제거 예정
-7. **최적화 의도** (v1.0.0+ 예정)
+4. **workflow 실행 최적화 의도** (예: "workflow TTL을 LangGraph로 변환", "Ollama 비용 최적화 실행 그래프", "Codex/API provider routing") → `mso-workflow-optimizer`
+5. **discussion 의도** (예: "같이 결정하자", "옵션 비교", "이렇게 vs 저렇게") → `mso-discussion-coworker` *(v1.0.0+)*
+6. **기록·검색·회고 의도** (예: "이 결정 기록해", "비슷한 사고 검색", "패턴 추출") → `mso-work-memory`
+7. **분석·환류 의도** (예: "전환 행렬 보여줘", "reprompt율 분석", "unresolved 발화") → ⚠ de-routed(§11.1). 자동 라우팅 안 함 — `conversation-analytics` 직접 호출(`python src/analytics.py`)만. 분석 메서드 UUG 흡수 후 제거 예정
 
 ## Non-Goals
 
@@ -159,6 +165,14 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 
 ### 기존 프로젝트 마이그레이션
 ```
+
+### Workflow Optimizer
+```
+사용자: "이 workflow ttl을 LangGraph로 변환해줘"
+  → mso-orchestration: mso-workflow-optimizer 안내
+  → python scripts/compile_workflow.py agent-context/workflow/workflow-00.abox.ttl \
+       --out generated/langgraph --mode cost
+```
 사용자: "기존 평탄 구조를 agent-context/ 로 옮겨줘"
   → mso-orchestration: mso-repository-setup --migrate 안내
 ```
@@ -172,7 +186,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
   → 회고 시점: `wm_node.py new episode --related TS-NNNN:analyzed-in`
 ```
 
-### Conversation Analytics (v0.3.4)
+### Conversation Analytics (v0.3.6)
 ```
 사용자: "이번 주 전환 패턴 분석해줘"
   → mso-orchestration: mso-conversation-analytics 안내

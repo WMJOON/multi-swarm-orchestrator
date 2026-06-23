@@ -3,7 +3,7 @@
 
 v0.2.2 의 ``.skill-modules/`` 설치 사본 + ``pack_config.json`` 정본 기반 레이아웃은
 v0.3.0 "5-skill pack 전면 교체"에서 폐기됐다. 본 테스트는 현재 8-스킬 구조
-(Design/Ops/Infra 5종 + v0.3.1 Runtime/NLU 3종)의 계약을 검증한다.
+(Design/Ops/Infra/Optimizer 6종 + Runtime/NLU 후단 2종)의 계약을 검증한다.
 
 검증 대상은 "선언(manifest/SKILL.md)이 파일시스템 실재와 일치하는가"이지,
 파일 존재의 동어반복이 아니다.
@@ -12,6 +12,8 @@ v0.3.0 "5-skill pack 전면 교체"에서 폐기됐다. 본 테스트는 현재 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +25,7 @@ CORE_SKILLS = {
     "mso-repository-setup",
     "mso-scaffold-design",
     "mso-workflow-design",
+    "mso-workflow-optimizer",
     "mso-work-memory",
 }
 
@@ -115,8 +118,45 @@ def test_dissolved_utterance_grounding_not_routed():
 
 
 def test_readme_reflects_current_version_and_structure():
-    """README 헤더 버전과 핵심 구조 어휘가 v0.3.4 와 일치한다."""
+    """README 헤더 버전과 핵심 구조 어휘가 v0.3.6 과 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.3.4" in readme, "README header is not v0.3.4"
+    assert "MSO) v0.3.6" in readme, "README header is not v0.3.6"
     assert "스킬 구성" in readme
     assert "Work-Memory" in readme
+
+
+def test_skill_versions_are_current_patch():
+    """정식 repository 스킬 메타가 현재 패치 버전으로 정렬되어 있다."""
+    for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
+        text = skill_md.read_text()
+        assert 'version: "0.3.6"' in text, f"{skill_md.parent.name} version is not 0.3.6"
+
+
+def test_work_memory_decision_governance_schema_contract():
+    """v0.3.6 PLAN: AR 타입과 UD boundary/criterion 이 schema SSOT 에 존재한다."""
+    schema = (SKILLS / "mso-work-memory" / "references" / "schema.yaml").read_text()
+    assert "alternatives-record: {prefix: AR, dir: track-record/alternatives-record}" in schema
+    assert "provided_by" in schema
+    assert "options" in schema
+    assert "recommended" in schema
+    assert "boundary" in schema
+    assert "criterion" in schema
+    assert "supersedes" in schema
+    assert "refines" in schema
+
+
+def test_repository_setup_bootstraps_alternatives_record_dir(tmp_path):
+    """init.py 가 새 프로젝트에 AR 디렉토리와 schema-driven AR 타입을 부트스트랩한다."""
+    init_py = SKILLS / "mso-repository-setup" / "scripts" / "init.py"
+    target = tmp_path / "project"
+    subprocess.run(
+        [sys.executable, str(init_py), "--target", str(target), "--name", "T", "--id", "t"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    ar_dir = target / "agent-context" / "work-memory" / "track-record" / "alternatives-record"
+    assert ar_dir.is_dir()
+    schema = (target / "agent-context" / "work-memory" / "schema.yaml").read_text()
+    assert "alternatives-record" in schema
+    assert "boundary" in schema

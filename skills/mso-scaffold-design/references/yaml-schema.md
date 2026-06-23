@@ -116,15 +116,15 @@ references:
 ```yaml
 project:
   name: AI Chatbot 1.0
-  id: 02.assistant-v1.0
+  id: 02.Chatbot-1.0
   description: 커머스 CS 자동화를 위한 AI 챗봇 프로젝트
   owner: owner@example.com
   updated: 2026-05-21
   version: "1.0.0"
 
 modules:
-  - id: 01.ingestion
-    path: 01.ingestion/
+  - id: 01.consultdata
+    path: 01.consultdata/
     description: 상담 데이터 분석 모듈
     subdirs:
       - path: 00.context/
@@ -135,15 +135,15 @@ modules:
         description: 분석 스크립트
     key_files: [README.md, CLAUDE.md]
     references:
-      - provides_to: [02.policy-engine]
+      - provides_to: [02.AI-Chatbot-Policy]
         artifacts: [상담 데이터 분석 결과]
 
-  - id: 02.policy-engine
-    path: 02.policy-engine/
+  - id: 02.AI-Chatbot-Policy
+    path: 02.AI-Chatbot-Policy/
     description: AI 챗봇 정책 산출물
     references:
-      - consumes: 01.ingestion
+      - consumes: 01.consultdata
         artifacts: [상담 데이터 분석 결과]
-      - provides_to: [04.vendor-x]
+      - provides_to: [04.AIKON7]
         artifacts: [라우팅 정책]
 ```

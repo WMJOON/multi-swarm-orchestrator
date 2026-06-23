@@ -1,6 +1,6 @@
 """
 mso-conversation-analytics M4 DoD 테스트
-실행: cd repository-test/skills/mso-conversation-analytics && python -m pytest tests/ -v
+실행: cd repository/skills/mso-conversation-analytics && python -m pytest tests/ -v
 """
 from __future__ import annotations
 import sys

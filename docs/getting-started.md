@@ -1,4 +1,4 @@
-# 시작하기 (v0.3.4)
+# 시작하기 (v0.3.0)
 
 ## 0. 설치
 
@@ -30,11 +30,11 @@ python3 ~/.claude/skills/mso-repository-setup/scripts/init.py \
 project/
 ├── agent-context/
 │   ├── index/index.yaml
-│   ├── workflow/
+│   ├── workflow/                  # *.abox.ttl = workflow SSOT, *.yaml = migration/edit layer
 │   └── work-memory/
 │       ├── schema.yaml
 │       ├── auditlog/   worklog/
-│       ├── track-record/{issue-note, agent-decision, user-decision, trouble-shooting}/
+│       ├── track-record/{issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting}/
 │       └── insight-record/{episodes, patterns, principles}/
 └── .gitignore
 ```
@@ -111,10 +111,12 @@ modules:
 
 ## 3. Workflow 정의 (mso-workflow-design)
 
-workflow YAML 이 SSOT다. Markdown·Mermaid는 변환 산출물이므로 직접 편집하지 않는다.
+workflow TTL ABox(`*.abox.ttl`)가 SSOT다. 기존 YAML은 편집/마이그레이션 레이어이며, Markdown·Mermaid는 변환 산출물이므로 직접 편집하지 않는다.
 
 ```bash
 WF=~/.claude/skills/mso-workflow-design/scripts/wf_node.py
+WFTTL=~/.claude/skills/mso-workflow-design/scripts/wf_to_ttl.py
+WFMIG=~/.claude/skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py
 
 # 스키마 확인
 python3 $WF show phase
@@ -138,6 +140,11 @@ python3 $WF validate agent-context/workflow/workflow-00.yaml \
 # harness manifest 생성 (validation 노드 → CI)
 python3 $WF harness-manifest agent-context/workflow/workflow-00.yaml \
   --out ci-manifest.json
+
+# 레거시 YAML → TTL 정본 마이그레이션 / drift check
+python3 $WFMIG agent-context/workflow
+python3 $WFMIG agent-context/workflow --check
+python3 $WFTTL validate agent-context/workflow/workflow-00.yaml
 ```
 
 workflow YAML 시작점은 `skills/mso-workflow-design/assets/module-workflow-template-00.yaml` 을 복사해 사용한다.
@@ -169,6 +176,9 @@ python3 $WM new issue-note \
 python3 $WM new agent-decision \
   --title "retry 로직 추가 결정" --tags "retry,resilience"
 
+python3 $WM new alternatives-record \
+  --title "재시도 정책 3안 비교" --tags "retry,decision"
+
 python3 $WM new user-decision \
   --title "v2 마감 연기 승인" --tags "schedule"
 
@@ -191,6 +201,7 @@ python3 $WM graph IN-0001 --depth 2 --direction both
 |------|--------|-----------|
 | issue-note | IN | track-record/issue-note/ |
 | agent-decision | AD | track-record/agent-decision/ |
+| alternatives-record | AR | track-record/alternatives-record/ |
 | user-decision | UD | track-record/user-decision/ |
 | trouble-shooting | TS | track-record/trouble-shooting/ |
 | episode | EP | insight-record/episodes/ |

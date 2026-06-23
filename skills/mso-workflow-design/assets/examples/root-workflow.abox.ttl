@@ -148,5 +148,3 @@
         "04.vendor-x/04.vendor-x-workflow-00.yaml#testing",
         "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#testing" ;
     wf:status "active" .
-
-

@@ -1,6 +1,6 @@
 ---
 name: mso-conversation-analytics
-version: "0.3.4"
+version: "0.3.6"
 description: >
   turns.jsonl을 DuckDB in-memory로 분석해 운영 패턴을 측정.
   5개 분석 함수 + 환류 보고서 + Tier Escalation 신호 생성.
@@ -13,7 +13,7 @@ depends_on:
   - mso-intent-analytics   # turns.jsonl 생산자(뒷단 dispatch turn_writer)
 ---
 
-# MSO Conversation Analytics (v0.3.4) — de-routed (§11.1)
+# MSO Conversation Analytics (v0.3.6) — de-routed (§11.1)
 
 `turns.jsonl` → DuckDB → 운영 정책 환류.
 

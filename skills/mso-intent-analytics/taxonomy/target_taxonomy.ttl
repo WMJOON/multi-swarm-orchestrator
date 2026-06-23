@@ -3,7 +3,7 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
 # ═══════════════════════════════════════════════════════════
-# MSO Target Taxonomy  (v0.3.1)
+# MSO Target Taxonomy  (v0.3.6)
 # PCA의 Frame/Capital/Entity/Event/Ledger → MSO 5 target 리매핑
 # ═══════════════════════════════════════════════════════════
 

@@ -1,8 +1,8 @@
 {
   "name": "mso-intent-analytics",
-  "version": "0.3.1",
+  "version": "0.3.6",
   "lifecycle_state": "local",
-  "owner_workspace": "03_AgentsTools/00_multi-swarm-orchestrator/repository-test",
+  "owner_workspace": "03_AgentsTools/00_multi-swarm-orchestrator/repository",
   "role": "data+runtime",
   "slots": {
     "rules": {

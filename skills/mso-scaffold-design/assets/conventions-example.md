@@ -26,22 +26,22 @@
 | Prefix | 용도 | 예 |
 |--------|------|---|
 | `00.` | meta, framework, project-level | (현재 사용 모듈 없음) |
-| `01.` | primary data/analysis | `01.ingestion` |
-| `02.` | policy / chatbot-side | `02.policy-engine` |
-| `03.` | sensitive-data / sanitization | `03.data-masking` |
-| `04.` | external integration / vendor | `04.vendor-x` |
+| `01.` | primary data/analysis | `01.consultdata` |
+| `02.` | policy / chatbot-side | `02.AI-Chatbot-Policy` |
+| `03.` | sensitive-data / sanitization | `03.sensitive-data-masking` |
+| `04.` | external integration / vendor | `04.AIKON7` |
 | `10.` | datasets / corpus | `10.RAG-Corpus-Dataset` |
 | `99.` | archive / experimental | (현재 사용 모듈 없음) |
 
 ### 예시
 
 ```
-01.ingestion           ✓
-02.policy-engine     ✓
-04.vendor-x                ✓
+01.consultdata           ✓
+02.AI-Chatbot-Policy     ✓
+04.AIKON7                ✓
 10.RAG-Corpus-Dataset    ✓
-ingestion              ✗ (prefix 누락)
-1.ingestion            ✗ (NN 한자리)
+consultdata              ✗ (prefix 누락)
+1.consultdata            ✗ (NN 한자리)
 ```
 
 ### 불변 원칙
@@ -94,7 +94,7 @@ artifacts_v1.0.0/             ✓ (버전 디렉토리)
 | Prefix | 통상 역할 (role) |
 |--------|----------------|
 | `00.` | context, framework, planning_context |
-| `01.` | scripts, routing (primary) |
+| `01.` | scripts, hand-off-policy (primary) |
 | `02.` | data, draft |
 | `03.` | reports |
 | `04.`, `05.` | modules |
@@ -143,8 +143,8 @@ role 은 optional이지만 명시하면 workflow YAML 의 `directories.role` 과
 
 ```yaml
 # Bad
-- id: 04.vendor-x
-  path: vendor-x/             # id != path
+- id: 04.AIKON7
+  path: aikon7/             # id != path
 ```
 
 ### ❌ 끝 슬래시 누락
@@ -158,7 +158,7 @@ role 은 optional이지만 명시하면 workflow YAML 의 `directories.role` 과
 
 ```yaml
 # Bad
-- id: vendor-x                # 정렬 prefix 누락
+- id: aikon7                # 정렬 prefix 누락
 ```
 
 ### ❌ Deprecated 모듈 직접 삭제

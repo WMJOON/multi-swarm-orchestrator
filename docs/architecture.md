@@ -1,4 +1,4 @@
-# 아키텍처 (v0.3.4)
+# 아키텍처 (v0.3.0)
 
 ## 스킬 관계
 
@@ -16,15 +16,16 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
     │         │
     │         └── index.yaml (모듈·서브디렉토리·참조 선언)
     │
-    ├──> mso-workflow-design     ← workflow YAML 규정 · 검증 · 변환
+    ├──> mso-workflow-design     ← workflow TTL ABox 정본 · YAML 마이그레이션 · 검증 · 변환
     │         │
-    │         ├── workflow/*.yaml (SSOT)
+    │         ├── workflow/*.abox.ttl (SSOT)
+    │         ├── workflow/*.yaml (legacy/edit layer)
     │         ├── workflow/diagrams/*.md (Mermaid 변환물)
     │         └── ci-manifest.json (harness-manifest)
     │
     └──> mso-work-memory         ← JSONL entry · 검색 · 그래프
               │
-              ├── track-record/ (issue-note, agent-decision, user-decision, trouble-shooting)
+              ├── track-record/ (issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting)
               ├── insight-record/ (episodes, patterns, principles)
               ├── auditlog/ (hook 자동 기록)
               └── worklog/ (hook 자동 기록)
@@ -75,14 +76,6 @@ wf_node.py harness-manifest
     → validation 노드 수집
     → ci-manifest.json 생성
 
-wf_to_ttl.py validate workflow.yaml   (그래프 검증 — wf_node 보완)
-    → ABox(TTL) 투영
-    → pyshacl: 로컬 shape (ABox↔TBox 정합; TBox 는 schemas_to_tbox.py 생성)
-    → SPARQL: 비순환(DAG) — 다운스트림 재참조 사이클 차단
-    → --index 시 scaffold 경로 멤버십 (wf_node._resolve_scaffold 재사용)
-ttl_to_wf.py workflow.abox.ttl        (역방향 ingestion)
-    → SHACL+비순환 게이트 통과분만 → YAML 승격
-
 wm_node.py new <type>
     → id 할당 (타입별 시퀀스 또는 시각 기반)
     → JSONL entry 작성
@@ -94,12 +87,9 @@ wm_node.py new <type>
 | 산출물 | SSOT | 변환물 |
 |--------|------|--------|
 | repository 구조 | `index.yaml` | — |
-| workflow | `workflow/*.yaml` | `*.md`, Mermaid, **TTL ABox**(`wf_to_ttl` 투영, 검증·그래프용) |
-| workflow 스키마(TBox) | `references/schemas/*.yaml` | **`tbox/*.ttl` + `shapes/*.ttl`**(`schemas_to_tbox.py` 생성, drift 가드) |
+| workflow | `workflow/*.abox.ttl` | `*.yaml`(편집층), `*.md`, Mermaid 다이어그램 |
 | work-memory | `*.jsonl` | zvec 인덱스 (재생성 가능) |
 | hook 설정 | `.claude/settings.json` | — |
-
-> 워크플로 층위: `global`=UUG(엄브렐러 루트) / `root-workflow`+`sub-workflow`=MSO(프로젝트 내). TTL 은 파생; `ttl_to_wf` 만 SHACL 게이트로 TTL→YAML ingestion 허용.
 
 ## Hook 아키텍처
 
@@ -125,7 +115,7 @@ project/
 ├── agent-context/                     ← MSO 전용 (git에 포함)
 │   ├── index/
 │   │   └── index.yaml                 ← scaffold SSOT
-│   ├── workflow/                       ← workflow YAML 저장소
+│   ├── workflow/                       ← workflow TTL ABox 정본 + YAML 편집층
 │   │   ├── workflow-00.yaml           ← 기본 workflow
 │   │   └── workflow-<slug>.yaml       ← 추가 workflow
 │   └── work-memory/
@@ -135,6 +125,7 @@ project/
 │       ├── track-record/
 │       │   ├── issue-note/            ← IN-*.jsonl
 │       │   ├── agent-decision/        ← AD-*.jsonl
+│       │   ├── alternatives-record/   ← AR-*.jsonl
 │       │   ├── user-decision/         ← UD-*.jsonl
 │       │   └── trouble-shooting/      ← TS-*.jsonl
 │       ├── insight-record/

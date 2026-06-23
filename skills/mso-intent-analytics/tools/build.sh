@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tools/build.sh — LinkML 3종 빌드 (M1 DoD)
-# 사용: cd repository-test/skills/mso-intent-analytics && bash tools/build.sh
+# 사용: cd repository/skills/mso-intent-analytics && bash tools/build.sh
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"

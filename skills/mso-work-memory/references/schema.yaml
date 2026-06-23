@@ -1,14 +1,15 @@
 # Work-Memory JSONL 공통 스키마
 # 모든 entry 는 한 줄(jsonl)로 직렬화. zvec 호환 + 그래프 표현 동시 지원.
 
-version: "1.0.0"
-updated: 2026-05-22
+version: "1.1.0"
+updated: 2026-06-19
 
 # ─── ID 규칙 ─────────────────────────────────────────────
 id_patterns:
   IN: "issue-note       (track-record) — IN-NNNN"
   AD: "agent-decision   (track-record) — AD-NNNN"
   UD: "user-decision    (track-record) — UD-NNNN"
+  AR: "alternatives-record (track-record) — AR-NNNN"
   TS: "trouble-shooting (track-record) — TS-NNNN"
   EP: "episode          (insight-record) — EP-NNNN"
   PT: "pattern          (insight-record) — PT-NNNN"
@@ -30,6 +31,7 @@ types:
   issue-note:       {prefix: IN, dir: track-record/issue-note}
   agent-decision:   {prefix: AD, dir: track-record/agent-decision}
   user-decision:    {prefix: UD, dir: track-record/user-decision}
+  alternatives-record: {prefix: AR, dir: track-record/alternatives-record}
   trouble-shooting: {prefix: TS, dir: track-record/trouble-shooting}
   episode:          {prefix: EP, dir: insight-record/episodes}
   pattern:          {prefix: PT, dir: insight-record/patterns}
@@ -40,10 +42,10 @@ types:
 # ─── 공통 필수 필드 (모든 entry) ────────────────────────
 required_fields:
   id: "예: IN-0042"
-  type: "issue-note | agent-decision | user-decision | trouble-shooting | episode | pattern | principle | auditlog | worklog"
+  type: "issue-note | agent-decision | user-decision | alternatives-record | trouble-shooting | episode | pattern | principle | auditlog | worklog"
   title: "한 줄 요약 (60자 이내 권장)"
   text: "본문 (markdown 가능, 임베딩 대상)"
-  tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.policy-engine')"
+  tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.AI-Chatbot-Policy')"
   created_at: "ISO 8601 (예: 2026-05-22T15:30:00Z)"
 
 # ─── 선택 필드 ──────────────────────────────────────────
@@ -88,9 +90,22 @@ type_specific:
       - confidence: "high | medium | low"
 
   user-decision:
+    # oracle(결정 권위) ∈ {human, metric}: user-decision 은 '결정 권한 주체'를 뜻하되,
+    # eval 의 oracle 은 사람만이 아니라 metric/KPI 게이트일 수도 있다(지표 기반 대조 시).
     metadata:
       - rationale: "사용자 의도"
       - structural: "bool — true 면 repository-ADR (index/workflow 구조 변경)"
+      - boundary: "지배하는 정책/기준 식별자(또는 pair). drift 추적 단위."
+      - criterion: "이 UD 가 규정하는 기준(한 줄, 비교 가능)."
+    # 같은 boundary 의 이전 UD 가 있으면 relations 에 supersedes/refines → 그 링크가 'drift event'(derived).
+
+  alternatives-record:
+    # 결정 전 단계. agent 또는 user 가 옵션 집합과 득실을 기록(결정은 안 함).
+    # 채택 시 followed-by 로 user-decision 에 연결: AR ──followed-by──> UD.
+    metadata:
+      - provided_by: "agent | user — 대안 제공 주체 (oracle 결정 전 단계)"
+      - options: "list[{n, name, description, trade_off}] — 옵션과 득실"
+      - recommended: "int — (선택) 제공자 권고 옵션 n"
 
   trouble-shooting:
     metadata:
@@ -133,11 +148,11 @@ examples:
     type: issue-note
     title: "라우팅 정책 hand-off 에 timeout 누락"
     text: "v0.9.0 → v1.0.0 정제 과정에서 secondary_evaluation 의 timeout 항목이 사라짐. 백엔드 개발자 영역의 검토 누락이 원인."
-    tags: ["hand-off", "timeout", "policy", "02.policy-engine"]
+    tags: ["hand-off", "timeout", "policy", "02.AI-Chatbot-Policy"]
     created_at: "2026-05-22T15:00:00Z"
     metadata:
       severity: minor
-      module: "02.policy-engine"
+      module: "02.AI-Chatbot-Policy"
       reporter: user
     relations:
       - {type: resolved-by, target: TS-0001}

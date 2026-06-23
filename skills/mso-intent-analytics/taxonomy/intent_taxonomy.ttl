@@ -2,8 +2,8 @@
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
 # ═══════════════════════════════════════════════════════════
-# MSO Verb Taxonomy  (v0.3.1)
-# v0.3.1 등록 verb: query / create / update / delete (4개)
+# MSO Verb Taxonomy  (v0.3.6)
+# v0.3.6 등록 verb: query / create / update / delete (4개)
 # Brief · Simulate → v0.4.x
 # ═══════════════════════════════════════════════════════════
 

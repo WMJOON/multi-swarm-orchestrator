@@ -1,6 +1,6 @@
 ---
 name: mso-repository-setup
-version: "0.3.4"
+version: "0.3.6"
 description: >
   MSO 스킬 팩의 init 진입점. 새 프로젝트(또는 기존 프로젝트)에 agent-context/
   표준 디렉토리 트리를 부트스트랩하고 mso-scaffold-design + mso-workflow-design +
@@ -35,7 +35,7 @@ python scripts/init.py --target /path/to/project [--name "Project Name"]
 │   └── work-memory/
 │       ├── schema.yaml               # mso-work-memory 표준 스키마 사본
 │       ├── auditlog/   worklog/
-│       ├── track-record/{issue-note, agent-decision, user-decision, trouble-shooting}/
+│       ├── track-record/{issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting}/
 │       └── insight-record/{episodes, patterns, principles}/
 ├── .gitignore                        # agent-context/work-memory/.zvec/ 등록
 └── .claude/                          # --hook 시 (copy-form)
@@ -63,7 +63,7 @@ mso-repository-setup
         │                                       (index.yaml 모듈·subdir 정의)
         │
         ├──> [trigger: "워크플로우 설계"] →  mso-workflow-design
-        │                                       (workflow YAML · validation/decision 노드)
+        │                                       (workflow TTL ABox · legacy YAML · validation/decision 노드)
         │
         ├──> [harness: logging]          →  hook → work-memory/auditlog
         │                                       work-memory/worklog
@@ -102,7 +102,7 @@ mso-repository-setup
 이 스킬은 다음 스킬들과 협업한다. 실제 동작은 각 스킬이 담당:
 
 - **mso-scaffold-design** — index.yaml SSOT, 계층 sub_index 지원
-- **mso-workflow-design** — workflow YAML, 노드 스키마, harness manifest
+- **mso-workflow-design** — workflow TTL ABox SSOT, legacy YAML migration/edit layer, 노드 스키마, harness manifest
 - **mso-work-memory** — jsonl entry, zvec 검색, relations 그래프
 - **mso-orchestration** — 진입점·라우팅 (이 스킬을 init 으로 호출)
 

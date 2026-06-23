@@ -2,7 +2,7 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
 # ═══════════════════════════════════════════════════════════
-# MSO Canonical Intent Instances  (v0.3.1)
+# MSO Canonical Intent Instances  (v0.3.6)
 # 10 intents — query(3) / create(2) / update(4) / delete(1)
 # ═══════════════════════════════════════════════════════════
 

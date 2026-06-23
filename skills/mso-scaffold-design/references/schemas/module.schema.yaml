@@ -62,7 +62,7 @@ fields:
     type: string
     description: |
       이 모듈의 내부 구조를 정의한 sub index.yaml 경로 (root index 기준 상대).
-      예: "02.policy-engine/index.yaml".
+      예: "02.AI-Chatbot-Policy/index.yaml".
       sub_index 가 있으면 동일 모듈의 subdirs/key_files/references 는 sub 파일이 SSOT.
       root 에서 중복 선언 시 ERROR.
       계층 depth 상한은 3 (root + 2단계). 초과 시 ERROR.

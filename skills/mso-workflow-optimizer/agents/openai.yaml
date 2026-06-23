@@ -1,0 +1,4 @@
+interface:
+  display_name: "MSO Workflow Optimizer"
+  short_description: "Compile MSO workflow TTL into LangGraph artifacts with work-memory context."
+  default_prompt: "Compile this MSO workflow TTL into a LangGraph artifact with Vertex context packs."

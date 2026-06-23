@@ -1,6 +1,6 @@
 # 변경 이력
 
-## v0.3.4 — §11 NLU 경계 재편 (2026-06-17)
+## Unreleased — §11 NLU 경계 재편 (2026-06-17)
 
 > **utterance→intent = UUG / intent→action = MSO.** NLU 앞단(자연어→intent 분류)을 UUG(`01_user-utterance-grounding`)로 흡수하고, MSO 는 intent→action(뒷단 slot/dispatch)만 보유. 스킬 8→7.
 
@@ -13,29 +13,36 @@
 | `mso-orchestration` | 운영 명령 라우팅 = UUG `ug ground`→intent_id→`mso-intent-analytics` dispatch. utterance-grounding 라우팅 제거, conversation-analytics de-route. |
 | UUG `uug-grounding` | namespace-agnostic 멀티-레지스트리 lookup + `projects.yaml intent_registry` + 도메인 intent commit 정책(MSO decisiveness 동등, fixture 84%≥80%). |
 
-> **비고**: 이 §11·TTL 작업은 **v0.3.4 에 포함**(2026-06-17). 모든 SKILL.md `version` 필드를 v0.3.4 로 통일(미선언 4개 스킬 포함). v0.4.0 bump 는 보류.
+> **비고**: 구조 변경이나 버전 헤더(v0.3.4)는 유지 — 정식 버전 bump(→v0.4.0)는 후속(모든 SKILL.md version 필드 일괄).
 >
 > ⚠ **capability 회귀 (미해소)**: 구 `mso-utterance-grounding/slots/inference/serve.py` 는 **실제 Lv30 LLM(Claude Haiku) fallback + Lv20 모델 경로**를 가졌고, Lv10 keyword-miss(~20%)를 프로덕션에서 복구했다. 앞단 제거로 이 serve.py 가 삭제됐고 **UUG 의 Lv30 은 미빌드(후속)** → keyword-miss 발화의 LLM 복구 경로가 현재 **없음**. 비회귀 측정(UUG 84% ≥ MSO 80%)은 **양쪽 `GROUNDING_SKIP_LLM=1` Lv10-only** 수치라 이 Lv30 격차를 반영하지 않는다. serve.py 로직은 git history 에 보존 — UUG Lv30 으로 포팅 필요(미결).
 
-## v0.3.4 — workflow TTL TBox/ABox + SHACL/DAG 검증 (2026-06-17)
+## v0.3.6 (2026-06-19) — work-memory Decision Governance + workflow TTL-first
 
-> **workflow 구조를 DL TBox/ABox 로 형식화.** `schemas/*.yaml` 이 단일 SSOT, TBox 온톨로지·SHACL shape 는 그로부터 *생성*된 파생물(drift 0). intent 쪽 TTL 과 그래프 패러다임 수렴. mso-workflow-design 만 해당, 스킬 수 불변.
+> **status: `repository-test/` 검증 완료 후 `repository/` 승격 완료.** 위 §11 Unreleased(NLU 경계 재편)와 **독립 트랙** — §11 은 v0.4.0 행, 본 건은 work-memory 한정 additive + workflow TTL-first 기준이라 v0.3.6 으로 선행.
+
+> **work-memory 에 의사결정 거버넌스 레이어 추가 — alternatives-record(AR) + UD boundary 거버넌스.** Decision-Centric Governance Loop(GPT 논의 통합). 척추 원리 = **Deliberation is a View**: 코어는 이벤트(IN/AR/AD/UD)와 관계만 저장하고, 의사결정 케이스·drift 사건은 그래프 쿼리로 재구성하는 view 로 둔다. v0.3.4 schema-driven 덕에 **엔진 코드 무변경**(순수 additive). 동시에 workflow는 TTL ABox를 SSOT로 두고 legacy YAML은 마이그레이션/edit layer로 격하한다. 기원: NLU `00.raw-data` 운영 학습(PR-0003/PR-0004/AR-0001).
 
 ### Added
-| 항목 | 내용 |
-|------|------|
-| `scripts/schemas_to_tbox.py` | schemas/*.yaml → TBox(`references/tbox/workflow-tbox.ttl`) + SHACL(`references/shapes/workflow-shapes.ttl`) 생성. `required`→minCount, `enum`→sh:in, `required_when`→조건부 sh:or. `--check` drift 가드. |
-| `scripts/wf_to_ttl.py` | workflow YAML → ABox(TTL) 투영 + 검증: pyshacl(로컬 shape, ABox↔TBox 정합) + SPARQL(`?x (dependsOn\|criticalDep)+ ?x` 비순환) + 교차-스킬(`--index`, scaffold 경로 멤버십, `wf_node._resolve_scaffold` 재사용). |
-| `scripts/ttl_to_wf.py` | 역방향 TTL→YAML ingestion. SHACL+비순환 **게이트 통과분만** YAML 승격(불량 차단). schema-구동 카디널리티 재구성. |
-| `references/tbox/`, `references/shapes/` | 생성물(직접편집 금지). 클래스(Phase/Node⊃Step·Decision·Validation·Group, WorkflowRef/Module/Milestone) + property + judge/status 통제어휘. |
 
-### Changed
 | 변경 | 내용 |
 |------|------|
-| `references/schemas/step.schema.yaml` | `instruction`(지시격 — 실행 지시) **필수** 추가. label(서술) ↔ instruction(지시) 구분. |
-| `assets/global-workflow-template.yaml` → `root-workflow-template.yaml` | 개명. 층위 어휘 정립: `global`=UUG(엄브렐러 루트) / `root-workflow`+`sub-workflow`=MSO(프로젝트 내, 타입 아닌 위치). |
+| `references/schema.yaml` — `alternatives-record`(AR) 타입 | 결정 전 단계에서 옵션 집합+득실 기록(`provided_by`/`options`/`recommended`). `AR ──followed-by──> UD`. 결정은 안 함 — agent/user 제안을 동일 형식에 담음 |
+| `references/schema.yaml` — UD `boundary`/`criterion` metadata | UD 가 지배하는 정책/기준 식별자(boundary) + 기준 한 줄(criterion). 같은 boundary 의 UD 체인 `supersedes`/`refines` 링크 = **drift event(derived)** |
+| `references/schema.yaml` — oracle ∈ {human, metric} 주석 | 결정 권위는 사람만이 아니라 metric/KPI 게이트도 포함(지표 기반 eval 대조 시) |
+| `SKILL.md` — 거버넌스 컨벤션 섹션 | AD/AR 구분 규칙, DriftEvent=derived, DecisionCase=view→episode(EP), policy→stale 캐스케이드=프로젝트 영역 |
+| `mso-workflow-design` — workflow TTL-first | `*.abox.ttl` 을 workflow SSOT로 두고 `migrate_workflows_to_ttl.py` 로 legacy YAML을 TTL 정본으로 변환 |
+| `mso-workflow-optimizer` | workflow TTL ABox를 LangGraph generated artifact로 컴파일. provider routing은 TTL 밖 policy로 분리. Vertex별 work-memory ContextPack과 `memory_writeback_queue` 계약 추가. Claude Code/Codex=control plane, LangGraph=execution plane 경계와 `control_plane_events` 추가 |
 
-> **SSOT 방향(§11.2)**: workflow SSOT-of-record = YAML. TTL 은 (a) 검증·그래프 파생, (b) ttl_to_wf 의 생성/수기 ingestion 입력. hook 은 TTL 직접 소비 안 함 — CLI subprocess 호출(exit code 만), rdflib 부재 시 wf_node(pyyaml) 구조검증으로 degrade.
+### 결정 (planning `mso-v0.3.6-PLAN.md`)
+
+- **A1**: AD 유지 + AR 병존 (AD=agent 권한 내 결정·실행 / AR=oracle 에 옵션 제시). AD 은퇴는 자율 에이전트 표현 불가 → MSO 본질과 충돌이라 기각.
+- **B2**: policy→stale 캐스케이드(drift_scan/relabel_queue)는 산출물 모델 의존 → 코어는 신호(boundary+supersedes)까지만, *구현*은 레퍼런스 패턴.
+- DecisionCase 는 신규 타입 추가 없이 기존 `episode`(EP)로 흡수(live=view, closed=EP).
+
+### 비고
+
+schema version 1.0.0 → 1.1.0 (additive). 기존 AD 마이그레이션 없음(이력 보존). GPT governance 노드(DriftEvent/PolicyUpdateCase 등)의 1급 노드화는 미채택 — v0.4.0 사안(PLAN §8).
 
 ## v0.3.4 (2026-06-13)
 
