@@ -53,6 +53,12 @@ def _localname(uri: str, prefix: str) -> str:
     return tail[len(prefix):] if tail.startswith(prefix) else tail
 
 
+def _phase_id(uri) -> str:
+    """phase URI 에서 phase id 추출. document-scoped(phase/<scope>/<id>) 와
+    평면(phase/<id>) 양쪽 지원 — 마지막 segment 가 phase id (scope·id 모두 '/' 없음)."""
+    return _localname(uri, "phase/").split("/")[-1]
+
+
 def _load_field_cardinality() -> dict:
     """type → {snake_field: is_list}. schemas/*.yaml 에서 읽음(schema-구동)."""
     out = {}
@@ -70,17 +76,36 @@ def _load_field_cardinality() -> dict:
 _CARD = _load_field_cardinality()
 
 
+# 구조적으로 전용 함수가 재구성하는 술어 — generic 필드 복원에서 제외(중복/오염 방지).
+# rdf:type→node type, hasNode→steps, directory→directories, hasBranch→branches,
+# hasWorkflowRef/refersTo→workflows, dependsOn→dependencies. (label 은 제외하지 않는다 —
+# node 는 _emit_fields 가 복원하고, phase 는 호출부 skip 셋의 'label'/'name' 으로 거른다.)
+_STRUCT_PREDS = {
+    RDF.type, W.WF.hasNode, W.WF.directory, W.WF.hasBranch,
+    W.WF.hasWorkflowRef, W.WF.refersTo, W.WF.dependsOn,
+}
+
+
 def _emit_fields(g: Graph, subj, ntype: str, skip: set) -> dict:
-    """노드/페이즈 subject 의 schema 필드를 YAML dict 로 재구성(scalar/list 카디널리티 반영)."""
+    """subject 의 모든 wf: 술어를 snake_case 필드로 generic 복원.
+
+    직렬화(wf_to_ttl._project_fields)가 schema 정의 없이 doc 의 모든 키를 wf:camelCase 로
+    투영하므로, 역도 그래프-구동으로 대칭화한다 — schema 에 없는 필드(progress_note·
+    status_note·integration_note 등)도 보존(asymmetry 손실 제거). 카디널리티는 schema 에
+    있으면 그걸, 없으면 객체 수로 추론(1=scalar, >1=list)."""
+    card = _CARD.get(ntype, {})
+    buckets = {}
+    for p, o in g.predicate_objects(subj):
+        if p in _STRUCT_PREDS or not str(p).startswith(str(W.WF)):
+            continue
+        buckets.setdefault(p, []).append(o)
     out = {}
-    fields = _CARD.get(ntype, {})
-    for fname, is_list in fields.items():
+    for p, objs in buckets.items():
+        fname = _uncamel(str(p)[len(str(W.WF)):])
         if fname in skip:
             continue
-        objs = list(g.objects(subj, W.WF[W._camel(fname)]))
-        if not objs:
-            continue
         vals = [o.toPython() for o in objs]
+        is_list = card[fname] if fname in card else len(vals) > 1
         out[fname] = vals if is_list else vals[0]
     return out
 
@@ -141,13 +166,13 @@ def graph_to_doc(g: Graph) -> dict:
     phases = []
     phase_subjects = sorted(g.subjects(RDF.type, W.WF.Phase), key=str)
     for pu in phase_subjects:
-        pid = _localname(pu, "phase/")
+        pid = _phase_id(pu)
         phase = {"id": pid}
         label = list(g.objects(pu, W.WF.label))
         if label:
             phase["name"] = str(label[0])
         phase.update(_emit_fields(g, pu, "phase", _PHASE_SPECIAL))
-        deps = sorted(_localname(o, "phase/") for o in g.objects(pu, W.WF.dependsOn))
+        deps = sorted(_phase_id(o) for o in g.objects(pu, W.WF.dependsOn))
         if deps:
             phase["dependencies"] = deps
         # workflows: 구조화 WorkflowRef(module 보유) + refersTo Literal(doc-ref) 병합
@@ -247,7 +272,7 @@ def graph_to_doc(g: Graph) -> dict:
         ph = list(g.objects(mu, W.WF.milestoneOf))
         if not ph:
             continue
-        m = {"id": _localname(mu, "milestone/"), "phase_ref": _localname(ph[0], "phase/")}
+        m = {"id": _localname(mu, "milestone/"), "phase_ref": _phase_id(ph[0])}
         nm = list(g.objects(mu, W.WF.label))
         if nm:
             m["name"] = str(nm[0])

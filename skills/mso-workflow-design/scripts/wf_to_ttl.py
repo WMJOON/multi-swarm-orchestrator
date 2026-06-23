@@ -64,8 +64,14 @@ def _node_uri(node_id: str) -> URIRef:
     return WF["node/" + _safe(node_id)]
 
 
-def _phase_uri(phase_id: str) -> URIRef:
+def _phase_uri(phase_id: str, scope: str = "") -> URIRef:
+    # document-scoped: 서브모듈이 표준 lifecycle phase(discovery/development/testing)를
+    # 동명으로 정당하게 공유하므로, root 평탄화 투영 시 doc(module) scope 를 URI 에 넣어
+    # cross-document 충돌(동일 URI 병합 → status/메타 누락)을 막는다. scope 미지정 시 평면.
     safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(phase_id))
+    if scope:
+        sc = "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(scope))
+        return WF["phase/" + sc + "/" + safe]
     return WF["phase/" + safe]
 
 
@@ -162,33 +168,39 @@ def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
 
 # top-level non-phase 메타 블록(wf_node 의 phase-제외 키 + 소비자 x_* 확장).
 # 임의 중첩 구조(scalar/list/dict)를 가질 수 있어 canonical JSON literal 로 무손실 보존.
-_META_BLOCK_KEYS = ("workflow", "module", "meta", "metadata")
+# feedback_loops(phase 간 의도적 역방향 loop: testing→development 등)도 여기 포함 —
+# dependsOn/criticalDep 으로 투영하면 DAG 비순환 검사에 false cycle 을 내므로 rawJson 으로만 보존.
+_META_BLOCK_KEYS = ("workflow", "module", "meta", "metadata", "feedback_loops")
 
 
 def _is_meta_block_key(key) -> bool:
     return key in _META_BLOCK_KEYS or str(key).startswith(("x_", "x-"))
 
 
-def _project_meta_blocks(g: Graph, doc: dict) -> None:
+def _project_meta_blocks(g: Graph, doc: dict, scope: str = "") -> None:
     """workflow/module/meta/metadata + x_* 확장을 wf:MetaBlock(rawJson) 으로 무손실 투영.
 
     sort_keys 로 결정적, default=str 로 date 등 비-JSON 타입 안전화. 그래프 역할이 있는
     project/key_decisions/milestones/critical_dependencies/success_criteria 는 별도 구조화.
+    document-scoped: 여러 서브모듈이 같은 key('module' 등)를 쓰므로 scope 로 URI 를 분리해
+    cross-document 충돌(동일 metablock URI 병합 → rawJson 누락)을 막는다.
     """
     for key, val in doc.items():
         if not _is_meta_block_key(key) or not isinstance(val, (dict, list)):
             continue
-        bn = WF["metablock/" + _safe(key)]
+        slug = (_safe(scope) + "/" + _safe(key)) if scope else _safe(key)
+        bn = WF["metablock/" + slug]
         g.add((bn, RDF.type, WF.MetaBlock))
         g.add((bn, WF.blockKey, Literal(str(key))))
         g.add((bn, WF.rawJson, Literal(
             json.dumps(val, sort_keys=True, ensure_ascii=False, default=str))))
 
 
-def _project_narrative(g: Graph, doc: dict) -> None:
+def _project_narrative(g: Graph, doc: dict, scope: str = "") -> None:
     """root-workflow narrative/meta 층 투영(무손실): project, key_decisions,
     success_criteria(top-level), critical_dependencies 서술. 그래프 층(criticalDep
-    에지·Module 타입)은 build_graph 본문이 별도 투영(DAG 검사용)."""
+    에지·Module 타입)은 build_graph 본문이 별도 투영(DAG 검사용).
+    scope 는 metablock URI document-scoping 에 쓰인다(project/kd/sc 는 내용-기반 URI 라 무관)."""
     proj = doc.get("project")
     if isinstance(proj, dict):
         pju = WF["project/" + _safe(proj.get("id") or "_root")]
@@ -216,7 +228,7 @@ def _project_narrative(g: Graph, doc: dict) -> None:
         for im in (kd.get("impact_modules") or []):
             g.add((kn, WF.impactModule, Literal(str(im))))
 
-    _project_meta_blocks(g, doc)
+    _project_meta_blocks(g, doc, scope)
 
     # top-level success_criteria: list-of-single-key-dict (phase 의 list-of-string 과 다름)
     for sc in (doc.get("success_criteria") or []):
@@ -240,6 +252,11 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
     for src, doc in resolved.docs.items():
         if not isinstance(doc, dict):
             continue
+        # document scope: 서브모듈 doc 의 module.id 가 있을 때만 phase/metablock URI 에 prefix.
+        # 충돌은 서브모듈 간(동명 lifecycle phase) 발생하므로 module 보유 doc 만 scope 한다.
+        # root(module 없음, 고유 phase id)는 평면 유지 — 기존 평면 URI 소비자/테스트 호환.
+        _mod = doc.get("module")
+        scope = _mod.get("id") if isinstance(_mod, dict) and _mod.get("id") else ""
         # ── root 스타일: 최상위 phases: 리스트 ──
         phases = doc.get("phases")
         # name→label / dependencies→dependsOn / workflows→refersTo 는 특수, 나머지 generic.
@@ -248,11 +265,11 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
             for ph in phases:
                 if not isinstance(ph, dict) or not ph.get("id"):
                     continue
-                pu = _phase_uri(ph["id"])
+                pu = _phase_uri(ph["id"], scope)
                 g.add((pu, RDF.type, WF.Phase))
                 g.add((pu, WF.label, Literal(str(ph.get("label") or ph.get("name") or ph["id"]))))
                 for dep in (ph.get("dependencies") or []):
-                    g.add((pu, WF.dependsOn, _phase_uri(dep)))
+                    g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
                 _project_workflows(g, pu, ph)
                 _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultJudge/showWrapper/artifacts/successCriteria
                 _project_nodes(g, ph.get("steps", []), pu)
@@ -260,11 +277,11 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
         else:
             for phase_key, phase in wf_node._collect_phases(doc):
                 pid = phase.get("id") or phase_key
-                pu = _phase_uri(pid)
+                pu = _phase_uri(pid, scope)
                 g.add((pu, RDF.type, WF.Phase))
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
                 for dep in (phase.get("dependencies") or []):  # module 스타일도 phase-DAG dependsOn 지원
-                    g.add((pu, WF.dependsOn, _phase_uri(dep)))
+                    g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
                 _project_workflows(g, pu, phase)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
                 _project_nodes(g, phase.get("steps", []), pu)
@@ -288,7 +305,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
             if isinstance(ms, dict) and ms.get("id") and ms.get("phase_ref"):
                 mu = WF["milestone/" + str(ms["id"])]
                 g.add((mu, RDF.type, WF.Milestone))
-                g.add((mu, WF.milestoneOf, _phase_uri(ms["phase_ref"])))
+                g.add((mu, WF.milestoneOf, _phase_uri(ms["phase_ref"], scope)))
                 if ms.get("name"):
                     g.add((mu, WF.label, Literal(str(ms["name"]))))
                 if ms.get("date"):
@@ -297,7 +314,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                     g.add((mu, WF.status, Literal(str(ms["status"]))))
 
         # ── narrative/meta 층(project, key_decisions, top-level success_criteria) ──
-        _project_narrative(g, doc)
+        _project_narrative(g, doc, scope)
 
     return g, resolved
 
