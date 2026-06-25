@@ -20,7 +20,8 @@ init.py — MSO Repository Setup CLI
 
   <target>/.gitignore  (agent-context/work-memory/.zvec/ 등록)
   <target>/.claude/settings.json  (--hook 시 Claude Code hook 등록)
-  <target>/.codex/hooks.json      (--hook --provider codex 시 Codex hook 등록)
+  <target>/.codex/hooks.json      (--hook --provider codex 시 Codex hook 등록, compatibility)
+  <target>/.codex/config.toml     (--hook --provider codex 시 Codex hook 등록)
 """
 
 import argparse
@@ -261,7 +262,8 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     """프로젝트의 provider 설정 디렉토리에 work-memory hook 을 등록한다 (copy-form).
 
     기본값은 기존 Claude Code 동작을 보존한다. `--provider codex` 를 지정하면
-    <target>/.codex/scripts/ 와 <target>/.codex/hooks.json 을 사용한다. 절대 경로
+    <target>/.codex/scripts/ 를 만들고 <target>/.codex/config.toml 에 hook 을 등록한다.
+    <target>/.codex/hooks.json 도 compatibility 파일로 함께 갱신한다. 절대 경로
     (스킬의 iCloud 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
     박지 않으므로 다른 머신·CI·경로 이동에도 견딘다.
 
@@ -341,11 +343,18 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    if provider == "codex":
+        _upsert_codex_config_toml(
+            target / provider_dir_name / "config.toml",
+            worklog_cmd=worklog_cmd,
+            check_cmd=check_cmd,
+        )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
         print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + Stop·SessionStart[compact,resume] work-memory-check)")
     else:
-        print(f"  + .codex/hooks.json 갱신 (Stop·PreCompact worklog + Stop·SessionStart[compact,resume] work-memory-check)")
+        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact worklog + Stop·SessionStart[compact,resume] work-memory-check)")
+        print(f"  + .codex/hooks.json 갱신 (compatibility)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
     print()
@@ -397,6 +406,93 @@ def _upsert_hook(hooks: dict, event: str, matcher: str | None, command: str, mar
             h["command"] = command
             return
     inner.append({"type": "command", "command": command})
+
+
+def _toml_literal(value: str) -> str:
+    """Return a TOML literal string. Commands generated here do not contain single quotes."""
+    if "'" in value:
+        return json.dumps(value, ensure_ascii=False)
+    return f"'{value}'"
+
+
+def _ensure_codex_hooks_feature(text: str) -> str:
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "[features]":
+            j = i + 1
+            while j < len(lines) and not lines[j].lstrip().startswith("["):
+                if lines[j].strip().startswith("hooks"):
+                    return text
+                j += 1
+            lines.insert(i + 1, "hooks = true")
+            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    prefix = "[features]\nhooks = true\n\n"
+    return prefix + text
+
+
+def _upsert_codex_config_toml(config_path: Path, worklog_cmd: str, check_cmd: str):
+    """Add a managed MSO work-memory hook block to .codex/config.toml."""
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    text = _remove_managed_block(text, "MSO_WORK_MEMORY_HOOKS")
+    text = _ensure_codex_hooks_feature(text)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if text and not text.endswith("\n\n"):
+        text += "\n"
+
+    block = f"""# BEGIN MSO_WORK_MEMORY_HOOKS
+# Managed by mso-repository-setup scripts/init.py --hook --provider codex.
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = {_toml_literal(worklog_cmd)}
+statusMessage = "Writing MSO worklog"
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = {_toml_literal(check_cmd)}
+statusMessage = "Checking MSO work-memory reminders"
+
+[[hooks.PreCompact]]
+matcher = "auto"
+
+[[hooks.PreCompact.hooks]]
+type = "command"
+command = {_toml_literal(worklog_cmd)}
+statusMessage = "Writing MSO worklog before compaction"
+
+[[hooks.SessionStart]]
+matcher = "compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(check_cmd)}
+statusMessage = "Checking MSO work-memory reminders"
+
+[[hooks.SessionStart]]
+matcher = "resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(check_cmd)}
+statusMessage = "Checking MSO work-memory reminders"
+# END MSO_WORK_MEMORY_HOOKS
+"""
+    config_path.write_text(text + block, encoding="utf-8")
+
+
+def _remove_managed_block(text: str, name: str) -> str:
+    start = f"# BEGIN {name}"
+    end = f"# END {name}"
+    if start not in text:
+        return text
+    before, rest = text.split(start, 1)
+    if end not in rest:
+        return before.rstrip() + "\n"
+    _, after = rest.split(end, 1)
+    return (before.rstrip() + "\n\n" + after.lstrip()).rstrip() + "\n"
 
 
 def main():

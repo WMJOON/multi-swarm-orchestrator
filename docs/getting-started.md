@@ -52,6 +52,14 @@ python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/pr
 ```
 
 `.claude/settings.json` 에 `PostToolUse(Bash·Edit·Write → auditlog)` 와 `Stop(→ worklog)` hook이 등록된다.
+Codex 프로젝트에서는 provider를 명시한다.
+
+```bash
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/project --provider codex
+```
+
+이 경우 `.codex/scripts/`에 hook 스크립트가 복사되고 `.codex/config.toml`과 `.codex/hooks.json`에
+worklog/work-memory-check hook이 등록된다.
 
 ---
 
