@@ -5,7 +5,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # !!! 생성물 — 직접 편집 금지. 소스: references/schemas/*.yaml
 # !!! 재생성: python scripts/schemas_to_tbox.py
-# 전역 DAG·교차-스킬·branch.on 유효성은 SHACL core 불가 → wf_to_ttl.py SPARQL.
+# feedback loop control 은 SHACL-SPARQL constraint, 교차-스킬·branch.on 유효성은 wf_to_ttl.py SPARQL/prose.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -22,7 +22,7 @@ wf:BranchShape a sh:NodeShape ; sh:targetClass wf:Branch ;
 wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:judge ; sh:minCount 1 ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" ) ; sh:message "judge: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:judge ; sh:minCount 1 ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" "AGENT" ) ; sh:message "judge: schema 제약 위반" ] ;
     sh:property [ sh:path wf:owner ; sh:datatype xsd:string ; sh:message "owner: schema 제약 위반" ] ;
     sh:property [ sh:path wf:sla ; sh:datatype xsd:string ; sh:message "sla: schema 제약 위반" ] ;
     sh:property [ sh:path wf:threshold ; sh:datatype xsd:string ; sh:message "threshold: schema 제약 위반" ] ;
@@ -38,12 +38,21 @@ wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
 wf:GroupShape a sh:NodeShape ; sh:targetClass wf:Group ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] .
 
+wf:OracleShape a sh:NodeShape ; sh:targetClass wf:Oracle ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:oracleType ; sh:minCount 1 ; sh:in ( "user" "agent" "metric" ) ; sh:message "oracleType: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:evaluator ; sh:datatype xsd:string ; sh:message "evaluator: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:targetArtifact ; sh:datatype xsd:string ; sh:message "targetArtifact: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:criteria ; sh:minCount 1 ; sh:message "criteria: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:threshold ; sh:datatype xsd:string ; sh:message "threshold: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:onFail ; sh:in ( "block" "retry" "manual_review" ) ; sh:message "onFail: schema 제약 위반" ] .
+
 wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
     sh:property [ sh:path wf:parallel ; sh:datatype xsd:boolean ; sh:message "parallel: schema 제약 위반" ] ;
     sh:property [ sh:path wf:showWrapper ; sh:datatype xsd:boolean ; sh:message "showWrapper: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:defaultJudge ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" ) ; sh:message "defaultJudge: schema 제약 위반" ] .
+    sh:property [ sh:path wf:defaultJudge ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" "AGENT" ) ; sh:message "defaultJudge: schema 제약 위반" ] .
 
 wf:StepShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
@@ -68,13 +77,52 @@ wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
                   sh:message "hasNode 타깃은 wf:Node 여야 함" ] ;
     sh:property [ sh:path wf:hasWorkflowRef ; sh:class wf:WorkflowRef ;
                   sh:message "hasWorkflowRef 타깃은 wf:WorkflowRef 여야 함" ] .
+wf:NodeGraphShape a sh:NodeShape ; sh:targetClass wf:Node ;
+    sh:property [ sh:path wf:next ; sh:class wf:Node ;
+                  sh:message "next 타깃은 wf:Node 여야 함" ] .
 wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
                   sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
+wf:BranchGraphShape a sh:NodeShape ; sh:targetClass wf:Branch ;
+    sh:property [ sh:path wf:gotoNode ; sh:class wf:Node ;
+                  sh:message "gotoNode 타깃은 wf:Node 여야 함" ] .
 wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .
 wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
     sh:property [ sh:path wf:milestoneOf ; sh:class wf:Phase ;
                   sh:message "milestoneOf 타깃은 wf:Phase 여야 함" ] .
+
+# ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
+wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
+    sh:sparql [
+        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Oracle gate in the loop" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:dependsOn+ $this .
+              FILTER NOT EXISTS {
+                $this wf:dependsOn* ?phase .
+                ?phase wf:hasNode ?oracle .
+                ?oracle a wf:Oracle .
+                ?phase wf:dependsOn* $this .
+              }
+            }
+        """ ;
+    ] .
+wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
+    sh:sparql [
+        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Oracle gate in the loop" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this (wf:next|wf:hasBranch/wf:gotoNode)+ $this .
+              FILTER NOT EXISTS {
+                $this (wf:next|wf:hasBranch/wf:gotoNode)* ?oracle .
+                ?oracle a wf:Oracle .
+                ?oracle (wf:next|wf:hasBranch/wf:gotoNode)* $this .
+              }
+            }
+        """ ;
+    ] .
 

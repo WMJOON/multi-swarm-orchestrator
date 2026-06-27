@@ -1,10 +1,19 @@
-# Multi-Swarm Orchestrator (MSO) v0.4.1
+# Multi-Swarm Orchestrator (MSO) v0.4.2
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 **repository 구조·workflow·작업 기억을 선언하면, 에이전트가 실행 가능한 형태로 컴파일**한다.
 
 ---
+
+## v0.4.2 Decision/Oracle Gate Separation Patch
+
+v0.4.2는 workflow topology에서 **process decision**과 **artifact oracle**을 분리한 패치다. 순환 자체는 허용하지만, 산출물이 재귀 소비되는 feedback loop에는 별도 Oracle gate가 있어야 한다.
+
+- `decision`은 진행/분기를 제어한다. user decision은 HITL/HITLFE/HOTL/HOOTL, agent decision은 AGENT judge로 표현한다.
+- `oracle`은 산출물 품질·정합·수용 가능성을 평가한다. `oracle_type`은 user/agent/metric을 지원한다.
+- `wf_to_ttl.py`와 generated SHACL은 DAG를 강제하지 않고, Oracle gate 없는 uncontrolled feedback loop만 오류로 판정한다.
+- workflow subgraph에는 `wf:next`와 branch `gotoNode` 흐름을 표시하고, repository topology는 phase/module/milestone 수준으로 유지한다.
 
 ## v0.4.1 TTL-only Workflow Observability Patch
 

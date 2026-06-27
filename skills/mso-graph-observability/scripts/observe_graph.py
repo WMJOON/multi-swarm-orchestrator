@@ -542,10 +542,20 @@ def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
     return [term for term in terms if workflow_scope(term) == scope]
 
 
+def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
+    node_terms = {
+        node
+        for cls in (WF.Step, WF.Decision, WF.Validation, WF.Group, WF.WorkflowRef)
+        for node in subjects_of_type(graph, cls)
+    }
+    return filter_scope(sorted(node_terms, key=str), scope)
+
+
 def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
     intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
     if scope:
         intro = f"> Sub-graph for workflow scope `{scope}`. Generated from MSO workflow TTL."
+    include_internal = scope is not None
     lines: list[str] = [
         intro,
         "",
@@ -586,20 +596,21 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
         suffix = f"Phase / {status}" if status else "Phase"
         declare(phase, "phase", phase_cls, suffix)
 
-    node_classes = [
-        (WF.Step, "step"),
-        (WF.Decision, "decision"),
-        (WF.Validation, "validation"),
-        (WF.Group, "group"),
-        (WF.WorkflowRef, "workflowRef"),
-    ]
-    for cls, css_class in node_classes:
-        for node in filter_scope(subjects_of_type(graph, cls), scope):
-            status = first_literal(graph, node, WF.status)
-            suffix = local_name(cls)
-            if status:
-                suffix = f"{suffix} / {status}"
-            declare(node, local_name(cls).lower(), css_class, suffix)
+    if include_internal:
+        node_classes = [
+            (WF.Step, "step"),
+            (WF.Decision, "decision"),
+            (WF.Validation, "validation"),
+            (WF.Group, "group"),
+            (WF.WorkflowRef, "workflowRef"),
+        ]
+        for cls, css_class in node_classes:
+            for node in filter_scope(subjects_of_type(graph, cls), scope):
+                status = first_literal(graph, node, WF.status)
+                suffix = local_name(cls)
+                if status:
+                    suffix = f"{suffix} / {status}"
+                declare(node, local_name(cls).lower(), css_class, suffix)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         declare(module, "module", "module", "Module")
@@ -615,22 +626,40 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
             if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
                 dep_id = declare(dep, "phase")
                 lines.append(f"  {dep_id} -->|dependsOn| {phase_id}")
-        for node in sorted(graph.objects(phase, WF.hasNode), key=str):
-            if isinstance(node, URIRef) and (scope is None or workflow_scope(node) == scope):
-                node_prefix, node_cls, node_suffix = visual_kind(node)
-                node_id = declare(node, node_prefix, node_cls, node_suffix)
-                lines.append(f"  {phase_id} -->|hasNode| {node_id}")
-        for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
-            if isinstance(ref, URIRef) and (scope is None or workflow_scope(ref) == scope):
-                ref_id = declare(ref, "workflowref", "workflowRef", "WorkflowRef")
-                lines.append(f"  {phase_id} -->|hasWorkflowRef| {ref_id}")
+        if include_internal:
+            for node in sorted(graph.objects(phase, WF.hasNode), key=str):
+                if isinstance(node, URIRef) and workflow_scope(node) == scope:
+                    node_prefix, node_cls, node_suffix = visual_kind(node)
+                    node_id = declare(node, node_prefix, node_cls, node_suffix)
+                    lines.append(f"  {phase_id} -->|hasNode| {node_id}")
+            for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
+                if isinstance(ref, URIRef) and workflow_scope(ref) == scope:
+                    ref_id = declare(ref, "workflowref", "workflowRef", "WorkflowRef")
+                    lines.append(f"  {phase_id} -->|hasWorkflowRef| {ref_id}")
 
-    for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
-        decision_id = declare(decision, "decision")
-        for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
-            if isinstance(branch, URIRef) and (scope is None or workflow_scope(branch) == scope):
-                branch_id = declare(branch, "branch", "branch", "Branch")
-                lines.append(f"  {decision_id} -->|hasBranch| {branch_id}")
+    if include_internal:
+        for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
+            decision_id = declare(decision, "decision")
+            for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
+                if isinstance(branch, URIRef) and workflow_scope(branch) == scope:
+                    branch_id = declare(branch, "branch", "branch", "Branch")
+                    lines.append(f"  {decision_id} -->|hasBranch| {branch_id}")
+                    branch_condition = first_literal(graph, branch, WF.on)
+                    branch_label = f"on: {branch_condition}" if branch_condition else "goto"
+                    for target in sorted(graph.objects(branch, WF.gotoNode), key=str):
+                        if isinstance(target, URIRef) and workflow_scope(target) == scope:
+                            target_prefix, target_cls, target_suffix = visual_kind(target)
+                            target_id = declare(target, target_prefix, target_cls, target_suffix)
+                            lines.append(f"  {decision_id} -.->|{mermaid_label(branch_label, 32)}| {target_id}")
+
+        for node in workflow_node_terms(graph, scope):
+            source_prefix, source_cls, source_suffix = visual_kind(node)
+            source_id = declare(node, source_prefix, source_cls, source_suffix)
+            for target in sorted(graph.objects(node, WF.next), key=str):
+                if isinstance(target, URIRef) and workflow_scope(target) == scope:
+                    target_prefix, target_cls, target_suffix = visual_kind(target)
+                    target_id = declare(target, target_prefix, target_cls, target_suffix)
+                    lines.append(f"  {source_id} -->|next| {target_id}")
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
@@ -679,11 +708,7 @@ def build_workflow_subgraph_index(graph: Graph) -> str:
     ]
     for scope in scopes:
         phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
-        node_terms = {
-            node
-            for cls in (WF.Step, WF.Decision, WF.Validation, WF.Group, WF.WorkflowRef)
-            for node in filter_scope(subjects_of_type(graph, cls), scope)
-        }
+        node_terms = workflow_node_terms(graph, scope)
         file_name = f"{scope}.md"
         lines.append(
             f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | {phase_count} | {len(node_terms)} |"

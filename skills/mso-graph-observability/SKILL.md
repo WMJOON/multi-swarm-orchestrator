@@ -1,5 +1,6 @@
 ---
 name: mso-graph-observability
+version: "0.4.2"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, work-memory/auditlog/worklog/intent turn graph는 실패 흐름, 반복 실행, 이상 행동, 병목 패턴을 분석하는 관측 레이어로 확장한다."
 ---
 
@@ -58,7 +59,7 @@ agent-context/observability/graph/
 `workflow` scope 생성 파일:
 
 - `README.md` — 생성 결과 인덱스
-- `workflow-topology.md` — repository 전체 Phase, Node, Module, Milestone 중심 실행/의존 그래프
+- `workflow-topology.md` — repository 전체 Phase, Module, Milestone 중심 topology graph
 - `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
 - `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph
 - `workflow-ssot-report.md` — legacy workflow YAML 대비 sibling `*.abox.ttl` 누락 여부. YAML-only workflow는 관측에서 제외됨을 경고
@@ -112,7 +113,8 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 ## Notes
 
 - `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
-- `wf:hasNode`, `wf:hasWorkflowRef`, `wf:milestoneOf`, `wf:hasBranch`는 구조 관계를 표현한다.
+- `wf:hasNode`, `wf:hasWorkflowRef`, `wf:hasBranch`는 workflow별 sub-graph에서만 내부 구조 관계로 표현한다.
+- `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨기고, workflow별 sub-graph에서 phase 내부 실행 흐름과 조건부 feedback loop로 표현한다.
 - 전체 repository graph는 `workflow-topology.md`에 생성하고, workflow scope별 sub-graph는 `workflow-subgraphs/`에 분리한다.
 - sub-graph 분리는 scoped URI(`phase/<workflow>/<phase>`, `node/<workflow>/<node>`)를 기준으로 한다. unscoped legacy TTL은 repository graph에는 보이지만 workflow별 sub-graph에는 포함되지 않는다.
 - 대규모 ontology에서는 `property-map.md`가 커질 수 있으므로 CLI 내부에서 보기 좋은 상한을 둔다.

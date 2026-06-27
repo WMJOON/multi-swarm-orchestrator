@@ -47,7 +47,7 @@ def _ttl_path(yaml_path: Path) -> Path:
 
 def _serialize(yaml_path: Path) -> str:
     graph, _ = wf_to_ttl.build_graph(yaml_path.resolve())
-    return graph.serialize(format="turtle")
+    return graph.serialize(format="turtle").rstrip() + "\n"
 
 
 def migrate(root: Path, patterns: tuple[str, ...], check: bool = False) -> int:

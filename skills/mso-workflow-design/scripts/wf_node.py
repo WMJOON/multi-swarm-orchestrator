@@ -37,6 +37,7 @@ JUDGE_CONDITIONS = {
     "HITLFE": ["auto-approved", "escalated", "rejected"],
     "HOTL": ["passed", "flagged"],
     "HOOTL": ["completed", "failed"],
+    "AGENT": ["passed", "failed", "flagged"],
 }
 
 RESERVED_TOP_KEYS = {
@@ -115,6 +116,8 @@ def cmd_scaffold(node_type: str, node_id: str | None, judge: str | None):
         node = _scaffold_decision(nid, judge or "HITL")
     elif node_type == "validation":
         node = _scaffold_validation(nid)
+    elif node_type == "oracle":
+        node = _scaffold_oracle(nid)
     elif node_type == "group":
         node = _scaffold_group(nid)
     elif node_type == "phase":
@@ -169,6 +172,20 @@ def _scaffold_validation(node_id: str) -> dict:
         "harness": "TODO: runner-id",
         "pass_criteria": ["TODO: 조건"],
         "on_fail": "block",
+    }
+
+
+def _scaffold_oracle(node_id: str) -> dict:
+    return {
+        "type": "oracle",
+        "id": node_id,
+        "label": "TODO: 품질 평가",
+        "status": "pending",
+        "oracle_type": "agent",
+        "evaluator": "TODO: evaluator-id",
+        "criteria": ["TODO: 품질 기준"],
+        "threshold": "TODO: 임계값",
+        "branches": [{"on": "failed", "goto": "TODO-node-id"}],
     }
 
 
@@ -521,7 +538,7 @@ def _validate_phase(phase_id: str, phase: dict, source: Path) -> list[Validation
                                        "steps / workflows / artifacts 중 하나는 필요"))
 
     dj = phase.get("default_judge")
-    if dj and dj not in ["HITL", "HITLFE", "HOTL", "HOOTL"]:
+    if dj and dj not in ["HITL", "HITLFE", "HOTL", "HOOTL", "AGENT"]:
         errors.append(ValidationError(ctx, "default_judge", f"허용값 아님: {dj}"))
 
     return errors
@@ -546,6 +563,8 @@ def _validate_nodes(nodes: list, target_id: str | None) -> list[ValidationError]
             errors.extend(_validate_decision(node_id, node))
         elif node_type == "validation":
             errors.extend(_validate_validation(node_id, node))
+        elif node_type == "oracle":
+            errors.extend(_validate_oracle(node_id, node))
         elif node_type == "group":
             errors.extend(_validate_group(node_id, node))
             errors.extend(_validate_nodes(node.get("steps", []) or [], target_id))
@@ -641,6 +660,38 @@ def _validate_validation(node_id: str, node: dict) -> list[ValidationError]:
     elif isinstance(pc, list) and len(pc) == 0:
         errors.append(ValidationError(node_id, "pass_criteria", "최소 1개 이상"))
 
+    return errors
+
+
+def _validate_oracle(node_id: str, node: dict) -> list[ValidationError]:
+    errors: list[ValidationError] = []
+    for fname in ["id", "label", "status", "oracle_type", "criteria"]:
+        if not node.get(fname):
+            errors.append(ValidationError(node_id, fname, "필수 필드 없음"))
+
+    status = node.get("status")
+    allowed_status = ["completed", "active", "pending"]
+    if status and status not in allowed_status:
+        errors.append(ValidationError(node_id, "status",
+                                       f"허용값 아님: {status} (허용: {allowed_status})"))
+
+    oracle_type = node.get("oracle_type")
+    allowed_oracle_types = ["user", "agent", "metric"]
+    if oracle_type and oracle_type not in allowed_oracle_types:
+        errors.append(ValidationError(node_id, "oracle_type",
+                                       f"허용값 아님: {oracle_type} (허용: {allowed_oracle_types})"))
+
+    criteria = node.get("criteria")
+    if criteria is not None and not isinstance(criteria, list):
+        errors.append(ValidationError(node_id, "criteria", "list 형식이어야 함"))
+    elif isinstance(criteria, list) and len(criteria) == 0:
+        errors.append(ValidationError(node_id, "criteria", "최소 1개 이상"))
+
+    on_fail = node.get("on_fail")
+    allowed_on_fail = ["block", "retry", "manual_review"]
+    if on_fail and on_fail not in allowed_on_fail:
+        errors.append(ValidationError(node_id, "on_fail",
+                                       f"허용값 아님: {on_fail} (허용: {allowed_on_fail})"))
     return errors
 
 
@@ -883,13 +934,13 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="노드 유형 스키마 출력")
-    p_show.add_argument("type", choices=["step", "decision", "validation", "group", "phase"])
+    p_show.add_argument("type", choices=["step", "decision", "validation", "oracle", "group", "phase"])
 
     p_sc = sub.add_parser("scaffold", help="노드 스캐폴드 YAML 생성")
-    p_sc.add_argument("type", choices=["step", "decision", "validation", "group", "phase"])
+    p_sc.add_argument("type", choices=["step", "decision", "validation", "oracle", "group", "phase"])
     p_sc.add_argument("--id", dest="node_id", default=None,
                       help="노드 id (생략 시 placeholder). 네이밍 패턴은 프로젝트 컨벤션.")
-    p_sc.add_argument("--judge", choices=["HITL", "HITLFE", "HOTL", "HOOTL"],
+    p_sc.add_argument("--judge", choices=["HITL", "HITLFE", "HOTL", "HOOTL", "AGENT"],
                       help="decision 노드의 judge 값")
 
     p_val = sub.add_parser("validate", help="워크플로우 YAML 검증 (계층 자동 해석)")

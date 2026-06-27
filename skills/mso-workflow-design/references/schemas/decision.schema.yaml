@@ -1,5 +1,8 @@
 type: decision
-description: "분기/판단 노드. automation_gate가 여기에 속함."
+description: |
+  분기/판단 노드. workflow graph 는 task/decision 노드와 process edge 로 구성된다.
+  user decision 은 HITL/HITLFE/HOTL/HOOTL judge 로 표현하고, agent decision 은
+  AGENT judge 로 표현한다. 산출물 품질평가/판단 주체는 별도의 oracle gate로 표현한다.
 
 fields:
   type:
@@ -35,12 +38,13 @@ fields:
   judge:
     required: true
     type: enum
-    values: [HITL, HITLFE, HOTL, HOOTL]
+    values: [HITL, HITLFE, HOTL, HOOTL, AGENT]
     descriptions:
       HITL: "Human-In-The-Loop — 모든 결정에 사람 승인 (pre-execution)"
       HITLFE: "Human-In-The-Loop For Exceptions — 임계치 초과 시만 에스컬레이션"
       HOTL: "Human-On-The-Loop — 자율 실행, 사람은 감독·중단 권한"
       HOOTL: "Human-Out-Of-The-Loop — 완전 자율, 사후 감사만"
+      AGENT: "Agent Decision — agent가 process branch/진행 여부를 판단"
 
   # HITL 추가 필드
   owner:
@@ -86,7 +90,8 @@ fields:
 
 structural_invariants:
   - "id 는 워크플로우 내 unique"
-  - "judge ∈ {HITL, HITLFE, HOTL, HOOTL}"
+  - "judge ∈ {HITL, HITLFE, HOTL, HOOTL, AGENT}"
+  - "Decision gate와 Oracle gate는 분리한다"
   - "branches[].on 은 judge_branch_conditions[judge] 에 속해야 함"
   - "HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"
 
@@ -95,6 +100,7 @@ judge_branch_conditions:
   HITLFE: [auto-approved, escalated, rejected]
   HOTL: [passed, flagged]
   HOOTL: [completed, failed]
+  AGENT: [passed, failed, flagged]
 
 decision_matrix:
   - q: "잘못된 결정이 회복 불가능한가?"

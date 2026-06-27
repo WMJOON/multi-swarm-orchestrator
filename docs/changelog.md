@@ -1,5 +1,25 @@
 # 변경 이력
 
+## v0.4.2 (2026-06-27) — Decision/Oracle gate separation
+
+> **Decision gate와 Oracle gate 분리.** workflow topology는 task/decision/oracle node와 process edge로 관측한다. 순환 자체는 금지하지 않고, 산출물 재귀 소비 loop 안에 별도 Oracle gate가 없을 때만 uncontrolled feedback loop로 판정한다.
+
+### Added
+
+| 변경 | 내용 |
+|------|------|
+| `oracle.schema.yaml` | `type: oracle`, `oracle_type ∈ {user, agent, metric}`, `criteria`, `target_artifact`, `on_fail`을 갖는 산출물 평가 gate 추가 |
+| `wf_to_ttl.py` | `oracle` 노드를 `wf:Oracle`로 투영하고, ordered phase steps를 `wf:next`, branch goto를 `wf:gotoNode` process edge로 투영 |
+| `mso-graph-observability` | repository topology에서는 내부 node flow를 숨기고, workflow별 subgraph에서 `next`와 `on:<condition>` edge를 표시 |
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| feedback loop validation | DAG/비순환 강제가 아니라 Oracle gate 없는 feedback loop를 오류로 판정 |
+| `decision.schema.yaml` | `judge`에 `AGENT` 추가. decision은 process branch/진행 판단만 담당하고 산출물 품질평가는 `oracle`로 분리 |
+| 전체 버전 | README와 SKILL.md version field를 v0.4.2로 정렬 |
+
 ## v0.4.1 (2026-06-27) — TTL-only workflow observability patch
 
 > **YAML 생성 루프 제거 + workflow sub-graph 관측 추가.** workflow SSOT는 TTL ABox만 사용한다. YAML은 신규 작성/역생성 대상이 아니라 legacy migration input으로만 남긴다.

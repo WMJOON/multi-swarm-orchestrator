@@ -11,9 +11,10 @@
        노드-단위 불변식: status enum, validation=harness+pass_criteria,
        decision=judge, label 비어있지 않음. (스키마 structural_invariants 의 로컬분)
 
-    2) 전역 DAG (rdflib SPARQL) — 비순환성 / back-edge.
-       SHACL core 가 못 하는 임의-깊이 도달성. "다운스트림 결과가 업스트림으로
-       재참조되면(=의존 사이클) 오류"를 ASK { ?x wf:dependsOn+ ?x } 로 잡는다.
+    2) feedback loop control (SHACL-SPARQL + rdflib SPARQL)
+       순환 자체는 허용한다. 다만 산출물이 재귀적으로 소비되는 loop 안에
+       별도 Oracle gate가 없으면 uncontrolled feedback loop로 본다. Decision gate는
+       process branch 제어점이며, Oracle gate는 산출물 품질/정합 평가점이다.
 
 사용:
   python wf_to_ttl.py serialize <workflow.yaml>          # legacy YAML import: TTL stdout
@@ -46,6 +47,7 @@ _TYPE_CLASS = {
     "step": WF.Step,
     "decision": WF.Decision,
     "validation": WF.Validation,
+    "oracle": WF.Oracle,
     "group": WF.Group,
 }
 
@@ -137,14 +139,21 @@ _NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows"}
 
 def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
     """phase.steps[] (group 재귀 포함) 의 구조화 노드(type 보유)를 투영."""
-    for n in wf_node._walk_nodes(nodes or []):
+    ordered_nodes = [
+        n for n in wf_node._walk_nodes(nodes or [])
+        if isinstance(n, dict) and n.get("type") in _TYPE_CLASS and n.get("id")
+    ]
+    ordered_uris: list[URIRef] = []
+
+    for n in ordered_nodes:
         ntype = n.get("type")
         cls = _TYPE_CLASS.get(ntype)
-        if cls is None or not n.get("id"):
-            continue  # 레거시(type 없는 step-01: 형태)는 DAG 투영 대상 아님
         nu = _node_uri(n["id"], scope)
+        ordered_uris.append(nu)
         g.add((nu, RDF.type, cls))
         g.add((nu, RDF.type, WF.Node))   # 명시 상위타입 — 추론 없이 hasNode range(sh:class wf:Node) 성립
+        if cls in {WF.Step, WF.Validation, WF.Group, WF.WorkflowRef}:
+            g.add((nu, RDF.type, WF.Task))
         g.add((phase_uri, WF.hasNode, nu))
         _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/judge/owner/...
         for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI)
@@ -167,8 +176,12 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
             g.add((bn, WF.on, Literal(str(on_val))))
             if b.get("goto"):
                 g.add((bn, WF.goto, Literal(str(b["goto"]))))
+                g.add((bn, WF.gotoNode, _node_uri(str(b["goto"]), scope)))
             if b.get("label"):
                 g.add((bn, WF.label, Literal(str(b["label"]))))
+
+    for current, nxt in zip(ordered_uris, ordered_uris[1:]):
+        g.add((current, WF.next, nxt))
 
 
 def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
@@ -192,7 +205,7 @@ def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
 # top-level non-phase 메타 블록(wf_node 의 phase-제외 키 + 소비자 x_* 확장).
 # 임의 중첩 구조(scalar/list/dict)를 가질 수 있어 canonical JSON literal 로 무손실 보존.
 # feedback_loops(phase 간 의도적 역방향 loop: testing→development 등)도 여기 포함 —
-# dependsOn/criticalDep 으로 투영하면 DAG 비순환 검사에 false cycle 을 내므로 rawJson 으로만 보존.
+# 별도 산문 블록은 rawJson 으로 보존하고, 실행/의존 edge의 loop 통제는 Oracle 개입점으로 검증한다.
 _META_BLOCK_KEYS = ("workflow", "module", "meta", "metadata", "feedback_loops")
 
 
@@ -222,7 +235,7 @@ def _project_meta_blocks(g: Graph, doc: dict, scope: str = "") -> None:
 def _project_narrative(g: Graph, doc: dict, scope: str = "") -> None:
     """root-workflow narrative/meta 층 투영(무손실): project, key_decisions,
     success_criteria(top-level), critical_dependencies 서술. 그래프 층(criticalDep
-    에지·Module 타입)은 build_graph 본문이 별도 투영(DAG 검사용).
+    에지·Module 타입)은 build_graph 본문이 별도 투영한다.
     scope 는 metablock URI document-scoping 에 쓰인다(project/kd/sc 는 내용-기반 URI 라 무관)."""
     proj = doc.get("project")
     if isinstance(proj, dict):
@@ -303,13 +316,13 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 pu = _phase_uri(pid, scope)
                 g.add((pu, RDF.type, WF.Phase))
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
-                for dep in (phase.get("dependencies") or []):  # module 스타일도 phase-DAG dependsOn 지원
+                for dep in (phase.get("dependencies") or []):  # module 스타일도 phase dependsOn 지원
                     g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
                 _project_workflows(g, pu, phase)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
                 _project_nodes(g, phase.get("steps", []), pu, scope)
 
-        # ── critical_dependencies: DAG 검사용 from→to 에지(Module) + 서술 보존용 노드(dual-rep) ──
+        # ── critical_dependencies: from→to 에지(Module) + 서술 보존용 노드(dual-rep) ──
         for cd in (doc.get("critical_dependencies") or []):
             if isinstance(cd, dict) and cd.get("from") and cd.get("to"):
                 fu, tu = _module_uri(cd["from"]), _module_uri(cd["to"])
@@ -344,16 +357,35 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
 
 # ─── 검증 ────────────────────────────────────────────────────────────────────
 
-_CYCLE_QUERY = """
+_UNCONTROLLED_LOOP_QUERY = """
 PREFIX wf: <https://mso.dev/ontology/workflow#>
-SELECT ?x WHERE { ?x (wf:dependsOn|wf:criticalDep)+ ?x }
+SELECT ?x WHERE {
+  {
+    ?x wf:dependsOn+ ?x .
+    FILTER NOT EXISTS {
+      ?x wf:dependsOn* ?phase .
+      ?phase wf:hasNode ?oracle .
+      ?oracle a wf:Oracle .
+      ?phase wf:dependsOn* ?x .
+    }
+  }
+  UNION
+  {
+    ?x (wf:next|wf:hasBranch/wf:gotoNode)+ ?x .
+    FILTER NOT EXISTS {
+      ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?oracle .
+      ?oracle a wf:Oracle .
+      ?oracle (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
+    }
+  }
+}
 """
 
 
-def find_cycles(g: Graph) -> list[str]:
-    """비순환성 위반(자기 자신에게 도달하는 노드) 목록. 빈 리스트=DAG."""
+def find_uncontrolled_loops(g: Graph) -> list[str]:
+    """Oracle 개입점 없이 닫힌 feedback loop 목록."""
     seen = []
-    for row in g.query(_CYCLE_QUERY):
+    for row in g.query(_UNCONTROLLED_LOOP_QUERY):
         uri = str(row[0])
         if uri not in seen:
             seen.append(uri)
@@ -435,15 +467,16 @@ def run_shacl(g: Graph) -> tuple[bool, str]:
 def validate(root_yaml: Path, index_yaml: Path | None = None) -> dict:
     g, resolved = build_graph(root_yaml)
     tree_issues = [str(i) for i in resolved.issues]
-    cycles = find_cycles(g)
+    uncontrolled_loops = find_uncontrolled_loops(g)
     conforms, shacl_text = run_shacl(g)
     # 교차-스킬(scaffold) 경로 멤버십은 warning — ok 를 뒤집지 않는다(wf_node 와 동일 severity).
     scaffold_warnings = check_scaffold(resolved, index_yaml) if index_yaml else []
-    ok = conforms and not cycles and not tree_issues
+    ok = conforms and not uncontrolled_loops and not tree_issues
     return {
         "ok": ok,
         "triples": len(g),
-        "cycles": cycles,
+        "uncontrolled_loops": uncontrolled_loops,
+        "cycles": uncontrolled_loops,
         "shacl_conforms": conforms,
         "shacl_report": shacl_text if not conforms else "",
         "tree_issues": tree_issues,
@@ -453,11 +486,11 @@ def validate(root_yaml: Path, index_yaml: Path | None = None) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="wf_to_ttl",
-        description="workflow YAML → TTL 투영 + shape/DAG 검증")
+        description="workflow YAML → TTL 투영 + shape/feedback-loop 검증")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serialize", help="TTL 직렬화 (stdout)")
     s.add_argument("workflow")
-    v = sub.add_parser("validate", help="shape(SHACL) + 비순환성(SPARQL) 검증")
+    v = sub.add_parser("validate", help="shape(SHACL) + feedback-loop(SPARQL) 검증")
     v.add_argument("workflow")
     v.add_argument("--index", default=None,
                    help="scaffold index.yaml — directories[].path 교차-스킬 멤버십 검증(warning)")
@@ -471,7 +504,7 @@ def main(argv=None) -> int:
 
     if args.cmd == "serialize":
         g, _ = build_graph(wf_path)
-        print(g.serialize(format="turtle"))
+        sys.stdout.write(g.serialize(format="turtle").rstrip() + "\n")
         return 0
 
     if args.cmd == "validate":
@@ -486,9 +519,9 @@ def main(argv=None) -> int:
                 print("✗ 트리 이슈:")
                 for i in res["tree_issues"]:
                     print(f"  - {i}")
-            if res["cycles"]:
-                print("✗ 의존 사이클(다운스트림 재참조):")
-                for c in res["cycles"]:
+            if res["uncontrolled_loops"]:
+                print("✗ uncontrolled feedback loop (Oracle 개입점 없음):")
+                for c in res["uncontrolled_loops"]:
                     print(f"  - {c}")
             if not res["shacl_conforms"]:
                 print("✗ SHACL 로컬 shape 위반:")
@@ -499,7 +532,7 @@ def main(argv=None) -> int:
                     print(f"  - {w}")
             if res["ok"]:
                 tail = " (scaffold 경고 있음)" if res.get("scaffold_warnings") else ""
-                print("✓ DAG 비순환 + 로컬 shape 통과" + tail)
+                print("✓ feedback loop control + shape 통과" + tail)
         return 0 if res["ok"] else 1
     return 1
 

@@ -38,7 +38,7 @@ fields:
   default_judge:
     required: false
     type: enum
-    values: [HITL, HITLFE, HOTL, HOOTL]
+    values: [HITL, HITLFE, HOTL, HOOTL, AGENT]
     description: "하위 decision 노드의 기본 judge 값."
 
   steps:

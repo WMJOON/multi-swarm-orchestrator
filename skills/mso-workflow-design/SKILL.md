@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-design
-version: "0.4.1"
+version: "0.4.2"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
@@ -38,9 +38,9 @@ description: >
 
 | 스킬이 강제하는 것 | 프로젝트가 정의하는 것 |
 |----------------|------------------|
-| `type ∈ {step, decision, validation, group, phase}` | `id` 네이밍 패턴 (예: `{abbr}-s-{NNN}`) |
+| `type ∈ {step, decision, validation, oracle, group, phase}` | `id` 네이밍 패턴 (예: `{abbr}-s-{NNN}`) |
 | 노드 id unique, label 존재 | 모듈 약어 매핑 (acp/sdm/…) |
-| `judge ∈ {HITL, HITLFE, HOTL, HOOTL}` | label 동사 어휘 (분석/생성/검증 …) |
+| `judge ∈ {HITL, HITLFE, HOTL, HOOTL, AGENT}` | label 동사 어휘 (분석/생성/검증 …) |
 | `branches.on ∈ judge_branch_conditions[judge]` | `phase.id` 어휘 (discovery/development/testing …) |
 | HITL/HITLFE → owner 필수, HITLFE → threshold 필수 | `directories.role` 어휘 (input/output/reference/…) |
 | status ∈ {completed, active, pending} | `success_criteria` 강제 여부·개수 |
@@ -99,21 +99,22 @@ mkdir -p agent-context/workflow
 |-------|----------------|
 | Phase Structure | 하나 이상의 phase (id 어휘는 프로젝트 — MSO 권장: discovery/development/testing) |
 | Step Definition | `type: step` — `id`, `label`, `status`, `directories` (optional), `deliverables` |
-| **Decision Node** | **`type: decision` — `judge` ∈ {HITL/HITLFE/HOTL/HOOTL}, HITL/HITLFE는 `owner` 필수, `description` 권장 (판정 주체가 검토할 항목 서술)** |
+| **Decision Gate** | **`type: decision` — process branch/진행 판단. `judge` ∈ {HITL/HITLFE/HOTL/HOOTL/AGENT}, HITL/HITLFE는 `owner` 필수** |
 | **Validation Harness** | **`type: validation` — 자동 검증 게이트. `harness` (runner 식별자), `pass_criteria` 필수** |
+| **Oracle Gate** | **`type: oracle` — 산출물 판단/품질평가 게이트. `oracle_type` ∈ {user/agent/metric}, `criteria` 필수. feedback loop의 drift 개입점** |
 | Deliverable Taxonomy | `type`, `location`, `status` |
 | Dependencies | `requires` (입력), `provides` (출력) |
 | Success Criteria | 측정 가능한 기준 (강제 개수는 프로젝트 컨벤션) |
 | Key Decisions | `decision`, `rationale`, `status` |
 
-#### Validation vs Decision
+#### Decision vs Validation vs Oracle
 
-| 항목 | `decision` | `validation` |
-|------|----------|------------|
-| 의미 | 분기 판단 (사람/모델이 판단) | 자동 검증 하네스 (스크립트가 패스/실패 판정) |
-| 필수 필드 | `judge`, `branches[].on` | `harness`, `pass_criteria` |
-| Mermaid 형태 | 마름모 `{}` | 육각형 `{{}}` |
-| 분기 | 가능 (branches 명시) | 일반적으로 단일 후속 (실패 시 별도 정책) |
+| 항목 | `decision` | `validation` | `oracle` |
+|------|----------|------------|----------|
+| 의미 | process branch/진행 판단 | 자동 검증 하네스 | 산출물 판단/품질평가 권위 |
+| 필수 필드 | `judge`, `branches[].on` | `harness`, `pass_criteria` | `oracle_type`, `criteria` |
+| 역할 | user/agent decision gate | script/test runner | user/agent/metric oracle gate |
+| loop 통제 | 단독으로 drift loop를 끊지 않음 | 검증 실행 근거 | feedback loop의 개입점 |
 
 ### 다중 Workflow 패턴 (Repo당 N개 workflow)
 
@@ -177,7 +178,7 @@ python validate_workflow.py --strict   # warning까지 error로 승격
 
 검증 실패 시 변환 단계로 진행할 수 없다.
 
-### Step 3-B. Graph Validation — TTL TBox/ABox + SHACL/DAG
+### Step 3-B. Graph Validation — TTL TBox/ABox + SHACL/Feedback Loop Control
 
 워크플로 구조를 **DL TBox/ABox** 로 형식화한다(intent 쪽 `intent_taxonomy.ttl`=TBox /
 `instances/intents.ttl`=ABox 와 동일 패턴·네임스페이스 계열 `mso.dev/ontology/`).
@@ -196,7 +197,7 @@ python validate_workflow.py --strict   # warning까지 error로 승격
 > python scripts/schemas_to_tbox.py          # 재생성
 > python scripts/schemas_to_tbox.py --check  # schemas↔TTL drift 가드 (CI/테스트)
 > ```
-> 생성 못 하는 것(산문 invariant, branch.on judge-의존 유효성, 비순환성·교차-스킬)은
+> 생성 못 하는 것(산문 invariant, branch.on judge-의존 유효성, 교차-스킬)은
 > wf_to_ttl.py SPARQL + 수작업으로 분리 유지. schema 없는 root 개념(dependsOn/Module/
 > Milestone/directory)은 생성기 내 `_GRAPH_OVERLAY` 에 명시.
 
@@ -210,12 +211,12 @@ python migrate_workflows_to_ttl.py agent-context/workflow --check  # CI drift ga
 
 > **방향 (TTL-only)**: TTL ABox 가 SSOT-of-record. `wf_to_ttl.py`는 migration backend로만 남는다. 일반 운영자는 `migrate_workflows_to_ttl.py`를 사용하고, migration 이후에는 TTL만 수정한다.
 
-검증은 두 엔진으로 분담한다(SHACL 단독으로는 DAG 형상 전체를 못 잡는다):
+검증은 두 엔진으로 분담한다. 순환 자체는 금지하지 않는다. 다만 산출물이 재귀적으로 소비되는 loop 안에 별도 `oracle` gate가 없으면 uncontrolled feedback loop로 본다. `decision` gate는 진행/분기를 제어하지만, 산출물 품질·정합·수용 가능성의 권위는 `oracle` gate가 담당한다:
 
 | 검사 | 엔진 | 잡는 것 |
 |------|------|--------|
-| **로컬/정합 shape** | pyshacl (추론 off) | status·judge enum, validation=harness+pass_criteria, decision=judge, label 존재, dependsOn/hasNode/criticalDep/milestoneOf **range-class**(dangling ref 포함) |
-| **전역 DAG** | rdflib SPARQL `ASK { ?x (wf:dependsOn\|wf:criticalDep)+ ?x }` | **비순환성** — 다운스트림 결과가 업스트림으로 재참조되는 의존 사이클을 오류로 판정. SHACL core 불가한 임의-깊이 도달성. |
+| **로컬/정합 shape** | pyshacl (추론 off) | status·judge enum, validation=harness+pass_criteria, decision=judge, label 존재, dependsOn/hasNode/next/gotoNode/criticalDep/milestoneOf **range-class**(dangling ref 포함) |
+| **Feedback loop control** | SHACL-SPARQL + rdflib SPARQL | `wf:dependsOn` 또는 `wf:next`/`wf:gotoNode` 순환 중 별도 `wf:Oracle` gate가 없는 loop를 오류로 판정. |
 | **교차-스킬**(`--index`) | SPARQL containment join (`STRSTARTS`) | `directories[].path` 가 scaffold(index) 모듈 fs 루트의 자손인지 — 미등록 경로는 warning. scaffold 해소는 `wf_node._resolve_scaffold` **재사용**(중복 로직 안 만듦). 기존 wf_node 내장 사본은 2단계에서 제거 대상. |
 
 | 노드 속성 핵심 | 의미 |
@@ -241,7 +242,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py --root .
 ```
 
 생성되는 핵심 산출물:
-- `workflow-topology.md` — repository 전체 workflow graph
+- `workflow-topology.md` — repository 전체 workflow graph. phase/module/milestone 수준의 topology를 보여주며, 내부 node 실행 흐름은 workflow별 sub-graph에서만 펼친다.
 - `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
 - `workflow-subgraphs/<scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph
 - `workflow-ssot-report.md` — legacy YAML 대비 sibling TTL 누락 보고
@@ -290,7 +291,7 @@ dependencies:
 - [ ] 자동 검증 게이트(스키마 검증·테스트 러너·KPI 체크 등)는 `type: validation` 노드로 분리
 - [ ] 각 decision 에 `judge` ∈ {HITL/HITLFE/HOTL/HOOTL} 명시
 - [ ] HITL/HITLFE → `owner` 필수, HITLFE → `threshold` 필수
-- [ ] HITL/HITLFE decision → `description`에 운영자가 검토할 항목 명시 (권장)
+- [ ] HITL/HITLFE decision → `description`에 운영자가 선택할 branch/진행 판단 항목 명시 (권장)
 - [ ] 각 validation 에 `harness` (runner 식별자), `pass_criteria` 명시
 - [ ] `branches[].on` 이 judge 별 허용 조건에 속함
 - [ ] phase 에 `status` ∈ {completed, active, pending}
@@ -346,8 +347,8 @@ python migrate_workflows_to_ttl.py agent-context/workflow --check
 
 ```
 pyyaml>=6.0
-rdflib>=7.0      # TTL graph parsing + SPARQL DAG 검증
-pyshacl>=0.31    # migration gate 로컬 shape 검증 (미설치 시 SHACL만 skip, DAG 검증은 동작)
+rdflib>=7.0      # TTL graph parsing + feedback-loop SPARQL 검증
+pyshacl>=0.31    # migration gate 로컬 shape/feedback-loop 검증
 ```
 
 ## 참고 자료

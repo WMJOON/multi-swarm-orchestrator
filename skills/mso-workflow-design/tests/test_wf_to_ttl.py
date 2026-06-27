@@ -1,4 +1,4 @@
-"""wf_to_ttl 테스트 — YAML→TTL 투영 + 비순환성(SPARQL) + 로컬 shape(SHACL).
+"""wf_to_ttl 테스트 — YAML→TTL 투영 + feedback-loop(SPARQL) + 로컬 shape(SHACL).
 
 실행: python3 -m pytest tests/ -q   (rdflib + pyshacl 필요)
 """
@@ -38,17 +38,17 @@ def test_projects_phase_dependency_edges(tmp_path):
     assert str(deps[0][2]).endswith("phase/a")
 
 
-def test_real_root_template_is_acyclic_and_conforms():
-    """배포 root-workflow 템플릿은 비순환 + 로컬 shape 통과해야 한다(회귀 가드)."""
+def test_real_root_template_feedback_control_and_shape_conform():
+    """배포 root-workflow 템플릿은 feedback-loop control + 로컬 shape 를 통과해야 한다."""
     res = wf_to_ttl.validate(_ASSETS / "root-workflow-template.yaml")
     assert res["ok"], res
     assert res["cycles"] == []
     assert res["shacl_conforms"]
 
 
-# ─── 비순환성 (헤드라인: 다운스트림 재참조 = 오류) ───
+# ─── Feedback loop control (cycle 자체가 아니라 Oracle 개입점 유무를 검증) ───
 
-def test_cycle_is_detected(tmp_path):
+def test_phase_feedback_loop_without_oracle_fails(tmp_path):
     doc = {
         "phases": [
             {"id": "a", "name": "A", "status": "active", "dependencies": ["c"]},
@@ -58,12 +58,39 @@ def test_cycle_is_detected(tmp_path):
     }
     res = wf_to_ttl.validate(_write(tmp_path, "cyclic.yaml", doc))
     assert res["ok"] is False
-    assert len(res["cycles"]) >= 1
-    assert any(u.endswith(("phase/a", "phase/b", "phase/c")) for u in res["cycles"])
+    assert len(res["uncontrolled_loops"]) >= 1
+    assert any(u.endswith(("phase/a", "phase/b", "phase/c")) for u in res["uncontrolled_loops"])
 
 
-def test_critical_dep_cycle_detected(tmp_path):
-    """critical_dependencies 의 from→to 도 비순환성 검사 대상."""
+def test_phase_feedback_loop_with_oracle_gate_conforms(tmp_path):
+    """순환은 허용하되 loop 안에 별도 Oracle gate 가 있어야 한다."""
+    doc = {
+        "phases": [
+            {"id": "a", "name": "A", "status": "active", "dependencies": ["c"]},
+            {
+                "id": "b",
+                "name": "B",
+                "status": "active",
+                "dependencies": ["a"],
+                "steps": [{
+                    "type": "oracle",
+                    "id": "b-o-01",
+                    "label": "Output quality oracle",
+                    "status": "active",
+                    "oracle_type": "user",
+                    "criteria": ["human accepted"],
+                }],
+            },
+            {"id": "c", "name": "C", "status": "active", "dependencies": ["b"]},
+        ]
+    }
+    res = wf_to_ttl.validate(_write(tmp_path, "controlled.yaml", doc))
+    assert res["ok"], res
+    assert res["uncontrolled_loops"] == []
+
+
+def test_critical_dep_cycle_is_observed_not_rejected(tmp_path):
+    """module dependency cycle은 Oracle 모델이 없으므로 shape range만 검증하고 topology에서 관측한다."""
     doc = {
         "phases": [{"id": "p", "name": "P", "status": "active"}],
         "critical_dependencies": [
@@ -72,8 +99,7 @@ def test_critical_dep_cycle_detected(tmp_path):
         ],
     }
     res = wf_to_ttl.validate(_write(tmp_path, "cd.yaml", doc))
-    assert res["ok"] is False
-    assert len(res["cycles"]) >= 1
+    assert res["ok"], res
 
 
 # ─── 로컬 shape (SHACL) ───
@@ -131,6 +157,154 @@ def test_node_typed_as_wf_node(tmp_path):
     types = {str(o) for o in g.objects(nu, RDF.type)}
     assert str(wf_to_ttl.WF.Step) in types
     assert str(wf_to_ttl.WF.Node) in types
+
+
+def test_sequential_next_and_branch_goto_node_projected(tmp_path):
+    """phase.steps[] 순서와 decision.branches[].goto 를 실행 edge 로 투영한다."""
+    doc = {
+        "workflow": {"id": "wf"},
+        "phases": [{
+            "id": "p",
+            "name": "P",
+            "status": "active",
+            "steps": [
+                {
+                    "type": "step",
+                    "id": "s-01",
+                    "label": "첫 작업",
+                    "instruction": "첫 작업을 수행하라",
+                    "status": "active",
+                },
+                {
+                    "type": "decision",
+                    "id": "d-01",
+                    "label": "승인",
+                    "status": "active",
+                    "judge": "HITL",
+                    "owner": "wmjoon",
+                    "branches": [{"on": "rejected", "goto": "s-01"}],
+                },
+                {
+                    "type": "step",
+                    "id": "s-02",
+                    "label": "다음 작업",
+                    "instruction": "다음 작업을 수행하라",
+                    "status": "pending",
+                },
+            ],
+        }],
+    }
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "wf.yaml", doc))
+    s1 = wf_to_ttl._node_uri("s-01", "wf")
+    d1 = wf_to_ttl._node_uri("d-01", "wf")
+    s2 = wf_to_ttl._node_uri("s-02", "wf")
+    branch = next(g.objects(d1, wf_to_ttl.WF.hasBranch))
+
+    assert (s1, wf_to_ttl.WF.next, d1) in g
+    assert (d1, wf_to_ttl.WF.next, s2) in g
+    assert (branch, wf_to_ttl.WF.gotoNode, s1) in g
+
+
+def test_task_and_oracle_roles_projected(tmp_path):
+    """workflow graph 노드는 task/decision/oracle gate 역할을 분리해서 갖는다."""
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "step",
+                "id": "s-01",
+                "label": "생성",
+                "instruction": "산출물을 만든다",
+                "status": "active",
+            },
+            {
+                "type": "decision",
+                "id": "d-01",
+                "label": "진행 분기",
+                "status": "active",
+                "judge": "HITL",
+                "owner": "wmjoon",
+            },
+            {
+                "type": "oracle",
+                "id": "o-01",
+                "label": "품질 평가",
+                "status": "active",
+                "oracle_type": "agent",
+                "criteria": ["quality score passes"],
+            },
+        ],
+    }]}
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "roles.yaml", doc))
+    task = wf_to_ttl._node_uri("s-01")
+    decision = wf_to_ttl._node_uri("d-01")
+    oracle = wf_to_ttl._node_uri("o-01")
+
+    assert (task, wf_to_ttl.RDF.type, wf_to_ttl.WF.Task) in g
+    assert (decision, wf_to_ttl.RDF.type, wf_to_ttl.WF.Decision) in g
+    assert (decision, wf_to_ttl.RDF.type, wf_to_ttl.WF.Oracle) not in g
+    assert (oracle, wf_to_ttl.RDF.type, wf_to_ttl.WF.Oracle) in g
+    assert str(next(g.objects(oracle, wf_to_ttl.WF.oracleType))) == "agent"
+
+
+def test_node_feedback_loop_without_oracle_fails(tmp_path):
+    """HOOTL decision 이 만드는 재귀 branch loop는 Oracle 개입점이 아니므로 실패한다."""
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "step",
+                "id": "s-01",
+                "label": "생성",
+                "instruction": "산출물을 만든다",
+                "status": "active",
+            },
+            {
+                "type": "decision",
+                "id": "d-01",
+                "label": "자동 재시도",
+                "status": "active",
+                "judge": "HOOTL",
+                "branches": [{"on": "failed", "goto": "s-01"}],
+            },
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "node-loop.yaml", doc))
+    assert res["ok"] is False
+    assert any(uri.endswith("node/s-01") or uri.endswith("node/d-01") for uri in res["uncontrolled_loops"])
+
+
+def test_node_feedback_loop_with_oracle_gate_conforms(tmp_path):
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "step",
+                "id": "s-01",
+                "label": "생성",
+                "instruction": "산출물을 만든다",
+                "status": "active",
+            },
+            {
+                "type": "oracle",
+                "id": "o-01",
+                "label": "품질 평가",
+                "status": "active",
+                "oracle_type": "metric",
+                "criteria": ["score >= 0.8"],
+                "branches": [{"on": "failed", "goto": "s-01"}],
+            },
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "node-loop-controlled.yaml", doc))
+    assert res["ok"], res
+    assert res["uncontrolled_loops"] == []
 
 
 def test_multi_workflow_phase_and_node_uris_are_workflow_scoped(tmp_path):
@@ -353,7 +527,7 @@ def test_unquoted_on_branch_normalized(tmp_path):
     assert str(next(g.objects(bn[0], wf_to_ttl.WF.on))) == "passed"
 
 
-def test_cli_validate_exit_code_on_cycle(tmp_path):
+def test_cli_validate_exit_code_on_uncontrolled_loop(tmp_path):
     doc = {"phases": [
         {"id": "a", "name": "A", "status": "active", "dependencies": ["b"]},
         {"id": "b", "name": "B", "status": "active", "dependencies": ["a"]},
@@ -364,4 +538,4 @@ def test_cli_validate_exit_code_on_cycle(tmp_path):
         capture_output=True, text=True,
     )
     assert out.returncode == 1
-    assert "사이클" in out.stdout
+    assert "uncontrolled feedback loop" in out.stdout

@@ -1,0 +1,86 @@
+type: oracle
+description: |
+  산출물 판단 주체 또는 품질평가자 게이트. Decision gate와 분리한다.
+  Decision gate는 process branch/진행 판단을 담당하고, Oracle gate는 산출물의
+  품질·정합·수용 가능성을 평가한다. feedback loop 안에 Oracle gate가 없으면
+  산출물이 재귀적으로 소비되며 drift가 누적될 수 있다.
+
+fields:
+  type:
+    required: true
+    type: literal
+    value: oracle
+
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: "Oracle gate 노드 고유 식별자."
+
+  label:
+    required: true
+    type: string
+    description: "평가 대상과 기준을 한 줄로 설명한다."
+
+  status:
+    required: true
+    type: enum
+    values: [completed, active, pending]
+
+  oracle_type:
+    required: true
+    type: enum
+    values: [user, agent, metric]
+    description: |
+      판단 권위의 주체. user는 사람/팀 승인, agent는 모델·에이전트 평가,
+      metric은 정량 지표/테스트 기준을 의미한다.
+
+  evaluator:
+    required: false
+    type: string
+    description: "평가자 식별자. 예: wmjoon, qa-agent, layout-fit-metric"
+
+  target_artifact:
+    required: false
+    type: string
+    description: "평가 대상 산출물 또는 artifact id/path."
+
+  criteria:
+    required: true
+    type: list
+    items: string
+    description: "품질 판단 기준. 최소 1개 이상."
+
+  threshold:
+    required: false
+    type: string
+    description: "정량 기준 또는 에스컬레이션 조건."
+
+  on_fail:
+    required: false
+    type: enum
+    values: [block, retry, manual_review]
+    default: block
+    description: "평가 실패 시 동작."
+
+  branches:
+    required: false
+    type: list
+    description: "평가 결과별 이동. 생략 시 sequential next."
+    items:
+      on:
+        required: true
+        type: string
+        description: "passed, failed, flagged 등 평가 결과."
+      goto:
+        required: false
+        type: string
+      label:
+        required: false
+        type: string
+
+structural_invariants:
+  - "id 는 워크플로우 내 unique"
+  - "oracle_type ∈ {user, agent, metric}"
+  - "criteria 최소 1개 이상"
+  - "Decision gate와 Oracle gate는 분리한다"

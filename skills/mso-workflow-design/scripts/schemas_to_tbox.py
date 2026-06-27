@@ -5,7 +5,7 @@
   노드 구조의 단일 진실원은 references/schemas/*.yaml 이다. TBox(workflow-tbox.ttl)와
   SHACL(workflow-shapes.ttl)은 그로부터 *생성*된 파생물 — 손으로 동기화하지 않는다(drift 0).
   schemas 의 기계가독 부분만 변환한다:
-    type            → owl:Class (step/decision/validation/group ⊂ Node; phase/workflow_ref 독립)
+    type            → owl:Class (step/decision/validation/group/oracle ⊂ Node; phase/workflow_ref 독립)
     required:true   → sh:minCount 1
     type:enum       → sh:in (values)
     type:string|bool→ sh:datatype xsd:string|boolean
@@ -15,7 +15,7 @@
 생성 불가 → 별도 유지:
   - 산문 structural_invariants(예: "id unique", "steps 또는 workflows 필수")
   - judge_branch_conditions 의 branch.on 유효성(judge 값 의존 중첩) — TODO 주석만
-  - 전역 DAG(비순환성)·교차-스킬(scaffold)·anchor 정합 → wf_to_ttl.py 의 SPARQL
+  - feedback loop 통제(Oracle 개입점)·교차-스킬(scaffold)·anchor 정합 → wf_to_ttl.py/SHACL-SPARQL
 
 schema 없는 root-그래프 층(root-workflow 템플릿 개념: phases[].dependencies, critical_dependencies,
 milestones)은 _GRAPH_OVERLAY 에 명시한다 — 정직하게 "스키마 없음" 표기.
@@ -38,9 +38,10 @@ NS = "https://mso.dev/ontology/workflow#"
 
 # type → 클래스명. Node 하위 = 실행 노드. phase/workflow_ref/branch 는 독립.
 _CLASS = {"step": "Step", "decision": "Decision", "validation": "Validation",
+          "oracle": "Oracle",
           "group": "Group", "phase": "Phase", "workflow_ref": "WorkflowRef",
           "branch": "Branch"}
-_NODE_SUB = {"Step", "Decision", "Validation", "Group"}
+_NODE_SUB = {"Step", "Decision", "Validation", "Group", "Oracle"}
 
 # 직접 property 로 만들지 않는 필드(클래스 타입·식별자·컨테이너·복합).
 #   type → rdf:type / id → URI 자체 / steps·workflows → 그래프 층(hasNode/refersTo)
@@ -88,6 +89,8 @@ wf: a owl:Ontology ;
 # schema 없는 root-그래프 층(root-workflow 템플릿). 정직하게 분리 표기.
 _GRAPH_OVERLAY = """
 # ─── 그래프 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────────────
+wf:Task a owl:Class ; rdfs:label "Task"@ko ;
+    rdfs:comment "실행·생성·검증을 수행하는 업무 노드 관측 상위 개념. Step/Validation/Group/WorkflowRef가 task 성격을 가진다. (schema 없음)"@ko .
 wf:Module    a owl:Class ; rdfs:label "Module"@ko ;
     rdfs:comment "critical_dependencies 의 from/to 단위. (schema 없음)"@ko .
 wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;
@@ -95,15 +98,18 @@ wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;
 
 wf:dependsOn a owl:ObjectProperty ; rdfs:label "dependsOn"@ko ;
     rdfs:domain wf:Phase ; rdfs:range wf:Phase ;
-    rdfs:comment "root 템플릿 phases[].dependencies. 비순환(DAG) — SPARQL 검증. (phase.schema 엔 없음)"@ko .
+    rdfs:comment "root 템플릿 phases[].dependencies. 순환은 가능하나 산출물 재귀 소비 루프에는 Oracle 개입점이 필요하다. (phase.schema 엔 없음)"@ko .
 wf:criticalDep a owl:ObjectProperty ; rdfs:label "criticalDep"@ko ;
     rdfs:domain wf:Module ; rdfs:range wf:Module ;
-    rdfs:comment "critical_dependencies from→to. 비순환 검사 대상."@ko .
+    rdfs:comment "critical_dependencies from→to. 구조 의존 관측 edge."@ko .
 wf:milestoneOf a owl:ObjectProperty ; rdfs:label "milestoneOf"@ko ;
     rdfs:domain wf:Milestone ; rdfs:range wf:Phase .
 wf:hasNode a owl:ObjectProperty ; rdfs:label "hasNode"@ko ;
     rdfs:domain wf:Phase ; rdfs:range wf:Node ;
     rdfs:comment "phase.steps[] 평탄화 에지."@ko .
+wf:next a owl:ObjectProperty ; rdfs:label "next"@ko ;
+    rdfs:domain wf:Node ; rdfs:range wf:Node ;
+    rdfs:comment "process edge. phase.steps[] 의 기본 순차 실행 에지. decision branch goto 가 없을 때도 이 edge가 다음 실행 노드를 나타낸다."@ko .
 wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
     rdfs:domain wf:Node ;
     rdfs:comment "step.directories[] 항목(blank node: dirRole+dirPath). 라운드트립 가능."@ko .
@@ -116,6 +122,9 @@ wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:str
 wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
     rdfs:domain wf:Decision ; rdfs:range wf:Branch ;
     rdfs:comment "decision.branches[] → Branch 노드(라운드트립)."@ko .
+wf:gotoNode a owl:ObjectProperty ; rdfs:label "gotoNode"@ko ;
+    rdfs:domain wf:Branch ; rdfs:range wf:Node ;
+    rdfs:comment "process edge. branch.goto 문자열을 같은 workflow scope의 Node URI로 해석한 조건부 실행 에지."@ko .
 wf:hasWorkflowRef a owl:ObjectProperty ; rdfs:label "hasWorkflowRef"@ko ;
     rdfs:domain wf:Phase ; rdfs:range wf:WorkflowRef ;
     rdfs:comment "phase.workflows[] 중 module 보유 항목 → WorkflowRef 노드(구조화). module 없는 doc-ref 는 wf:refersTo Literal 로 유지(dual-rep)."@ko .
@@ -128,7 +137,7 @@ wf:KeyDecision a owl:Class ; rdfs:label "KeyDecision"@ko ;
 wf:SuccessCriterion a owl:Class ; rdfs:label "SuccessCriterion"@ko ;
     rdfs:comment "top-level success_criteria[] (scKey→scValue) 항목. (schema 없음)"@ko .
 wf:CriticalDependency a owl:Class ; rdfs:label "CriticalDependency"@ko ;
-    rdfs:comment "critical_dependencies[] 항목(서술 포함). from/to 는 DAG 검사용 wf:criticalDep 에지로도 투영(dual-rep). (schema 없음)"@ko .
+    rdfs:comment "critical_dependencies[] 항목(서술 포함). from/to 는 wf:criticalDep 에지로도 투영(dual-rep). (schema 없음)"@ko .
 wf:MetaBlock a owl:Class ; rdfs:label "MetaBlock"@ko ;
     rdfs:comment "top-level non-phase 메타 블록(workflow/module/meta/metadata + 소비자 x_* 확장). 임의 중첩 구조를 canonical JSON literal(rawJson)로 무손실 보존. (schema 없음)"@ko .
 
@@ -211,7 +220,7 @@ _SHAPES_HEADER = """@prefix sh:   <http://www.w3.org/ns/shacl#> .
 # ═══════════════════════════════════════════════════════════════════════════════
 # !!! 생성물 — 직접 편집 금지. 소스: references/schemas/*.yaml
 # !!! 재생성: python scripts/schemas_to_tbox.py
-# 전역 DAG·교차-스킬·branch.on 유효성은 SHACL core 불가 → wf_to_ttl.py SPARQL.
+# feedback loop control 은 SHACL-SPARQL constraint, 교차-스킬·branch.on 유효성은 wf_to_ttl.py SPARQL/prose.
 # ═══════════════════════════════════════════════════════════════════════════════
 """.format(ns=NS)
 
@@ -225,15 +234,54 @@ wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
                   sh:message "hasNode 타깃은 wf:Node 여야 함" ] ;
     sh:property [ sh:path wf:hasWorkflowRef ; sh:class wf:WorkflowRef ;
                   sh:message "hasWorkflowRef 타깃은 wf:WorkflowRef 여야 함" ] .
+wf:NodeGraphShape a sh:NodeShape ; sh:targetClass wf:Node ;
+    sh:property [ sh:path wf:next ; sh:class wf:Node ;
+                  sh:message "next 타깃은 wf:Node 여야 함" ] .
 wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
                   sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
+wf:BranchGraphShape a sh:NodeShape ; sh:targetClass wf:Branch ;
+    sh:property [ sh:path wf:gotoNode ; sh:class wf:Node ;
+                  sh:message "gotoNode 타깃은 wf:Node 여야 함" ] .
 wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .
 wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
     sh:property [ sh:path wf:milestoneOf ; sh:class wf:Phase ;
                   sh:message "milestoneOf 타깃은 wf:Phase 여야 함" ] .
+
+# ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
+wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
+    sh:sparql [
+        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Oracle gate in the loop" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:dependsOn+ $this .
+              FILTER NOT EXISTS {
+                $this wf:dependsOn* ?phase .
+                ?phase wf:hasNode ?oracle .
+                ?oracle a wf:Oracle .
+                ?phase wf:dependsOn* $this .
+              }
+            }
+        \"\"\" ;
+    ] .
+wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
+    sh:sparql [
+        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Oracle gate in the loop" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this (wf:next|wf:hasBranch/wf:gotoNode)+ $this .
+              FILTER NOT EXISTS {
+                $this (wf:next|wf:hasBranch/wf:gotoNode)* ?oracle .
+                ?oracle a wf:Oracle .
+                ?oracle (wf:next|wf:hasBranch/wf:gotoNode)* $this .
+              }
+            }
+        \"\"\" ;
+    ] .
 """
 
 
