@@ -1,11 +1,12 @@
 ---
 name: mso-work-memory
-version: "0.4.0"
+version: "0.4.1"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 7종 entry (issue-note, agent-decision,
   user-decision, trouble-shooting, episode, pattern, principle) + auditlog/worklog
-  를 jsonl 로 보관. zvec 시맨틱 검색 + relations 그래프 traversal 지원.
+  를 jsonl 로 보관. zvec 시맨틱 검색 + relations 그래프 traversal +
+  TTL projection/SHACL validation 지원.
   다음 상황에서 사용한다:
   (1) 새 이슈·결정·사고·회고 entry 추가,
   (2) 과거 사례 시맨틱 검색 ("비슷한 timeout 사고 있었나?"),
@@ -16,7 +17,7 @@ description: >
 
 # MSO Work Memory
 
-프로젝트의 운영 기록과 인사이트를 jsonl 파일 + zvec 임베딩 + 그래프 relations 로 자산화한다. 단기 운영 흐름 (track-record) 과 장기 자산화 (insight-record) 를 분리.
+프로젝트의 운영 기록과 인사이트를 jsonl 파일 + zvec 임베딩 + 그래프 relations 로 자산화한다. 단기 운영 흐름 (track-record) 과 장기 자산화 (insight-record) 를 분리한다. JSONL은 append-only SSOT이고, TTL은 관계/라이프사이클 검증을 위한 projection layer다.
 
 ## 핵심 원리
 
@@ -25,13 +26,16 @@ description: >
 3. **공통 스키마** — id, type, title, text, tags, created_at, relations, metadata
 4. **그래프 임베드** — `relations: [{type, target}]` 로 entry 간 인과 관계 표현 (별도 DB 불필요)
 5. **zvec 시맨틱 검색** — `text` 필드 임베딩, `tags` 필터
-6. **선제 기록 책임** — 사용자가 요청하기를 기다리지 말고, 향후 작업·구조에 지속 영향을 주는 결정(UD/AD)·이슈(IN)·해결(TS)을 에이전트가 스스로 판단해 먼저 기록한다. 단발성 지시·사소한 수정·질문은 제외. **결정 권한으로 갈래**: 에이전트가 *권한 내에서 스스로 결정·실행*하면 AD(`metadata.rationale/alternatives/confidence`). 대안이 둘 이상이고 득실이 갈려 *상위 권위(oracle = user 또는 metric)에 올려 판단받아야* 하면 AR(`metadata.provided_by/options/recommended`)로 기록하고, 채택 시 이어지는 UD를 `followed-by`로 연결한다(AR→UD). 즉 "사용자가 채택하는 옵션 제시"는 AD 가 아니라 AR. **IN/TS는 회고 기록이 정상이다** — UD는 사용자 발화라는 외부 트리거가 있어 잘 남지만, IN/TS는 에이전트 내부 작업에서만 촉발돼 누락되기 쉽다. 테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환을 IN/TS 기록 앵커로 삼고, 같은 턴에 발견+해결했다면 IN+TS를 함께 회고로 남긴다(TS 단독 금지 — 원인 추적이 끊긴다). *이 행동 규약은 always-on이어야 효과가 있으므로, 프로젝트는 이 책임 항목을 상시 로드되는 rules(CLAUDE.md/AGENTS.md 등)에도 둔다 — 이 스킬은 '어떻게(절차·CLI·스키마)'를 소유한다.*
+6. **TTL projection + SHACL gate** — curated JSONL(track/insight)을 TTL ABox로 투영해 `resolved-by`, `caused-by`, `analyzed-in` 같은 relation target 타입을 검증한다. `references`는 entry id뿐 아니라 파일 경로 같은 외부 참조도 `ExternalReference`로 허용한다.
+7. **선제 기록 책임** — 사용자가 요청하기를 기다리지 말고, 향후 작업·구조에 지속 영향을 주는 결정(UD/AD)·이슈(IN)·해결(TS)을 에이전트가 스스로 판단해 먼저 기록한다. 단발성 지시·사소한 수정·질문은 제외. **결정 권한으로 갈래**: 에이전트가 *권한 내에서 스스로 결정·실행*하면 AD(`metadata.rationale/alternatives/confidence`). 대안이 둘 이상이고 득실이 갈려 *상위 권위(oracle = user 또는 metric)에 올려 판단받아야* 하면 AR(`metadata.provided_by/options/recommended`)로 기록하고, 채택 시 이어지는 UD를 `followed-by`로 연결한다(AR→UD). 즉 "사용자가 채택하는 옵션 제시"는 AD 가 아니라 AR. **IN/TS는 회고 기록이 정상이다** — UD는 사용자 발화라는 외부 트리거가 있어 잘 남지만, IN/TS는 에이전트 내부 작업에서만 촉발돼 누락되기 쉽다. 테스트 green·fix 검증·`fix:`/`revert:` 커밋·접근 전환을 IN/TS 기록 앵커로 삼고, 같은 턴에 발견+해결했다면 IN+TS를 함께 회고로 남긴다(TS 단독 금지 — 원인 추적이 끊긴다). *이 행동 규약은 always-on이어야 효과가 있으므로, 프로젝트는 이 책임 항목을 상시 로드되는 rules(CLAUDE.md/AGENTS.md 등)에도 둔다 — 이 스킬은 '어떻게(절차·CLI·스키마)'를 소유한다.*
 
 ## 디렉토리 구조 (프로젝트 측)
 
 ```
 agent-context/work-memory/
 ├── schema.yaml                 # 프로젝트 로컬 스키마 정의 (이 스킬에서 복제)
+├── graph/
+│   └── work-memory.abox.ttl     # JSONL에서 생성한 관계 검증/관측용 projection
 ├── auditlog/                   # 자동 hook
 │   └── YYYY-MM/DD.jsonl
 ├── worklog/                    # 일상 작업 일지
@@ -128,6 +132,10 @@ python wm_node.py new <type> --title "..." [--tags a,b,c] [--related TS-0017:res
 # 검증 (단일 파일 또는 디렉토리 전체)
 python wm_node.py validate <path>
 
+# TTL projection 생성 + SHACL 검증
+python wm_to_ttl.py project agent-context/work-memory
+python wm_to_ttl.py validate agent-context/work-memory --ttl-out agent-context/work-memory/graph/work-memory.abox.ttl
+
 # 시맨틱 검색 (zvec)
 python wm_node.py search "비슷한 timeout 사고" [--type episode] [--tag policy]
 
@@ -197,12 +205,15 @@ python wm_node.py reindex
 |---|---|
 | **mso-scaffold-design** | work-memory 디렉토리가 scaffold(index.yaml) 에 등록되어 있어야 함. |
 | **mso-workflow-design** | workflow 의 decision/validation 노드 변경 시 UD entry 자동 생성 권장. |
+| **mso-graph-observability** | work-memory JSONL runtime analysis와 별도로 TTL projection을 graph 관측 입력으로 확장 가능. |
 | **simple-knowledge-zvec** | 본 스킬의 zvec 인덱싱 기반 라이브러리. |
 
 ## 의존성
 
 ```
 pyyaml>=6.0
+rdflib>=7.0
+pyshacl>=0.31
 # zvec 검색 사용 시
 zvec  (simple-knowledge-zvec 스킬 통해)
 ```
@@ -210,7 +221,10 @@ zvec  (simple-knowledge-zvec 스킬 통해)
 ## 참고 자료
 
 - [references/schema.yaml](references/schema.yaml) — 공통 jsonl 스키마
+- [references/tbox/work-memory-tbox.ttl](references/tbox/work-memory-tbox.ttl) — work-memory graph TBox
+- [references/shapes/work-memory-shapes.ttl](references/shapes/work-memory-shapes.ttl) — relation/lifecycle SHACL gate
 - [references/cli.md](references/cli.md) — wm_node.py 상세 사용법
 - [references/lifecycle.md](references/lifecycle.md) — track → insight 흐름 가이드
 - [scripts/wm_node.py](scripts/wm_node.py) — CLI 도구
+- [scripts/wm_to_ttl.py](scripts/wm_to_ttl.py) — JSONL → TTL projection + SHACL validation
 - [assets/templates/](assets/templates/) — 타입별 entry 템플릿

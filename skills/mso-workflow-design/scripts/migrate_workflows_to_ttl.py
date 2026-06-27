@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Migrate workflow YAML editing files to TTL ABox SSOT files.
+"""Migrate legacy workflow YAML files to TTL ABox SSOT files.
 
-TTL is the workflow source of truth. This helper keeps the old YAML layer
-usable during migration by compiling each selected YAML file to a sibling
-``*.abox.ttl`` file.
+TTL is the workflow source of truth. YAML is accepted only as a legacy import
+format. This helper compiles each selected YAML file to a sibling
+``*.abox.ttl`` file so future workflow work can continue in TTL.
 
 Usage:
   python migrate_workflows_to_ttl.py agent-context/workflow
@@ -70,7 +70,7 @@ def migrate(root: Path, patterns: tuple[str, ...], check: bool = False) -> int:
             print(f"OK    {ttl_path}")
 
     if check and changed:
-        print("[ERROR] TTL 정본이 YAML 편집층과 동기화되지 않았습니다:", file=sys.stderr)
+        print("[ERROR] TTL 정본이 legacy YAML migration 결과와 다릅니다:", file=sys.stderr)
         for path in changed:
             print(f"  {path}", file=sys.stderr)
         return 1
@@ -80,7 +80,7 @@ def migrate(root: Path, patterns: tuple[str, ...], check: bool = False) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="migrate_workflows_to_ttl",
-        description="Compile legacy workflow YAML files to TTL ABox SSOT files.",
+        description="Import legacy workflow YAML files into TTL ABox SSOT files.",
     )
     parser.add_argument("root", help="workflow YAML 파일 또는 workflow 디렉토리")
     parser.add_argument(

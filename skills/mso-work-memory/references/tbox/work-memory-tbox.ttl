@@ -1,0 +1,131 @@
+@prefix wm: <https://mso.dev/ontology/work-memory#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+wm:Entry a owl:Class ;
+    rdfs:label "Work Memory Entry" .
+
+wm:ExternalReference a owl:Class ;
+    rdfs:label "External Reference" .
+
+wm:IssueNote a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:AgentDecision a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:UserDecision a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:AlternativesRecord a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:TroubleShooting a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:Episode a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:Pattern a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:Principle a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:AuditLog a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:WorkLog a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
+wm:entryId a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:typeName a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:title a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:text a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:tag a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:createdAt a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:sourcePath a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:author a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:metadata a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:metadataKey a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string .
+
+wm:externalValue a owl:DatatypeProperty ;
+    rdfs:domain wm:ExternalReference ;
+    rdfs:range xsd:string .
+
+wm:raised a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:Entry .
+
+wm:followedBy a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:Entry .
+
+wm:resolvedBy a owl:ObjectProperty ;
+    rdfs:domain wm:IssueNote ;
+    rdfs:range wm:TroubleShooting .
+
+wm:causedBy a owl:ObjectProperty ;
+    rdfs:domain wm:TroubleShooting ;
+    rdfs:range wm:IssueNote .
+
+wm:analyzedIn a owl:ObjectProperty ;
+    rdfs:domain wm:TroubleShooting ;
+    rdfs:range wm:Episode .
+
+wm:showsPattern a owl:ObjectProperty ;
+    rdfs:domain wm:Episode ;
+    rdfs:range wm:Pattern .
+
+wm:generalizedIn a owl:ObjectProperty ;
+    rdfs:domain wm:Episode ;
+    rdfs:range wm:Pattern .
+
+wm:crystallizedIn a owl:ObjectProperty ;
+    rdfs:domain wm:Pattern ;
+    rdfs:range wm:Principle .
+
+wm:references a owl:ObjectProperty ;
+    rdfs:domain wm:Entry .
+
+wm:supersedes a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:Entry .
+
+wm:refines a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:Entry .
+
+wm:dependsOn a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:Entry .

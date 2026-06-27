@@ -1,5 +1,20 @@
 # 변경 이력
 
+## v0.4.1 (2026-06-27) — TTL-only workflow observability patch
+
+> **YAML 생성 루프 제거 + workflow sub-graph 관측 추가.** workflow SSOT는 TTL ABox만 사용한다. YAML은 신규 작성/역생성 대상이 아니라 legacy migration input으로만 남긴다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| `mso-graph-observability` | repository 전체 `workflow-topology.md`와 workflow별 `workflow-subgraphs/<scope>.md`를 함께 생성. topology 입력은 TTL ABox만 사용 |
+| `observe_graph.py` | `workflow-ssot-report.md`와 `--strict-ssot`로 legacy YAML 중 sibling `.abox.ttl` 누락을 drift로 감지 |
+| `wf_to_ttl.py` | YAML authoring compiler가 아니라 legacy migration backend로 문서화. workflow/module/project scope 기반 phase/node URI로 multi-workflow 충돌 방지 |
+| `ttl_to_wf.py` | TTL→YAML 역생성 경로 제거. YAML을 되살리지 않도록 SSOT 경계 고정 |
+| `mso-workflow-design` | YAML edit layer/양방향 무손실 표현 제거. 신규 workflow는 TTL ABox로 작성하고, legacy YAML은 `migrate_workflows_to_ttl.py`로만 흡수 |
+| `mso-work-memory` | JSONL SSOT는 유지하고 `wm_to_ttl.py` projection + `work-memory-shapes.ttl` SHACL gate 추가. `references`는 `ExternalReference` 허용, lifecycle relation은 target class 검증 |
+
 ## v0.4.0 (2026-06-27) — Graph Observability + Codex hook adapter 정식화
 
 > **MSO graph observability 내장 + v0.4.0 정식 버전 bump.** workflow TTL/ABox는 Mermaid view로, work-memory/auditlog/worklog/intent turn은 runtime analysis로 관측하는 `mso-graph-observability`를 추가했다. 동시에 Codex hook adapter의 Stop 잡음/중복 실행을 제거하고, §11 NLU 경계 재편을 정식 버전에 포함했다.

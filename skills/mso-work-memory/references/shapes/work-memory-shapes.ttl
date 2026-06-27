@@ -1,0 +1,103 @@
+@prefix wm: <https://mso.dev/ontology/work-memory#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+wm:EntryShape a sh:NodeShape ;
+    sh:targetClass wm:Entry ;
+    sh:property [
+        sh:path wm:entryId ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path wm:typeName ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path wm:title ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path wm:text ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path wm:createdAt ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path wm:references ;
+        sh:or (
+            [ sh:class wm:Entry ]
+            [ sh:class wm:ExternalReference ]
+        )
+    ] ;
+    sh:property [
+        sh:path wm:followedBy ;
+        sh:class wm:Entry
+    ] ;
+    sh:property [
+        sh:path wm:supersedes ;
+        sh:class wm:Entry
+    ] ;
+    sh:property [
+        sh:path wm:refines ;
+        sh:class wm:Entry
+    ] ;
+    sh:property [
+        sh:path wm:dependsOn ;
+        sh:class wm:Entry
+    ] .
+
+wm:IssueNoteShape a sh:NodeShape ;
+    sh:targetClass wm:IssueNote ;
+    sh:property [
+        sh:path wm:resolvedBy ;
+        sh:class wm:TroubleShooting
+    ] ;
+    sh:property [
+        sh:path wm:raised ;
+        sh:or (
+            [ sh:class wm:AgentDecision ]
+            [ sh:class wm:AlternativesRecord ]
+            [ sh:class wm:UserDecision ]
+        )
+    ] .
+
+wm:TroubleShootingShape a sh:NodeShape ;
+    sh:targetClass wm:TroubleShooting ;
+    sh:property [
+        sh:path wm:causedBy ;
+        sh:class wm:IssueNote
+    ] ;
+    sh:property [
+        sh:path wm:analyzedIn ;
+        sh:class wm:Episode
+    ] .
+
+wm:EpisodeShape a sh:NodeShape ;
+    sh:targetClass wm:Episode ;
+    sh:property [
+        sh:path wm:showsPattern ;
+        sh:class wm:Pattern
+    ] ;
+    sh:property [
+        sh:path wm:generalizedIn ;
+        sh:class wm:Pattern
+    ] .
+
+wm:PatternShape a sh:NodeShape ;
+    sh:targetClass wm:Pattern ;
+    sh:property [
+        sh:path wm:crystallizedIn ;
+        sh:class wm:Principle
+    ] .

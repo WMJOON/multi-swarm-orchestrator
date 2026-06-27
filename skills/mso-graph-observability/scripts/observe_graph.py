@@ -4,6 +4,10 @@
 The first implemented scope is the workflow graph: Mermaid views from workflow
 TTL/ABox plus the bundled workflow TBox. Memory/audit/worklog graph analytics
 belong in this skill as later scopes.
+
+YAML workflow files are intentionally not topology inputs. They are accepted
+only as legacy migration inputs; sibling *.abox.ttl files are the observable
+SSOT.
 """
 
 from __future__ import annotations
@@ -75,6 +79,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not include MSO's bundled workflow TBox.",
     )
+    parser.add_argument(
+        "--strict-ssot",
+        action="store_true",
+        help="Exit non-zero when workflow YAML files do not have sibling *.abox.ttl files.",
+    )
     return parser.parse_args()
 
 
@@ -125,6 +134,10 @@ def parse_graph(ttl_paths: Iterable[Path]) -> Graph:
     return graph
 
 
+def is_workflow_abox(path: Path) -> bool:
+    return path.name.endswith(".abox.ttl")
+
+
 def default_output_dir(root: Path, workflow_dir: Path) -> Path:
     agent_context = root / "agent-context"
     if agent_context.exists():
@@ -132,11 +145,62 @@ def default_output_dir(root: Path, workflow_dir: Path) -> Path:
     return workflow_dir / "observability"
 
 
+def workflow_ssot_state(workflow_dir: Path) -> dict[str, list[Path]]:
+    yaml_paths = sorted(
+        p
+        for p in workflow_dir.rglob("*.yaml")
+        if p.is_file() and "observability" not in p.parts
+    )
+    abox_paths = sorted(p for p in workflow_dir.rglob("*.abox.ttl") if p.is_file())
+    abox_by_stem = {p.name.removesuffix(".abox.ttl"): p for p in abox_paths}
+
+    yaml_with_abox: list[Path] = []
+    yaml_without_abox: list[Path] = []
+    for path in yaml_paths:
+        if path.stem in abox_by_stem:
+            yaml_with_abox.append(path)
+        else:
+            yaml_without_abox.append(path)
+
+    yaml_stems = {p.stem for p in yaml_paths}
+    abox_without_yaml = [
+        path for path in abox_paths if path.name.removesuffix(".abox.ttl") not in yaml_stems
+    ]
+
+    return {
+        "yaml": yaml_paths,
+        "abox": abox_paths,
+        "yaml_with_abox": yaml_with_abox,
+        "yaml_without_abox": yaml_without_abox,
+        "abox_without_yaml": abox_without_yaml,
+    }
+
+
 def local_name(term: URIRef | Literal | str) -> str:
     text = str(term)
     if "#" in text:
         return text.rsplit("#", 1)[1]
     return text.rstrip("/").rsplit("/", 1)[-1]
+
+
+def scoped_local_parts(term: URIRef | Literal | str, prefix: str) -> list[str]:
+    local = local_name(term)
+    if not local.startswith(prefix):
+        return []
+    return [part for part in local.removeprefix(prefix).split("/") if part]
+
+
+def workflow_scope(term: URIRef | Literal | str) -> str | None:
+    """Return workflow/module scope from scoped workflow URIs.
+
+    Current scoped URIs look like `phase/<workflow-id>/<phase-id>` and
+    `node/<workflow-id>/<node-id>`. Legacy flat URIs return None.
+    """
+    for prefix in ("phase/", "node/"):
+        parts = scoped_local_parts(term, prefix)
+        if len(parts) >= 2:
+            return parts[0]
+    return None
 
 
 def literal_text(value: Literal | str) -> str:
@@ -194,7 +258,56 @@ def first_literal(graph: Graph, subject: URIRef, predicate: URIRef) -> str | Non
 
 
 def write_markdown(path: Path, title: str, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# {title}\n\n{body.rstrip()}\n", encoding="utf-8")
+
+
+def rel_path(path: Path, base: Path) -> str:
+    try:
+        return str(path.relative_to(base))
+    except ValueError:
+        return str(path)
+
+
+def build_workflow_ssot_report(workflow_dir: Path) -> tuple[str, int]:
+    state = workflow_ssot_state(workflow_dir)
+    missing = state["yaml_without_abox"]
+
+    def list_paths(paths: list[Path]) -> str:
+        if not paths:
+            return "- _None._"
+        return "\n".join(f"- `{rel_path(path, workflow_dir)}`" for path in paths)
+
+    body = "\n".join(
+        [
+            "> Workflow observability uses TTL ABox files only. YAML files are legacy migration inputs and are not topology inputs.",
+            "",
+            "## Summary",
+            "",
+            f"- YAML workflow files: {len(state['yaml'])}",
+            f"- TTL ABox workflow files: {len(state['abox'])}",
+            f"- YAML files with sibling TTL ABox: {len(state['yaml_with_abox'])}",
+            f"- YAML-only files excluded from topology: {len(missing)}",
+            f"- TTL ABox files without legacy YAML source: {len(state['abox_without_yaml'])}",
+            "",
+            "## YAML-Only Workflows Excluded From Topology",
+            "",
+            list_paths(missing),
+            "",
+            "## TTL ABox Inputs Used For Workflow Topology",
+            "",
+            list_paths(state["abox"]),
+            "",
+            "## Migration",
+            "",
+            "Import legacy YAML into sibling `.abox.ttl` files before relying on workflow topology views:",
+            "",
+            "```bash",
+            "python skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-context/workflow",
+            "```",
+        ]
+    )
+    return body, len(missing)
 
 
 def iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
@@ -408,9 +521,33 @@ def build_runtime_analysis(root: Path) -> str:
     )
 
 
-def build_workflow_topology(graph: Graph) -> str:
+def workflow_scopes(graph: Graph) -> list[str]:
+    scopes = {
+        scope
+        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Validation, WF.Group, WF.WorkflowRef)
+        for subject in subjects_of_type(graph, cls)
+        for scope in [workflow_scope(subject)]
+        if scope
+    }
+    return sorted(scopes)
+
+
+def scope_label(scope: str) -> str:
+    return scope.replace("_", "-")
+
+
+def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
+    if scope is None:
+        return list(terms)
+    return [term for term in terms if workflow_scope(term) == scope]
+
+
+def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
+    intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
+    if scope:
+        intro = f"> Sub-graph for workflow scope `{scope}`. Generated from MSO workflow TTL."
     lines: list[str] = [
-        "> Generated from MSO workflow TTL. Edit the TTL/YAML source, then regenerate this view.",
+        intro,
         "",
         "```mermaid",
         "flowchart LR",
@@ -426,7 +563,23 @@ def build_workflow_topology(graph: Graph) -> str:
             declared.add(node_id)
         return node_id
 
-    phases = subjects_of_type(graph, WF.Phase)
+    def visual_kind(term: URIRef) -> tuple[str, str | None, str]:
+        for rdf_type, css_class in (
+            (WF.Step, "step"),
+            (WF.Decision, "decision"),
+            (WF.Validation, "validation"),
+            (WF.Group, "group"),
+            (WF.WorkflowRef, "workflowRef"),
+        ):
+            if (term, RDF.type, rdf_type) in graph:
+                suffix = local_name(rdf_type)
+                status = first_literal(graph, term, WF.status)
+                if status:
+                    suffix = f"{suffix} / {status}"
+                return local_name(rdf_type).lower(), css_class, suffix
+        return "node", None, ""
+
+    phases = filter_scope(subjects_of_type(graph, WF.Phase), scope)
     for phase in phases:
         status = first_literal(graph, phase, WF.status)
         phase_cls = f"status_{status}" if status in {"completed", "active", "pending"} else "phase"
@@ -441,17 +594,17 @@ def build_workflow_topology(graph: Graph) -> str:
         (WF.WorkflowRef, "workflowRef"),
     ]
     for cls, css_class in node_classes:
-        for node in subjects_of_type(graph, cls):
+        for node in filter_scope(subjects_of_type(graph, cls), scope):
             status = first_literal(graph, node, WF.status)
             suffix = local_name(cls)
             if status:
                 suffix = f"{suffix} / {status}"
             declare(node, local_name(cls).lower(), css_class, suffix)
 
-    for module in subjects_of_type(graph, WF.Module):
+    for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         declare(module, "module", "module", "Module")
 
-    for milestone in subjects_of_type(graph, WF.Milestone):
+    for milestone in filter_scope(subjects_of_type(graph, WF.Milestone), scope):
         status = first_literal(graph, milestone, WF.status)
         suffix = f"Milestone / {status}" if status else "Milestone"
         declare(milestone, "milestone", "milestone", suffix)
@@ -459,36 +612,37 @@ def build_workflow_topology(graph: Graph) -> str:
     for phase in phases:
         phase_id = declare(phase, "phase")
         for dep in sorted(graph.objects(phase, WF.dependsOn), key=str):
-            if isinstance(dep, URIRef):
+            if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
                 dep_id = declare(dep, "phase")
                 lines.append(f"  {dep_id} -->|dependsOn| {phase_id}")
         for node in sorted(graph.objects(phase, WF.hasNode), key=str):
-            if isinstance(node, URIRef):
-                node_id = declare(node, "node")
+            if isinstance(node, URIRef) and (scope is None or workflow_scope(node) == scope):
+                node_prefix, node_cls, node_suffix = visual_kind(node)
+                node_id = declare(node, node_prefix, node_cls, node_suffix)
                 lines.append(f"  {phase_id} -->|hasNode| {node_id}")
         for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
-            if isinstance(ref, URIRef):
+            if isinstance(ref, URIRef) and (scope is None or workflow_scope(ref) == scope):
                 ref_id = declare(ref, "workflowref", "workflowRef", "WorkflowRef")
                 lines.append(f"  {phase_id} -->|hasWorkflowRef| {ref_id}")
 
-    for decision in subjects_of_type(graph, WF.Decision):
+    for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
         decision_id = declare(decision, "decision")
         for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
-            if isinstance(branch, URIRef):
+            if isinstance(branch, URIRef) and (scope is None or workflow_scope(branch) == scope):
                 branch_id = declare(branch, "branch", "branch", "Branch")
                 lines.append(f"  {decision_id} -->|hasBranch| {branch_id}")
 
-    for module in subjects_of_type(graph, WF.Module):
+    for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
         for dep in sorted(graph.objects(module, WF.criticalDep), key=str):
-            if isinstance(dep, URIRef):
+            if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
                 dep_id = declare(dep, "module")
                 lines.append(f"  {dep_id} -->|criticalDep| {module_id}")
 
-    for milestone in subjects_of_type(graph, WF.Milestone):
+    for milestone in filter_scope(subjects_of_type(graph, WF.Milestone), scope):
         milestone_id = declare(milestone, "milestone")
         phase = graph.value(milestone, WF.milestoneOf)
-        if isinstance(phase, URIRef):
+        if isinstance(phase, URIRef) and (scope is None or workflow_scope(phase) == scope):
             phase_id = declare(phase, "phase")
             lines.append(f"  {milestone_id} -.->|milestoneOf| {phase_id}")
 
@@ -509,6 +663,31 @@ def build_workflow_topology(graph: Graph) -> str:
             "```",
         ]
     )
+    return "\n".join(lines)
+
+
+def build_workflow_subgraph_index(graph: Graph) -> str:
+    scopes = workflow_scopes(graph)
+    if not scopes:
+        return "_No scoped workflow sub-graphs found. Regenerate TTL ABoxes with scoped workflow URIs._"
+
+    lines = [
+        "> Workflow-specific sub-graphs generated from the same TTL ABox inputs as the repository topology.",
+        "",
+        "| Workflow Scope | Sub-graph | Phases | Nodes |",
+        "|---|---:|---:|---:|",
+    ]
+    for scope in scopes:
+        phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
+        node_terms = {
+            node
+            for cls in (WF.Step, WF.Decision, WF.Validation, WF.Group, WF.WorkflowRef)
+            for node in filter_scope(subjects_of_type(graph, cls), scope)
+        }
+        file_name = f"{scope}.md"
+        lines.append(
+            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | {phase_count} | {len(node_terms)} |"
+        )
     return "\n".join(lines)
 
 
@@ -647,7 +826,10 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "",
             "## Views",
             "",
-            "- [workflow-topology.md](workflow-topology.md)",
+            "- [workflow-topology.md](workflow-topology.md) — repository-level workflow graph",
+            "- [workflow-subgraph-index.md](workflow-subgraph-index.md) — workflow-specific sub-graph index",
+            "- [workflow-subgraphs/](workflow-subgraphs/) — one Mermaid view per scoped workflow",
+            "- [workflow-ssot-report.md](workflow-ssot-report.md)",
             "- [class-layer-map.md](class-layer-map.md)",
             "- [property-map.md](property-map.md)",
             "- [runtime-analysis.md](runtime-analysis.md)",
@@ -658,7 +840,7 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "",
             "## Regeneration",
             "",
-            "Run the MSO graph observability exporter again after changing workflow TTL/YAML sources.",
+            "Run the MSO graph observability exporter again after changing workflow TTL sources.",
             "",
             "```bash",
             "python skills/mso-graph-observability/scripts/observe_graph.py --root .",
@@ -672,20 +854,37 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
 def main() -> int:
     args = parse_args()
     workflow_dir, output_dir, ttl_paths = resolve_paths(args)
-    if not ttl_paths:
+    project_ttl_paths = [path for path in ttl_paths if is_workflow_abox(path)]
+    if not project_ttl_paths:
         print("No TTL files found. Point --workflow-dir or --ontology at workflow TTL files.", file=sys.stderr)
         return 2
 
     graph = parse_graph(ttl_paths)
     output_dir.mkdir(parents=True, exist_ok=True)
+    ssot_report, missing_ttl_count = build_workflow_ssot_report(workflow_dir)
 
-    write_markdown(output_dir / "workflow-topology.md", "MSO Workflow Topology", build_workflow_topology(graph))
+    write_markdown(output_dir / "workflow-topology.md", "MSO Repository Workflow Topology", build_workflow_topology(graph))
+    write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph))
+    for scope in workflow_scopes(graph):
+        write_markdown(
+            output_dir / "workflow-subgraphs" / f"{scope}.md",
+            f"MSO Workflow Sub-Graph — {scope_label(scope)}",
+            build_workflow_topology(graph, scope=scope),
+        )
+    write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
     write_markdown(output_dir / "property-map.md", "MSO Workflow Property Map", build_property_map(graph))
     write_markdown(output_dir / "runtime-analysis.md", "MSO Runtime Graph Analysis", build_runtime_analysis(args.root.resolve()))
     write_markdown(output_dir / "README.md", "MSO Graph Observability Views", build_readme(workflow_dir, ttl_paths, output_dir))
 
     print(f"Wrote graph observability views to {output_dir}")
+    if missing_ttl_count:
+        print(
+            f"WARNING: {missing_ttl_count} workflow YAML file(s) have no sibling *.abox.ttl and were excluded from topology. See workflow-ssot-report.md.",
+            file=sys.stderr,
+        )
+        if args.strict_ssot:
+            return 3
     return 0
 
 

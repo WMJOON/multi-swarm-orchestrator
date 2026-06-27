@@ -12,6 +12,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 원칙:
 
 - 원본 그래프가 SSOT다. 관측 Markdown/metrics는 파생 산출물이므로 직접 편집하지 않는다.
+- workflow topology 입력은 TTL ABox뿐이다. YAML은 legacy migration 입력일 뿐 Mermaid topology 생성 입력으로 쓰지 않는다.
 - 관측 결과는 기본적으로 `agent-context/observability/graph/` 아래에 둔다.
 - 시각적으로 보는 1차 대상은 workflow graph다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
@@ -57,7 +58,10 @@ agent-context/observability/graph/
 `workflow` scope 생성 파일:
 
 - `README.md` — 생성 결과 인덱스
-- `workflow-topology.md` — Phase, Node, Module, Milestone 중심 실행/의존 그래프
+- `workflow-topology.md` — repository 전체 Phase, Node, Module, Milestone 중심 실행/의존 그래프
+- `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
+- `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph
+- `workflow-ssot-report.md` — legacy workflow YAML 대비 sibling `*.abox.ttl` 누락 여부. YAML-only workflow는 관측에서 제외됨을 경고
 - `class-layer-map.md` — workflow ontology class hierarchy
 - `property-map.md` — workflow ontology property domain/range map
 - `runtime-analysis.md` — work-memory/auditlog/worklog/intent turn JSONL 기반 실패 hotspot, 실행 빈도, 반복 신호
@@ -89,10 +93,11 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 ## Workflow
 
 1. `agent-context/workflow/`에 workflow TTL ABox가 있는지 확인한다.
-2. 필요하면 `mso-workflow-design`으로 YAML/TLL 정합성을 먼저 맞춘다.
+2. legacy YAML이 남아 있으면 `mso-workflow-design`의 migration script로 TTL ABox를 먼저 만든다.
 3. 본 스킬의 CLI를 실행해 graph observability Markdown을 재생성한다.
 4. 생성된 Mermaid 뷰에서 dependency 방향, phase 상태, node 연결 누락을 리뷰한다.
-5. 문제를 발견하면 Markdown이 아니라 TTL/YAML 원본을 수정한 뒤 다시 생성한다.
+5. 문제를 발견하면 Markdown이 아니라 TTL 원본을 수정한 뒤 다시 생성한다.
+6. `workflow-ssot-report.md`에 YAML-only workflow가 나오면 `mso-workflow-design`의 `migrate_workflows_to_ttl.py`로 sibling `.abox.ttl`을 먼저 만든다.
 
 ## Extension Direction
 
@@ -108,4 +113,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 
 - `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
 - `wf:hasNode`, `wf:hasWorkflowRef`, `wf:milestoneOf`, `wf:hasBranch`는 구조 관계를 표현한다.
+- 전체 repository graph는 `workflow-topology.md`에 생성하고, workflow scope별 sub-graph는 `workflow-subgraphs/`에 분리한다.
+- sub-graph 분리는 scoped URI(`phase/<workflow>/<phase>`, `node/<workflow>/<node>`)를 기준으로 한다. unscoped legacy TTL은 repository graph에는 보이지만 workflow별 sub-graph에는 포함되지 않는다.
 - 대규모 ontology에서는 `property-map.md`가 커질 수 있으므로 CLI 내부에서 보기 좋은 상한을 둔다.
+- YAML-only workflow가 있을 때 exporter는 fallback하지 않는다. 관측 그래프에 없는 workflow는 SSOT drift로 보고 TTL 마이그레이션을 먼저 요구한다.

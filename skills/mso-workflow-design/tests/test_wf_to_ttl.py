@@ -133,6 +133,53 @@ def test_node_typed_as_wf_node(tmp_path):
     assert str(wf_to_ttl.WF.Node) in types
 
 
+def test_multi_workflow_phase_and_node_uris_are_workflow_scoped(tmp_path):
+    """서로 다른 workflow의 동명 phase/node가 RDF 병합에서 충돌하지 않는다."""
+    doc_a = {
+        "workflow": {"id": "workflow-a"},
+        "generation": {
+            "id": "generation",
+            "label": "Generation A",
+            "status": "active",
+            "steps": [{
+                "type": "step",
+                "id": "s-010",
+                "label": "Generate A",
+                "instruction": "A를 생성하라",
+                "status": "active",
+            }],
+        },
+    }
+    doc_b = {
+        "workflow": {"id": "workflow-b"},
+        "generation": {
+            "id": "generation",
+            "label": "Generation B",
+            "status": "pending",
+            "steps": [{
+                "type": "step",
+                "id": "s-010",
+                "label": "Generate B",
+                "instruction": "B를 생성하라",
+                "status": "pending",
+            }],
+        },
+    }
+    g1, _ = wf_to_ttl.build_graph(_write(tmp_path, "a.yaml", doc_a))
+    g2, _ = wf_to_ttl.build_graph(_write(tmp_path, "b.yaml", doc_b))
+    combined = g1 + g2
+
+    phases = {str(s) for s in combined.subjects(wf_to_ttl.RDF.type, wf_to_ttl.WF.Phase)}
+    nodes = {str(s) for s in combined.subjects(wf_to_ttl.RDF.type, wf_to_ttl.WF.Step)}
+
+    assert any(uri.endswith("phase/workflow-a/generation") for uri in phases)
+    assert any(uri.endswith("phase/workflow-b/generation") for uri in phases)
+    assert any(uri.endswith("node/workflow-a/s-010") for uri in nodes)
+    assert any(uri.endswith("node/workflow-b/s-010") for uri in nodes)
+    assert len([uri for uri in phases if uri.endswith("/generation")]) == 2
+    assert len([uri for uri in nodes if uri.endswith("/s-010")]) == 2
+
+
 def test_depends_on_undeclared_phase_fails_range(tmp_path):
     """dependsOn 타깃이 선언된 Phase 가 아니면 sh:class wf:Phase 위반(dangling ref)."""
     doc = {"phases": [
@@ -248,7 +295,7 @@ def test_scaffold_unregistered_path_warns(tmp_path):
 
 
 def test_directory_projected_structured(tmp_path):
-    """directories[] → wf:directory blank node(dirRole+dirPath) 구조 투영(라운드트립용)."""
+    """directories[] → wf:directory blank node(dirRole+dirPath) 구조 투영."""
     wf = _write(tmp_path, "wf.yaml", {"phases": [{
         "id": "p", "name": "P", "status": "active",
         "steps": [{"type": "step", "id": "p-s-01", "label": "작업",
@@ -263,64 +310,6 @@ def test_directory_projected_structured(tmp_path):
 
 
 # ─── CLI 계약 ───
-
-# ─── TTL → YAML 변환(ttl_to_wf): SHACL 게이트 + 라운드트립 ───
-import ttl_to_wf  # noqa: E402
-
-
-def test_ttl_to_wf_roundtrip_preserves_fields(tmp_path):
-    """YAML→TTL→YAML 라운드트립이 스칼라·리스트·directories(role+path) 보존."""
-    doc = {"phases": [{
-        "id": "p", "name": "P 단계", "status": "active",
-        "steps": [
-            {"type": "step", "id": "p-s-01", "label": "정제", "status": "active",
-             "instruction": "raw 를 clean 으로", "deliverables": ["clean.jsonl"],
-             "directories": [{"role": "output", "path": "m1/clean"}]},
-            {"type": "validation", "id": "p-v-01", "label": "스키마검증", "status": "active",
-             "harness": "schema_validator", "pass_criteria": ["valid", "non-empty"]},
-        ],
-    }]}
-    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "wf.yaml", doc))
-    out = ttl_to_wf.graph_to_doc(g)
-    ph = out["phases"][0]
-    assert ph["id"] == "p" and ph["name"] == "P 단계" and ph["status"] == "active"
-    by_id = {s["id"]: s for s in ph["steps"]}
-    s1 = by_id["p-s-01"]
-    assert s1["type"] == "step" and s1["instruction"] == "raw 를 clean 으로"
-    assert s1["deliverables"] == ["clean.jsonl"]
-    assert s1["directories"] == [{"role": "output", "path": "m1/clean"}]
-    v1 = by_id["p-v-01"]
-    assert v1["type"] == "validation" and v1["harness"] == "schema_validator"
-    assert set(v1["pass_criteria"]) == {"valid", "non-empty"}
-
-
-def test_ttl_to_wf_gate_rejects_invalid(tmp_path):
-    """SHACL/비순환 위반 TTL 은 게이트에서 막혀 validate_graph ok=False (YAML 승격 차단)."""
-    # 사이클 있는 그래프
-    bad = {"phases": [
-        {"id": "a", "name": "A", "status": "active", "dependencies": ["b"]},
-        {"id": "b", "name": "B", "status": "active", "dependencies": ["a"]},
-    ]}
-    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "bad.yaml", bad))
-    v = ttl_to_wf.validate_graph(g)
-    assert v["ok"] is False
-    assert v["cycles"]
-
-
-def test_ttl_to_wf_cli_gate_blocks_yaml(tmp_path):
-    """CLI: 불량 TTL 은 exit 1 + YAML 미출력."""
-    bad = {"phases": [{"id": "x", "name": "X", "status": "done"}]}  # status enum 위반
-    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "bad.yaml", bad))
-    ttl_path = tmp_path / "bad.ttl"
-    ttl_path.write_text(g.serialize(format="turtle"), encoding="utf-8")
-    out = subprocess.run(
-        [sys.executable, str(_SCRIPTS / "ttl_to_wf.py"), str(ttl_path)],
-        capture_output=True, text=True,
-    )
-    assert out.returncode == 1
-    assert "차단" in out.stderr
-    assert "phases:" not in out.stdout
-
 
 def test_x_extension_namespace_ignored(tmp_path):
     """top-level x_* 확장 키(소비자 도메인 필드, 예: MSM 실행 계약)는 phase 로 오인되지 않는다."""
@@ -348,79 +337,6 @@ def test_generated_ttl_in_sync_with_schemas():
         capture_output=True, text=True,
     )
     assert out.returncode == 0, f"schemas↔TTL drift:\n{out.stderr}"
-
-
-def _roundtrip_iso(src_yaml: Path, tmp_path) -> tuple[bool, int, int]:
-    """YAML→TTL→YAML→TTL 그래프 동형 여부. 동형이면 어떤 필드도 round-trip 에서 누락 안 됨."""
-    from rdflib.compare import to_isomorphic
-    g1, _ = wf_to_ttl.build_graph(src_yaml)
-    doc = ttl_to_wf.graph_to_doc(g1)
-    rt = tmp_path / "roundtrip.yaml"
-    rt.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
-    g2, _ = wf_to_ttl.build_graph(rt)
-    return to_isomorphic(g1) == to_isomorphic(g2), len(g1), len(g2)
-
-
-def test_template_roundtrip_isomorphic(tmp_path):
-    """배포 root-workflow 템플릿 전체(narrative meta 포함)가 YAML↔TTL 무손실(그래프 동형)."""
-    ok, n1, n2 = _roundtrip_iso(_ASSETS / "root-workflow-template.yaml", tmp_path)
-    assert ok, f"round-trip 비동형 — 필드 유실(g1={n1}, g2={n2})"
-
-
-def test_workflowref_and_branches_roundtrip_lossless(tmp_path):
-    """module 보유 WorkflowRef + decision.branches + narrative 가 무손실(템플릿이 안 타는 경로)."""
-    doc = {
-        "project": {"id": "p0", "name": "P0", "version": "1.0",
-                    "owner": "o@x", "created": "2026-01-01", "description": "d"},
-        "workflow": {"id": "lifecycle", "slug": "lifecycle", "description": "메인 사이클"},
-        "module": {"id": "04.vendor-x", "name": "VendorX", "version": "1.0.0"},
-        "meta": {"author": "me", "tags": ["a", "b"], "nested": {"k": 1}},
-        "x_msm": {"kind": "pipeline", "governance": {"hitl_required": True}},
-        "phases": [{
-            "id": "phase-01", "name": "Disc", "status": "active", "parallel": True,
-            "workflows": [
-                {"ref": "m1/m1-workflow-00.yaml#discovery", "module": "m1", "harness_propagate": False},
-                {"ref": "m2/m2-workflow-00.yaml#discovery", "module": "m2"},
-                {"ref": "docs/x.md"},
-            ],
-            "steps": [
-                {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
-                 "judge": "HITL", "owner": "team",
-                 "branches": [{"on": "approved", "goto": "s-02", "label": "승인 → 작업"}, {"on": "rejected"}]},
-                {"type": "step", "id": "s-02", "label": "작업", "status": "active", "instruction": "하라"},
-            ],
-        }],
-        "key_decisions": [{"decision": "use X", "rationale": "fast", "impact_modules": ["m1", "all"]}],
-        "success_criteria": [{"cov": "80%"}, {"acc": "95%"}],
-        "critical_dependencies": [{"from": "m2", "to": "m1", "description": "needs data"}],
-        "milestones": [{"id": "ms1", "name": "MS", "date": "2026-02-01",
-                        "status": "pending", "phase_ref": "phase-01"}],
-    }
-    src = _write(tmp_path, "wf.yaml", doc)
-    ok, n1, n2 = _roundtrip_iso(src, tmp_path)
-    assert ok, f"round-trip 비동형(g1={n1}, g2={n2})"
-
-    # 필드 단위 재구성 확인
-    g, _ = wf_to_ttl.build_graph(src)
-    out = ttl_to_wf.graph_to_doc(g)
-    wfs = {w["ref"]: w for w in out["phases"][0]["workflows"]}
-    assert wfs["m1/m1-workflow-00.yaml#discovery"]["module"] == "m1"
-    assert wfs["m1/m1-workflow-00.yaml#discovery"]["harness_propagate"] is False
-    assert wfs["m2/m2-workflow-00.yaml#discovery"]["module"] == "m2"
-    assert "module" not in wfs["docs/x.md"]              # module 없는 doc-ref 는 refersTo 로
-    dec = [s for s in out["phases"][0]["steps"] if s["id"] == "d-01"][0]
-    assert {tuple(sorted(b.items())) for b in dec["branches"]} == {
-        (("goto", "s-02"), ("label", "승인 → 작업"), ("on", "approved")), (("on", "rejected"),)}
-    assert out["project"]["version"] == "1.0"
-    assert out["key_decisions"][0]["impact_modules"] == ["all", "m1"]
-    assert {next(iter(d)) for d in out["success_criteria"]} == {"cov", "acc"}
-    assert out["critical_dependencies"][0]["description"] == "needs data"
-    assert out["milestones"][0]["date"] == "2026-02-01"
-    # top-level 메타 블록(workflow/module/meta/x_*) 무손실
-    assert out["workflow"] == {"id": "lifecycle", "slug": "lifecycle", "description": "메인 사이클"}
-    assert out["module"] == {"id": "04.vendor-x", "name": "VendorX", "version": "1.0.0"}
-    assert out["meta"]["nested"] == {"k": 1} and out["meta"]["tags"] == ["a", "b"]
-    assert out["x_msm"]["governance"] == {"hitl_required": True}
 
 
 def test_unquoted_on_branch_normalized(tmp_path):

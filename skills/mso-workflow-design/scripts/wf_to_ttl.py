@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""wf_to_ttl — workflow YAML 을 RDF(TTL) 그래프로 투영하고 shape 를 검증한다.
+"""wf_to_ttl — legacy workflow YAML 을 RDF(TTL) 그래프로 투영하고 검증한다.
 
-설계 결정 (§ TTL-first, 2026-06-18):
-  TTL ABox 가 SSOT-of-record, YAML 은 편집 편의층이다. `serialize` 는 편집층 YAML 을
-  정본 ABox 로 **컴파일**하고(역은 ttl_to_wf — 무손실), `validate` 는 그 그래프를
-  검증한다. 이 스크립트는 wf_node.py 의 resolve_workflow_tree 로
-  평탄화한 워크플로 트리를 rdflib 그래프로 투영한 뒤 두 층위로 검증한다:
+설계 결정 (§ TTL-only, 2026-06-27):
+  TTL ABox 가 workflow SSOT-of-record다. YAML은 신규 작성/역생성 대상이 아니라
+  기존 repository를 흡수하기 위한 legacy migration input이다. `serialize` 와
+  `validate` 는 migrate_workflows_to_ttl.py의 backend로 남아 YAML을 rdflib 그래프로
+  투영한 뒤 두 층위로 검증한다:
 
     1) 로컬 shape (pyshacl)   — references/shapes/workflow-shapes.ttl
        노드-단위 불변식: status enum, validation=harness+pass_criteria,
@@ -16,8 +16,8 @@
        재참조되면(=의존 사이클) 오류"를 ASK { ?x wf:dependsOn+ ?x } 로 잡는다.
 
 사용:
-  python wf_to_ttl.py serialize <workflow.yaml>          # TTL stdout
-  python wf_to_ttl.py validate  <workflow.yaml> [--json] # shape+DAG 검증, 위반 시 exit 1
+  python wf_to_ttl.py serialize <workflow.yaml>          # legacy YAML import: TTL stdout
+  python wf_to_ttl.py validate  <workflow.yaml> [--json] # migration gate, 위반 시 exit 1
 
 검증 노드 배선: workflow 의 validation 노드에서
   harness: wf_shape_validator   (= `python wf_to_ttl.py validate <this.yaml>`)
@@ -59,8 +59,12 @@ def _hash8(s: str) -> str:
     return hashlib.sha1(str(s).encode("utf-8")).hexdigest()[:8]
 
 
-def _node_uri(node_id: str) -> URIRef:
+def _node_uri(node_id: str, scope: str = "") -> URIRef:
     # IRI-안전: 공백·# 등을 _ 로. id 는 워크플로 내 unique 라는 전제.
+    # 다중 workflow repo에서는 같은 phase/node id가 합법적으로 반복될 수 있으므로
+    # workflow/module scope가 있으면 URI에 포함해 RDF 병합 충돌을 막는다.
+    if scope:
+        return WF["node/" + _safe(scope) + "/" + _safe(node_id)]
     return WF["node/" + _safe(node_id)]
 
 
@@ -78,6 +82,25 @@ def _phase_uri(phase_id: str, scope: str = "") -> URIRef:
 def _module_uri(module_id: str) -> URIRef:
     safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(module_id))
     return WF["module/" + safe]
+
+
+def _document_scope(doc: dict) -> str:
+    """URI collision 방지용 document scope.
+
+    module workflow는 module.id를, root/multi workflow는 workflow.id를, 그마저
+    없으면 project.id를 사용한다. 아무 메타가 없는 레거시/테스트 문서는 기존 평면
+    URI를 유지한다.
+    """
+    _mod = doc.get("module")
+    if isinstance(_mod, dict) and _mod.get("id"):
+        return str(_mod["id"])
+    _workflow = doc.get("workflow")
+    if isinstance(_workflow, dict) and _workflow.get("id"):
+        return str(_workflow["id"])
+    _project = doc.get("project")
+    if isinstance(_project, dict) and _project.get("id"):
+        return str(_project["id"])
+    return ""
 
 
 def _camel(snake: str) -> str:
@@ -112,19 +135,19 @@ def _project_fields(g: Graph, subj: URIRef, doc: dict, skip: set) -> None:
 _NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows"}
 
 
-def _project_nodes(g: Graph, nodes, phase_uri: URIRef) -> None:
+def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
     """phase.steps[] (group 재귀 포함) 의 구조화 노드(type 보유)를 투영."""
     for n in wf_node._walk_nodes(nodes or []):
         ntype = n.get("type")
         cls = _TYPE_CLASS.get(ntype)
         if cls is None or not n.get("id"):
             continue  # 레거시(type 없는 step-01: 형태)는 DAG 투영 대상 아님
-        nu = _node_uri(n["id"])
+        nu = _node_uri(n["id"], scope)
         g.add((nu, RDF.type, cls))
         g.add((nu, RDF.type, WF.Node))   # 명시 상위타입 — 추론 없이 hasNode range(sh:class wf:Node) 성립
         g.add((phase_uri, WF.hasNode, nu))
         _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/judge/owner/...
-        for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI, 라운드트립)
+        for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI)
             if isinstance(d, dict) and d.get("path"):
                 dn = URIRef(str(nu) + "_dir_" + _safe(d["path"]))
                 g.add((nu, WF.directory, dn))
@@ -149,8 +172,8 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef) -> None:
 
 
 def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
-    """phase.workflows[] 투영. module 보유 → 구조화 wf:WorkflowRef 노드(라운드트립),
-    module 없는 doc-ref → wf:refersTo Literal(dual-rep, 템플릿 호환)."""
+    """phase.workflows[] 투영. module 보유 → 구조화 wf:WorkflowRef 노드,
+    module 없는 doc-ref → wf:refersTo Literal(dual-rep, legacy 템플릿 호환)."""
     for ref in (phase.get("workflows") or []):
         if not isinstance(ref, dict) or not ref.get("ref"):
             continue
@@ -252,11 +275,11 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
     for src, doc in resolved.docs.items():
         if not isinstance(doc, dict):
             continue
-        # document scope: 서브모듈 doc 의 module.id 가 있을 때만 phase/metablock URI 에 prefix.
-        # 충돌은 서브모듈 간(동명 lifecycle phase) 발생하므로 module 보유 doc 만 scope 한다.
-        # root(module 없음, 고유 phase id)는 평면 유지 — 기존 평면 URI 소비자/테스트 호환.
-        _mod = doc.get("module")
-        scope = _mod.get("id") if isinstance(_mod, dict) and _mod.get("id") else ""
+        # document scope: 다중 workflow repo에서는 서로 다른 workflow가
+        # generation/assembly/validation 같은 phase id를 공유할 수 있다.
+        # module.id → workflow.id → project.id 순으로 scope를 잡아 URI 병합을 막는다.
+        # 메타가 없는 레거시/테스트 문서는 평면 URI를 유지한다.
+        scope = _document_scope(doc)
         # ── root 스타일: 최상위 phases: 리스트 ──
         phases = doc.get("phases")
         # name→label / dependencies→dependsOn / workflows→refersTo 는 특수, 나머지 generic.
@@ -272,7 +295,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                     g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
                 _project_workflows(g, pu, ph)
                 _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultJudge/showWrapper/artifacts/successCriteria
-                _project_nodes(g, ph.get("steps", []), pu)
+                _project_nodes(g, ph.get("steps", []), pu, scope)
         # ── module 스타일: 이름붙은 phase 키(discovery/development/...) ──
         else:
             for phase_key, phase in wf_node._collect_phases(doc):
@@ -284,7 +307,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                     g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
                 _project_workflows(g, pu, phase)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
-                _project_nodes(g, phase.get("steps", []), pu)
+                _project_nodes(g, phase.get("steps", []), pu, scope)
 
         # ── critical_dependencies: DAG 검사용 from→to 에지(Module) + 서술 보존용 노드(dual-rep) ──
         for cd in (doc.get("critical_dependencies") or []):
