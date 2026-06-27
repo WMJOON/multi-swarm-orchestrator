@@ -1,23 +1,26 @@
 # 변경 이력
 
-## v0.4.0 (2026-06-27) — Data node observability
+## v0.4.0 (2026-06-27) — Artifact stream observability
 
-> **Task-only topology에서 data stream topology로 확장.** workflow sub-graph에서 `wf:directory`와 `wf:deliverables`를 Data node로 파생해 `data --upstream--> task --downstream--> data` supply chain을 볼 수 있게 했다. 현재는 local file/directory를 우선 지원하고, API/MCP/database 같은 비파일 data type으로 확장 가능하게 명명했다.
+> **Task-only topology에서 artifact stream topology로 확장.** workflow sub-graph에서 `wf:directory`와 `wf:deliverables`를 Artifact node로 파생해 `artifact --upstream--> task --downstream--> artifact` supply chain을 볼 수 있게 했다. MSO는 Data Pipeline이 아니라 Repository Artifact Supply Chain을 관측한다. `data_type`은 접근 매체(local_file/api/mcp/database 등), `artifact_type`은 Knowledge Store/Event Store/Local Database/Document/Media 같은 소비·운영 의미를 표현한다.
 
 ### Changed
 
 | 변경 | 내용 |
 |------|------|
-| `mso-graph-observability` | workflow별 subgraph에 Data node와 input/output edge 추가 |
-| `observe_graph.py` | `wf:directory`를 `data_type=local_file`, `location=dirPath`로 해석. input/reference는 `upstream`, output/deliverable은 `downstream`, input_output은 양방향 stream |
-| View separation | workflow별 `integrated`, `workflow`, `data-stream` view 생성. `workflow` view는 공유 Data id 기반 task spine으로 `((start)) --next--> task --next--> ((end))`를 표시 |
-| Data stream report | `data-stream-report.md` 추가. produced-but-unconsumed data를 final deliverable, cross-workflow output, missing consumer 후보로 분류 |
-| Workflow semantics | 같은 target Data id로 이어지는 stream은 하나의 workflow, 분기되거나 다르게 소비되는 stream은 별도 workflow boundary 후보로 해석 |
-| Mermaid shape | GitHub 호환 classic flowchart syntax 기준으로 task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]` 적용 |
+| `mso-graph-observability` | workflow별 subgraph에 Artifact node와 input/output edge 추가 |
+| `observe_graph.py` | `wf:directory`를 `data_type=local_file` Artifact로 해석. 명시 `artifact_type`이 없으면 locator/detail/role/data_type으로 knowledge_store, event_store, local_database, document, media를 추론 |
+| Deliverables | `wf:deliverables`는 detail 기반으로 Artifact Type 추론. `*.ttl`, `*.json`, `*.yaml` 등 구조화 산출물은 machine-native artifact로 분류 가능 |
+| View separation | workflow별 `integrated`, `workflow`, `artifact-stream` view 생성. `workflow` view는 공유 Artifact id 기반 task spine으로 `((start)) --next--> task --next--> ((end))`를 표시. `resource-stream-*`와 `data-stream-*`는 deprecated alias |
+| Artifact stream report | `artifact-stream-report.md` 추가. produced-but-unconsumed artifact를 cross-workflow artifact, missing agent consumer, terminal/review document, terminal media deliverable 후보로 분류 |
+| Consumer fit heuristic | Markdown/document Artifact에 Agent/User 소비자가 없으면 생략하거나 JSONL/TTL/SQLite 같은 machine-native Artifact로 구조화하도록 report와 문서에 기준 추가 |
+| Directory boundary | 디렉토리는 workflow topology와 Artifact 소비 관계에서 파생되는 구현 경계로 보고, 소비자가 없는 Artifact boundary는 축소/병합 후보로 판단 |
+| Workflow semantics | 같은 target Artifact id로 이어지는 stream은 하나의 workflow, 분기되거나 다르게 소비되는 stream은 별도 workflow boundary 후보로 해석 |
+| Mermaid shape | task `["label"]`, document `@{ shape: doc }`, machine-native artifact cylinder, media stadium, decision `{{"label"}}`, oracle `[/"label"\]` 적용 |
 | Phase containment | workflow별 subgraph에서 `hasNode` edge 대신 Mermaid `subgraph` 블록으로 phase membership 표현 |
 | Node id labels | Mermaid label에 `id: <node-id>`를 표시해 사용자가 특정 workflow node를 지목할 수 있도록 개선 |
-| Data registry location | Mermaid node label은 `DATA`와 `id`만 표시하고, `location=index:<data-id>`와 실제 접근자 `locator`는 `Data Node Index` 표로 분리 |
-| `workflow-subgraph-index.md` | workflow별 Data node 개수 컬럼 추가 |
+| Artifact registry location | Mermaid node label은 `DOCUMENT|MEDIA|KNOWLEDGE STORE|EVENT STORE|LOCAL DATABASE`와 `id`만 표시하고, `location=index:<artifact-id>`와 실제 접근자 `locator`는 `Artifact Node Index` 표로 분리 |
+| `workflow-subgraph-index.md` | workflow별 Artifact node 개수 컬럼 추가 |
 | 전체 버전 | README와 SKILL.md version field를 v0.4.0으로 정렬 |
 
 ## v0.4.0 (2026-06-27) — Decision/Oracle gate separation

@@ -21,6 +21,25 @@ fields:
       프로젝트 차원에서 enum 컨벤션을 정의해 일관성을 부여할 것을 권장.
       일반적인 값 예: code, data, docs, modules, archive, draft, artifacts, planning.
 
+  data_type:
+    required: false
+    type: enum
+    values: [local_file, api, mcp, database, object_store, external_url]
+    default: local_file
+    description: "graph observability에서 이 subdir path를 Artifact source로 해석할 때의 저장/접근 매체."
+
+  artifact_type:
+    required: false
+    type: enum
+    values: [knowledge_store, event_store, local_database, document, media]
+    description: "graph observability에서 이 subdir path를 Artifact node로 렌더링할 때의 소비·운영 의미. 미기재 시 추론."
+
+  resource_kind:
+    required: false
+    type: enum
+    values: [file, data]
+    description: "v0.4.0 호환 alias. 신규 작성은 artifact_type을 사용한다."
+
   artifacts:
     required: false
     type: list

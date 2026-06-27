@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 from rdflib import BNode, Graph, Literal, Namespace, RDF, RDFS, OWL, XSD
@@ -118,8 +120,9 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '(["DATA\\nid: local_file:generated/results/"])' in markdown
-    assert "## Data Node Index" in markdown
+    assert '@{ shape: doc, label: "DOCUMENT\\nid: local_file:generated/results/" }' in markdown
+    assert "## Artifact Node Index" in markdown
+    assert "| Artifact Type | Primary Consumer | Id | Medium | Location | Locator | Detail |" in markdown
     assert "`generated/results/`" in markdown
     assert "-->|downstream|" in markdown
     assert "-->|upstream|" in markdown
@@ -138,12 +141,13 @@ def test_workflow_subgraph_renders_dataflow_nodes():
         "step_node_demo_consumer_" in line and "-->|next|" in line and "boundary_end_demo_end_" in line
         for line in markdown.splitlines()
     )
-    assert "DATA\\nid: deliverable:" in markdown
+    assert "DOCUMENT\\nid: deliverable:" in markdown
     assert "report.md" in markdown
-    assert "classDef data" in markdown
+    assert "classDef document" in markdown
+    assert "classDef knowledge_store" in markdown
 
 
-def test_workflow_and_data_stream_views_are_separated():
+def test_workflow_and_artifact_stream_views_are_separated():
     graph = Graph()
     wf = observe_graph.WF
     producer = wf["node/demo/producer"]
@@ -169,20 +173,22 @@ def test_workflow_and_data_stream_views_are_separated():
     graph.add((in_dir, wf.dirPath, Literal("generated/results/")))
 
     workflow = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
-    data_stream = observe_graph.build_workflow_topology(graph, scope="demo", view="data-stream")
+    artifact_stream = observe_graph.build_workflow_topology(graph, scope="demo", view="artifact-stream")
 
     assert "((start))" in workflow
     assert "((end))" in workflow
     assert "-->|next|" in workflow
-    assert "DATA\\nid:" not in workflow
+    assert "KNOWLEDGE STORE\\nid:" not in workflow
+    assert "DOCUMENT\\nid:" not in workflow
     assert "-->|upstream|" not in workflow
     assert "-->|downstream|" not in workflow
 
-    assert "DATA\\nid: local_file:generated/results/" in data_stream
-    assert "-->|upstream|" in data_stream
-    assert "-->|downstream|" in data_stream
-    assert "((start))" not in data_stream
-    assert "-->|next|" not in data_stream
+    assert "`artifact-stream` view" in artifact_stream
+    assert "DOCUMENT\\nid: local_file:generated/results/" in artifact_stream
+    assert "-->|upstream|" in artifact_stream
+    assert "-->|downstream|" in artifact_stream
+    assert "((start))" not in artifact_stream
+    assert "-->|next|" not in artifact_stream
 
 
 def test_data_stream_report_flags_unconsumed_outputs_and_external_inputs():
@@ -215,10 +221,14 @@ def test_data_stream_report_flags_unconsumed_outputs_and_external_inputs():
 
     assert "Produced But Unconsumed" in report
     assert "External Inputs" in report
+    assert "Consumer Fit Heuristic" in report
     assert "local_file:generated/results/" in report
-    assert "missing consumer candidate" in report
-    assert "final deliverable candidate" in report
+    assert "Produced but unconsumed artifacts" in report
+    assert "terminal/review document candidate" in report
+    assert "confirm agent/user consumer" in report
+    assert "else omit or convert to jsonl/ttl/sqlite" in report
     assert "local_file:external/source/" in report
+    assert "external input (document)" in report
 
 
 def test_workflow_subgraph_uses_index_data_ids_for_locations():
@@ -261,7 +271,7 @@ def test_workflow_subgraph_uses_index_data_ids_for_locations():
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", data_registry=data_registry)
 
     assert "id: content.draft" in markdown
-    assert markdown.count('(["DATA\\nid: content.draft"])') == 1
+    assert markdown.count('@{ shape: doc, label: "DOCUMENT\\nid: content.draft" }') == 1
     assert "`index:content.draft`" in markdown
     assert "`content/draft/`" in markdown
     assert "-->|downstream|" in markdown
@@ -292,6 +302,132 @@ def test_data_registry_uses_longest_locator_prefix():
 
     assert ref["id"] == "agent-context.work-memory"
     assert ref["location"] == "index:agent-context.work-memory"
+    assert ref["artifact_type"] == "event_store"
+    assert ref["resource_kind"] == "data"
+
+
+def test_artifact_type_explicit_value_overrides_inference():
+    data_registry = {
+        "agent-context/ontology/": {
+            "id": "agent-context.ontology",
+            "data_type": "local_file",
+            "artifact_type": "document",
+            "locator": "agent-context/ontology/",
+            "source": "subdir",
+        },
+    }
+
+    ref = observe_graph.data_ref_for_locator(
+        data_registry,
+        data_type="local_file",
+        locator="agent-context/ontology/model.ttl",
+    )
+
+    assert ref["artifact_type"] == "document"
+    assert ref["resource_kind"] == "file"
+
+
+def test_artifact_type_inference_distinguishes_machine_hybrid_and_human_artifacts():
+    assert (
+        observe_graph.infer_artifact_type(
+            data_type="local_file",
+            locator="agent-context/work-memory/track-record/user-decision/",
+        )
+        == "event_store"
+    )
+    assert (
+        observe_graph.infer_artifact_type(
+            data_type="local_file",
+            locator="ontology/shapes/workflow-shapes.ttl",
+        )
+        == "knowledge_store"
+    )
+    assert (
+        observe_graph.infer_artifact_type(
+            data_type="local_file",
+            locator="docs/final-report.md",
+        )
+        == "document"
+    )
+    assert (
+        observe_graph.infer_artifact_type(
+            data_type="local_file",
+            locator="40.prompt-generation/templates/example-prompt-template.md",
+        )
+        == "document"
+    )
+    assert observe_graph.infer_artifact_type(data_type="mcp", locator="mcp://server/resource") == "knowledge_store"
+    assert observe_graph.infer_artifact_type(data_type="local_file", locator="exports/final-slide.png") == "media"
+
+
+def test_artifact_nodes_render_document_and_knowledge_store_shapes():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/producer"]
+    phase = wf["phase/demo/p"]
+    graph.add((producer, RDF.type, wf.Step))
+    graph.add((producer, RDF.type, wf.Node))
+    graph.add((producer, RDFS.label, Literal("Produce")))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+    graph.add((phase, wf.hasNode, producer))
+
+    ontology_dir = BNode()
+    graph.add((producer, wf.directory, ontology_dir))
+    graph.add((ontology_dir, wf.dirRole, Literal("output")))
+    graph.add((ontology_dir, wf.dirPath, Literal("ontology/")))
+    graph.add((producer, wf.deliverables, Literal("brief.md")))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo")
+
+    assert '[("KNOWLEDGE STORE\\nid: local_file:ontology/")]' in markdown
+    assert '@{ shape: doc, label: "DOCUMENT\\nid: deliverable:' in markdown
+    assert "| knowledge_store | Agent | `local_file:ontology/`" in markdown
+    assert "| document | Human + Agent | `deliverable:" in markdown
+
+
+def test_exporter_writes_resource_stream_and_deprecated_alias_outputs(tmp_path):
+    workflow_dir = tmp_path / "agent-context" / "workflow"
+    workflow_dir.mkdir(parents=True)
+    (tmp_path / "agent-context" / "index").mkdir(parents=True)
+    (tmp_path / "agent-context" / "index" / "index.yaml").write_text(
+        "project:\n  name: Demo\nmodules: []\n",
+        encoding="utf-8",
+    )
+    (workflow_dir / "demo.abox.ttl").write_text(
+        """
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<https://mso.dev/ontology/workflow#phase/demo/p> a wf:Phase ;
+  rdfs:label "Phase" ;
+  wf:hasNode <https://mso.dev/ontology/workflow#node/demo/producer> .
+
+<https://mso.dev/ontology/workflow#node/demo/producer> a wf:Step, wf:Node ;
+  rdfs:label "Producer" ;
+  wf:directory [
+    wf:dirRole "output" ;
+    wf:dirPath "ontology/"
+  ] .
+""".strip(),
+        encoding="utf-8",
+    )
+
+    subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path)], check=True)
+
+    output_dir = tmp_path / "agent-context" / "observability" / "graph"
+    assert (output_dir / "artifact-stream-report.md").exists()
+    assert (output_dir / "artifact-stream-views" / "demo.md").exists()
+    assert (output_dir / "resource-stream-report.md").exists()
+    assert (output_dir / "resource-stream-views" / "demo.md").exists()
+    assert (output_dir / "data-stream-report.md").exists()
+    assert (output_dir / "data-stream-views" / "demo.md").exists()
+    assert "Deprecated v0.4.0 compatibility alias" in (output_dir / "resource-stream-report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Deprecated v0.4.0 compatibility alias" in (output_dir / "data-stream-report.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_workflow_subgraph_renders_oracle_shape():

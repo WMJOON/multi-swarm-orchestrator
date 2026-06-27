@@ -89,22 +89,43 @@ subdirs:
 
 ## 5. Data Registry
 
-`data_registry`는 workflow와 graph observability가 참조하는 Data source의 registry다. 기존 `modules[].path`와 `subdirs[].path`는 `data_type=local_file` data source로 자동 해석되지만, API/MCP/database처럼 디렉토리가 아닌 source나 더 안정적인 id가 필요한 source는 명시 등록한다.
+`data_registry`는 workflow와 graph observability가 참조하는 Artifact source의 registry다. 기존 `modules[].path`와 `subdirs[].path`는 `data_type=local_file` artifact source로 자동 해석되지만, API/MCP/database처럼 디렉토리가 아닌 source나 더 안정적인 id가 필요한 source는 명시 등록한다.
+
+MSO는 Data Pipeline이 아니라 Artifact Supply Chain을 관측한다. `data_type`은 저장/접근 매체(local_file, api, mcp, database 등)를 뜻하고, `artifact_type`은 소비·운영 의미를 뜻한다. `artifact_type`을 생략하면 graph observability가 보수적으로 추론한다.
+
+지원 `artifact_type` 권장값:
+
+- `knowledge_store`: ontology.ttl, workflow.ttl, SHACL, JSON Schema 등 Agent가 추론/검증하는 구조화 지식 저장소
+- `event_store`: work-memory.jsonl, auditlog, worklog 등 실행 기록과 이벤트 저장소
+- `local_database`: cache.sqlite, duckdb 등 빠른 조회/질의를 위한 로컬 DB
+- `document`: README.md, report.md, prompt.md 등 Human+Agent가 함께 읽고 수정하는 협업 인터페이스
+- `media`: html, pdf, pptx, png, svg 등 Human-native 최종 전달물
+
+`resource_kind=file|data`는 v0.4.0 호환 alias이며 신규 작성은 `artifact_type`을 사용한다.
 
 ```yaml
 data_registry:
   - id: content.draft
     data_type: local_file
+    artifact_type: document
     locator: content/draft/
     description: 작성 중인 글 초안
 
+  - id: ontology.workflow
+    data_type: local_file
+    artifact_type: knowledge_store
+    locator: ontology/workflow/
+    description: TTL/SHACL 기반 workflow ontology
+
   - id: google.calendar.primary
     data_type: mcp
+    artifact_type: knowledge_store
     locator: mcp://google-calendar/calendars/primary
     description: 기본 Google Calendar MCP resource
 
   - id: trend.api.search
     data_type: api
+    artifact_type: knowledge_store
     locator: https://api.example.com/trends/search
 ```
 
@@ -144,6 +165,8 @@ references:
 - `references.consumes` / `provides_to` 가 가리키는 모듈 id 가 존재
 - `data_registry[].id` 는 data registry 내 unique여야 한다
 - `data_registry[].locator` 는 data_type에 맞는 실제 접근자다
+- `data_registry[].artifact_type` 는 선택값이며, 명시 시 지원 enum 중 하나여야 한다
+- `data_registry[].resource_kind` 는 deprecated compatibility alias다
 
 > 그 외 네이밍 패턴·prefix·role enum 은 **프로젝트 컨벤션**으로 관리한다.
 

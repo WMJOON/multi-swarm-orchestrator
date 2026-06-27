@@ -50,6 +50,74 @@ LITERAL_RANGES = {
     XSD.dateTime,
     RDFS.Literal,
 }
+ARTIFACT_TYPES = {
+    "knowledge_store",
+    "event_store",
+    "local_database",
+    "document",
+    "media",
+}
+ARTIFACT_LABELS = {
+    "knowledge_store": "KNOWLEDGE STORE",
+    "event_store": "EVENT STORE",
+    "local_database": "LOCAL DATABASE",
+    "document": "DOCUMENT",
+    "media": "MEDIA",
+}
+ARTIFACT_PRIMARY_CONSUMERS = {
+    "knowledge_store": "Agent",
+    "event_store": "Agent",
+    "local_database": "Agent",
+    "document": "Human + Agent",
+    "media": "Human",
+}
+MACHINE_NATIVE_ARTIFACTS = {"knowledge_store", "event_store", "local_database"}
+KNOWLEDGE_STORE_MARKERS = {
+    "ontology",
+    "schema",
+    "embedding",
+    "api",
+    "mcp",
+    "graph",
+    "rdf",
+    "owl",
+    "shacl",
+    "ttl",
+    "tbox",
+    "abox",
+    "workflow",
+    "visual-dom",
+    "catalog",
+}
+EVENT_STORE_MARKERS = {
+    "work-memory",
+    "work_memory",
+    "auditlog",
+    "audit-log",
+    "worklog",
+    "work-log",
+    "event",
+    "jsonl",
+}
+LOCAL_DATABASE_MARKERS = {
+    "database",
+    "sqlite",
+    "duckdb",
+    "cache.db",
+    ".db",
+}
+MEDIA_EXTENSIONS = {
+    ".html",
+    ".pdf",
+    ".pptx",
+    ".png",
+    ".svg",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".mp4",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,6 +305,80 @@ def locator_lookup_keys(value: str) -> set[str]:
     return {key for key in keys if key}
 
 
+def _contains_any(text: str, markers: set[str]) -> bool:
+    return any(marker in text for marker in markers)
+
+
+def artifact_type_from_resource_kind(
+    resource_kind: str | None,
+    haystack: str,
+) -> str | None:
+    kind = (resource_kind or "").strip().lower()
+    if kind == "data":
+        if _contains_any(haystack, EVENT_STORE_MARKERS):
+            return "event_store"
+        if _contains_any(haystack, LOCAL_DATABASE_MARKERS):
+            return "local_database"
+        return "knowledge_store"
+    if kind == "file":
+        suffix = Path(haystack.split()[0] if haystack.split() else "").suffix.lower()
+        if suffix in MEDIA_EXTENSIONS or _contains_any(haystack, MEDIA_EXTENSIONS):
+            return "media"
+        return "document"
+    return None
+
+
+def infer_artifact_type(
+    *,
+    data_type: str,
+    locator: str,
+    source: str = "",
+    explicit: str | None = None,
+    resource_kind: str | None = None,
+    role: str | None = None,
+    artifact_id: str | None = None,
+    detail: str | None = None,
+) -> str:
+    explicit_norm = (explicit or "").strip().lower()
+    if explicit_norm in ARTIFACT_TYPES:
+        return explicit_norm
+
+    data_type_norm = (data_type or "local_file").strip().lower()
+    haystack = " ".join(
+        [
+            artifact_id or "",
+            locator or "",
+            source or "",
+            role or "",
+            detail or "",
+        ]
+    ).lower()
+    legacy = artifact_type_from_resource_kind(resource_kind, haystack)
+    if legacy:
+        return legacy
+
+    if data_type_norm == "database":
+        return "local_database"
+    if data_type_norm in {"api", "mcp", "object_store", "external_url"}:
+        return "knowledge_store"
+    if _contains_any(haystack, LOCAL_DATABASE_MARKERS):
+        return "local_database"
+    if _contains_any(haystack, EVENT_STORE_MARKERS):
+        return "event_store"
+    if _contains_any(haystack, KNOWLEDGE_STORE_MARKERS):
+        return "knowledge_store"
+    if any(ext in haystack for ext in MEDIA_EXTENSIONS):
+        return "media"
+    return "document"
+
+
+def infer_resource_kind(
+    **kwargs: str | None,
+) -> str:
+    artifact_type = infer_artifact_type(**kwargs)
+    return "data" if artifact_type in MACHINE_NATIVE_ARTIFACTS else "file"
+
+
 def load_yaml_file(path: Path) -> dict[str, Any]:
     if yaml is None or not path.exists():
         return {}
@@ -262,6 +404,9 @@ def register_data_ref(
     data_type: str,
     locator: str,
     source: str,
+    artifact_type: str | None = None,
+    resource_kind: str | None = None,
+    role: str | None = None,
 ) -> None:
     locator_norm = normalize_locator(locator)
     if not data_id_value or not locator_norm:
@@ -269,6 +414,24 @@ def register_data_ref(
     ref = {
         "id": data_id_value,
         "data_type": data_type or "local_file",
+        "artifact_type": infer_artifact_type(
+            data_type=data_type or "local_file",
+            locator=locator_norm,
+            source=source,
+            explicit=artifact_type,
+            resource_kind=resource_kind,
+            role=role,
+            artifact_id=data_id_value,
+        ),
+        "resource_kind": infer_resource_kind(
+            data_type=data_type or "local_file",
+            locator=locator_norm,
+            source=source,
+            explicit=artifact_type,
+            resource_kind=resource_kind,
+            role=role,
+            artifact_id=data_id_value,
+        ),
         "locator": locator_norm,
         "source": source,
     }
@@ -288,6 +451,8 @@ def load_data_registry(root: Path) -> dict[str, dict[str, str]]:
             continue
         data_id_value = str(item.get("id") or "").strip()
         data_type = str(item.get("data_type") or item.get("type") or "local_file").strip()
+        artifact_type = str(item.get("artifact_type") or item.get("artifact_kind") or "").strip()
+        resource_kind = str(item.get("resource_kind") or item.get("kind") or "").strip()
         locator = str(
             item.get("locator")
             or item.get("location")
@@ -302,6 +467,9 @@ def load_data_registry(root: Path) -> dict[str, dict[str, str]]:
             data_type=data_type,
             locator=locator,
             source="data_registry",
+            artifact_type=artifact_type,
+            resource_kind=resource_kind,
+            role=str(item.get("role") or "").strip(),
         )
 
     for module in doc.get("modules", []) or []:
@@ -315,6 +483,9 @@ def load_data_registry(root: Path) -> dict[str, dict[str, str]]:
             data_type=str(module.get("data_type") or "local_file"),
             locator=module_path,
             source="module",
+            artifact_type=str(module.get("artifact_type") or module.get("artifact_kind") or "").strip(),
+            resource_kind=str(module.get("resource_kind") or module.get("kind") or "").strip(),
+            role=str(module.get("role") or "").strip(),
         )
         for subdir in module.get("subdirs", []) or []:
             if not isinstance(subdir, dict):
@@ -330,6 +501,9 @@ def load_data_registry(root: Path) -> dict[str, dict[str, str]]:
                 data_type=str(subdir.get("data_type") or "local_file"),
                 locator=f"{module_path}{sub_path}",
                 source="subdir",
+                artifact_type=str(subdir.get("artifact_type") or subdir.get("artifact_kind") or "").strip(),
+                resource_kind=str(subdir.get("resource_kind") or subdir.get("kind") or "").strip(),
+                role=str(subdir.get("role") or "").strip(),
             )
     return registry
 
@@ -371,6 +545,10 @@ def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
         return f"{node_id}(({label}))"
     if shape == "stadium":
         return f'{node_id}(["{label}"])'
+    if shape == "database":
+        return f'{node_id}[("{label}")]'
+    if shape == "document":
+        return f'{node_id}@{{ shape: doc, label: "{label}" }}'
     if shape == "hexagon":
         return f'{node_id}{{{{"{label}"}}}}'
     if shape == "trapezoid":
@@ -717,11 +895,31 @@ def data_label(
     detail: str | None = None,
     node_id: str | None = None,
     locator: str | None = None,
+    artifact_type: str = "document",
 ) -> str:
-    parts = ["DATA"]
+    parts = [ARTIFACT_LABELS.get(artifact_type, artifact_type.upper())]
     if node_id:
         parts.append(f"id: {node_id}")
     return mermaid_label("\\n".join(parts), 72)
+
+
+def enrich_artifact_ref(ref: dict[str, str], *, data_type: str, locator: str) -> dict[str, str]:
+    ref_data_type = ref.get("data_type", data_type)
+    artifact_type = ref.get("artifact_type") or infer_artifact_type(
+        data_type=ref_data_type,
+        locator=ref.get("locator", locator),
+        source=ref.get("source", ""),
+        resource_kind=ref.get("resource_kind"),
+        artifact_id=ref["id"],
+        detail=ref.get("detail"),
+    )
+    resource_kind = ref.get("resource_kind") or ("data" if artifact_type in MACHINE_NATIVE_ARTIFACTS else "file")
+    enriched = dict(ref)
+    enriched["data_type"] = ref_data_type
+    enriched["artifact_type"] = artifact_type
+    enriched["resource_kind"] = resource_kind
+    enriched["primary_consumer"] = ARTIFACT_PRIMARY_CONSUMERS.get(artifact_type, "-")
+    return enriched
 
 
 def data_ref_for_locator(
@@ -734,12 +932,16 @@ def data_ref_for_locator(
     for key in locator_lookup_keys(locator):
         ref = data_registry.get(key)
         if ref:
+            enriched = enrich_artifact_ref(ref, data_type=data_type, locator=normalize_locator(locator))
             return {
-                "key": f"index:{ref['id']}",
-                "id": ref["id"],
-                "data_type": ref.get("data_type", data_type),
-                "location": f"index:{ref['id']}",
-                "locator": ref.get("locator", normalize_locator(locator)),
+                "key": f"index:{enriched['id']}",
+                "id": enriched["id"],
+                "data_type": enriched["data_type"],
+                "artifact_type": enriched["artifact_type"],
+                "resource_kind": enriched["resource_kind"],
+                "primary_consumer": enriched["primary_consumer"],
+                "location": f"index:{enriched['id']}",
+                "locator": enriched.get("locator", normalize_locator(locator)),
             }
     prefix_ref: dict[str, str] | None = None
     prefix_len = -1
@@ -752,18 +954,30 @@ def data_ref_for_locator(
             prefix_ref = ref
             prefix_len = len(prefix)
     if prefix_ref:
+        enriched = enrich_artifact_ref(prefix_ref, data_type=data_type, locator=normalized)
         return {
-            "key": f"index:{prefix_ref['id']}",
-            "id": prefix_ref["id"],
-            "data_type": prefix_ref.get("data_type", data_type),
-            "location": f"index:{prefix_ref['id']}",
-            "locator": prefix_ref.get("locator", normalized),
+            "key": f"index:{enriched['id']}",
+            "id": enriched["id"],
+            "data_type": enriched["data_type"],
+            "artifact_type": enriched["artifact_type"],
+            "resource_kind": enriched["resource_kind"],
+            "primary_consumer": enriched["primary_consumer"],
+            "location": f"index:{enriched['id']}",
+            "locator": enriched.get("locator", normalized),
         }
     fallback_id = f"{data_type}:{normalized}"
+    artifact_type = infer_artifact_type(
+        data_type=data_type,
+        locator=normalized,
+        artifact_id=fallback_id,
+    )
     return {
         "key": fallback_id,
         "id": fallback_id,
         "data_type": data_type,
+        "artifact_type": artifact_type,
+        "resource_kind": "data" if artifact_type in MACHINE_NATIVE_ARTIFACTS else "file",
+        "primary_consumer": ARTIFACT_PRIMARY_CONSUMERS.get(artifact_type, "-"),
         "location": normalized,
         "locator": normalized,
     }
@@ -772,10 +986,19 @@ def data_ref_for_locator(
 def deliverable_data_ref(deliverable: str) -> dict[str, str]:
     digest = hashlib.sha1(deliverable.encode("utf-8")).hexdigest()[:10]
     key = f"deliverable:{digest}"
+    artifact_type = infer_artifact_type(
+        data_type="local_file",
+        locator="",
+        artifact_id=key,
+        detail=deliverable,
+    )
     return {
         "key": key,
         "id": key,
         "data_type": "local_file",
+        "artifact_type": artifact_type,
+        "resource_kind": "data" if artifact_type in MACHINE_NATIVE_ARTIFACTS else "file",
+        "primary_consumer": ARTIFACT_PRIMARY_CONSUMERS.get(artifact_type, "-"),
         "location": "declared deliverable",
         "locator": "",
         "detail": deliverable,
@@ -876,7 +1099,7 @@ def build_data_stream_report(
 ) -> str:
     streams = collect_data_streams(graph, data_registry)
     if not streams:
-        return "_No scoped workflow data streams found._"
+        return "_No scoped workflow artifact streams found._"
 
     consumers_by_data: dict[str, set[str]] = {}
     for scope, stream in streams.items():
@@ -899,23 +1122,29 @@ def build_data_stream_report(
         consumed_ids = set(consumers)
         for data_ref in sorted(produced_ids - consumed_ids):
             ref = refs.get(data_ref, {"id": data_ref})
+            artifact_type = str(ref.get("artifact_type") or "document")
             external_consumers = sorted(
                 consumer for consumer in consumers_by_data.get(data_ref, set()) if not consumer.startswith(f"{scope}:")
             )
             detail = ref.get("detail") or ref.get("locator") or ref.get("location") or ""
             if external_consumers:
-                hint = "cross-workflow output"
-                next_action = "link cross-workflow dependency or split workflow boundary"
-            elif str(data_ref).startswith("deliverable:"):
-                hint = "final deliverable candidate"
-                next_action = "confirm this is an intentional terminal artifact"
+                hint = f"cross-workflow {artifact_type} artifact"
+                next_action = "link the downstream consumer workflow or split the artifact boundary intentionally"
+            elif artifact_type in MACHINE_NATIVE_ARTIFACTS:
+                hint = f"missing agent consumer for {artifact_type}"
+                next_action = "add an agent consumer task, mark as external artifact output, or move it to a workflow that reads it"
+            elif artifact_type == "media":
+                hint = "terminal media deliverable candidate"
+                next_action = "confirm a human review/delivery consumer exists, otherwise skip the artifact"
             else:
-                hint = "missing consumer candidate"
-                next_action = "add upstream use, mark terminal, or move to another workflow"
+                hint = "terminal/review document candidate"
+                next_action = "confirm agent/user consumer; else omit or convert to jsonl/ttl/sqlite"
             rows.append(
                 {
                     "scope": scope,
-                    "data": data_ref,
+                    "artifact_type": artifact_type,
+                    "primary_consumer": ref.get("primary_consumer") or ARTIFACT_PRIMARY_CONSUMERS.get(artifact_type, "-"),
+                    "artifact": data_ref,
                     "producer": ", ".join(sorted(producers[data_ref])),
                     "detail": detail,
                     "hint": hint,
@@ -925,38 +1154,55 @@ def build_data_stream_report(
 
         for data_ref in sorted(consumed_ids - produced_ids):
             ref = refs.get(data_ref, {"id": data_ref})
+            artifact_type = str(ref.get("artifact_type") or "document")
             input_rows.append(
                 {
                     "scope": scope,
-                    "data": data_ref,
+                    "artifact_type": artifact_type,
+                    "primary_consumer": ref.get("primary_consumer") or ARTIFACT_PRIMARY_CONSUMERS.get(artifact_type, "-"),
+                    "artifact": data_ref,
                     "consumer": ", ".join(sorted(consumers[data_ref])),
                     "detail": ref.get("detail") or ref.get("locator") or ref.get("location") or "",
+                    "hint": f"external input ({artifact_type})",
                 }
             )
 
     by_hint: dict[str, int] = {}
     for row in rows:
         by_hint[row["hint"]] = by_hint.get(row["hint"], 0) + 1
+    output_by_type = Counter(row["artifact_type"] for row in rows)
+    input_by_type = Counter(row["artifact_type"] for row in input_rows)
 
     lines = [
-        "> Generated from workflow TTL Data nodes. This report highlights supply-chain breaks that are easy to miss in Mermaid.",
+        "> Generated from workflow TTL Artifact nodes. This report highlights supply-chain breaks that are easy to miss in Mermaid.",
         "",
         "## Summary",
         "",
         f"- Workflow scopes: {len(streams)}",
-        f"- Produced but unconsumed data: {len(rows)}",
-        f"- External input data: {len(input_rows)}",
+        f"- Produced but unconsumed artifacts: {len(rows)}",
+        f"- External input artifacts: {len(input_rows)}",
     ]
+    for artifact_type in sorted(ARTIFACT_TYPES):
+        lines.append(f"- Produced but unconsumed {artifact_type}: {output_by_type.get(artifact_type, 0)}")
+    for artifact_type in sorted(ARTIFACT_TYPES):
+        lines.append(f"- External input {artifact_type}: {input_by_type.get(artifact_type, 0)}")
     for hint, count in sorted(by_hint.items()):
         lines.append(f"- {hint}: {count}")
 
     lines.extend(
         [
             "",
+            "## Consumer Fit Heuristic",
+            "",
+            "- Review the visualized workflow topology to decide whether each produced Artifact has a suitable consumer.",
+            "- For `document` artifacts such as Markdown, confirm an Agent or Human review/handoff/eval consumer exists in the workflow.",
+            "- If a document has no consumer, omit it. If the content must be retrieved, queried, replayed, or reasoned over later, prefer `event_store` JSONL, `knowledge_store` TTL/schema, or `local_database` SQLite instead.",
+            "- Directory creation follows the workflow and artifact supply chain. Do not preserve directories that do not serve an Artifact consumer.",
+            "",
             "## Produced But Unconsumed",
             "",
-            "| Workflow | Data | Producer Task(s) | Detail | Hint | Suggested Check |",
-            "|---|---|---|---|---|---|",
+            "| Workflow | Artifact Type | Primary Consumer | Artifact | Producer Task(s) | Detail | Hint | Suggested Check |",
+            "|---|---|---|---|---|---|---|---|",
         ]
     )
     if rows:
@@ -966,7 +1212,9 @@ def build_data_stream_report(
                 + " | ".join(
                     [
                         f"`{markdown_cell(row['scope'], 32)}`",
-                        f"`{markdown_cell(row['data'], 72)}`",
+                        markdown_cell(row["artifact_type"], 18),
+                        markdown_cell(row["primary_consumer"], 18),
+                        f"`{markdown_cell(row['artifact'], 72)}`",
                         markdown_cell(row["producer"], 72),
                         markdown_cell(row["detail"], 96),
                         markdown_cell(row["hint"], 40),
@@ -976,15 +1224,15 @@ def build_data_stream_report(
                 + " |"
             )
     else:
-        lines.append("| - | - | - | - | - | - |")
+        lines.append("| - | - | - | - | - | - | - | - |")
 
     lines.extend(
         [
             "",
             "## External Inputs",
             "",
-            "| Workflow | Data | Consumer Task(s) | Detail |",
-            "|---|---|---|---|",
+            "| Workflow | Artifact Type | Primary Consumer | Artifact | Consumer Task(s) | Detail | Hint |",
+            "|---|---|---|---|---|---|---|",
         ]
     )
     if input_rows:
@@ -994,17 +1242,34 @@ def build_data_stream_report(
                 + " | ".join(
                     [
                         f"`{markdown_cell(row['scope'], 32)}`",
-                        f"`{markdown_cell(row['data'], 72)}`",
+                        markdown_cell(row["artifact_type"], 18),
+                        markdown_cell(row["primary_consumer"], 18),
+                        f"`{markdown_cell(row['artifact'], 72)}`",
                         markdown_cell(row["consumer"], 72),
                         markdown_cell(row["detail"], 96),
+                        markdown_cell(row["hint"], 40),
                     ]
                 )
                 + " |"
             )
     else:
-        lines.append("| - | - | - | - |")
+        lines.append("| - | - | - | - | - | - | - |")
 
     return "\n".join(lines)
+
+
+def build_resource_stream_report(
+    graph: Graph,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    return build_data_stream_report(graph, data_registry)
+
+
+def build_artifact_stream_report(
+    graph: Graph,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    return build_data_stream_report(graph, data_registry)
 
 
 def build_workflow_topology(
@@ -1014,18 +1279,20 @@ def build_workflow_topology(
     view: str = "integrated",
 ) -> str:
     data_registry = data_registry or {}
+    stream_view_names = {"artifact-stream", "data-stream"}
+    display_view = "artifact-stream" if view == "data-stream" else view
     intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
     notes: list[str] = []
     if scope:
-        intro = f"> `{view}` view for workflow scope `{scope}`. Generated from MSO workflow TTL."
-        if view == "data-stream":
-            notes.append("> Data stream view: `data --upstream--> task --downstream--> data` supply chain only.")
+        intro = f"> `{display_view}` view for workflow scope `{scope}`. Generated from MSO workflow TTL."
+        if view in stream_view_names:
+            notes.append("> Artifact stream view: `artifact --upstream--> task --downstream--> artifact` supply chain only.")
         elif view == "workflow":
-            notes.append("> Workflow view: `((start)) --next--> task --next--> task --next--> ((end))` spine derived from shared Data ids where possible.")
+            notes.append("> Workflow view: `((start)) --next--> task --next--> task --next--> ((end))` spine derived from shared artifact ids where possible.")
         else:
-            notes.append("> Integrated view: data stream supply chain plus the derived task workflow spine.")
+            notes.append("> Integrated view: artifact stream supply chain plus the derived task workflow spine.")
     include_internal = scope is not None
-    show_data_stream = include_internal and view in {"integrated", "data-stream"}
+    show_data_stream = include_internal and view in {"integrated", *stream_view_names}
     show_workflow_spine = include_internal and view in {"integrated", "workflow"}
     lines: list[str] = [
         intro,
@@ -1053,11 +1320,18 @@ def build_workflow_topology(
             declared.add(node_id)
         return node_id
 
-    def declare_data(logical_id: str, label: str) -> str:
+    def declare_data(logical_id: str, label: str, artifact_type: str) -> str:
         node_id = data_id(logical_id)
         if node_id not in declared:
-            lines.append(f'  {mermaid_shape(node_id, label, "stadium")}')
-            lines.append(f"  class {node_id} data")
+            if artifact_type in MACHINE_NATIVE_ARTIFACTS:
+                shape = "database"
+            elif artifact_type == "media":
+                shape = "stadium"
+            else:
+                shape = "document"
+            css_class = artifact_type
+            lines.append(f"  {mermaid_shape(node_id, label, shape)}")
+            lines.append(f"  class {node_id} {css_class}")
             declared.add(node_id)
         return node_id
 
@@ -1204,6 +1478,7 @@ def build_workflow_topology(
                 ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
                 if show_data_stream:
                     data_refs.setdefault(ref["id"], ref)
+                    artifact_type = ref.get("artifact_type", "document")
                     data_node_id = declare_data(
                         ref["id"],
                         data_label(
@@ -1211,7 +1486,9 @@ def build_workflow_topology(
                             ref["location"],
                             node_id=ref["id"],
                             locator=ref["locator"],
+                            artifact_type=artifact_type,
                         ),
+                        artifact_type,
                     )
                 else:
                     data_node_id = data_id(ref["id"])
@@ -1232,6 +1509,7 @@ def build_workflow_topology(
                 ref = deliverable_data_ref(deliverable)
                 if show_data_stream:
                     data_refs.setdefault(ref["id"], ref)
+                    artifact_type = ref.get("artifact_type", "document")
                     data_node_id = declare_data(
                         ref["id"],
                         data_label(
@@ -1240,7 +1518,9 @@ def build_workflow_topology(
                             deliverable,
                             node_id=ref["id"],
                             locator=ref["locator"],
+                            artifact_type=artifact_type,
                         ),
+                        artifact_type,
                     )
                 else:
                     data_node_id = data_id(ref["id"])
@@ -1331,7 +1611,11 @@ def build_workflow_topology(
             "  classDef workflowRef fill:#e0f2fe,stroke:#0284c7,color:#111827",
             "  classDef module fill:#f0fdf4,stroke:#15803d,color:#111827",
             "  classDef milestone fill:#fdf2f8,stroke:#db2777,color:#111827",
-            "  classDef data fill:#f8fafc,stroke:#475569,stroke-dasharray: 4 3,color:#111827",
+            "  classDef knowledge_store fill:#f0f9ff,stroke:#0369a1,stroke-dasharray: 4 3,color:#111827",
+            "  classDef event_store fill:#f5f3ff,stroke:#7c3aed,stroke-dasharray: 4 3,color:#111827",
+            "  classDef local_database fill:#ecfdf5,stroke:#047857,stroke-dasharray: 4 3,color:#111827",
+            "  classDef document fill:#fefce8,stroke:#a16207,color:#111827",
+            "  classDef media fill:#fff7ed,stroke:#ea580c,color:#111827",
             "  classDef boundary fill:#ffffff,stroke:#111827,color:#111827",
             "```",
         ]
@@ -1340,10 +1624,10 @@ def build_workflow_topology(
         lines.extend(
             [
                 "",
-                "## Data Node Index",
+                "## Artifact Node Index",
                 "",
-                "| Id | Type | Location | Locator | Detail |",
-                "|---|---|---|---|---|",
+                "| Artifact Type | Primary Consumer | Id | Medium | Location | Locator | Detail |",
+                "|---|---|---|---|---|---|---|",
             ]
         )
         for ref in sorted(data_refs.values(), key=lambda item: item["id"]):
@@ -1351,6 +1635,8 @@ def build_workflow_topology(
                 "| "
                 + " | ".join(
                     [
+                        markdown_cell(ref.get("artifact_type"), 18),
+                        markdown_cell(ref.get("primary_consumer"), 18),
                         f"`{markdown_cell(ref.get('id'), 72)}`",
                         markdown_cell(ref.get("data_type"), 24),
                         f"`{markdown_cell(ref.get('location'), 72)}`",
@@ -1375,7 +1661,7 @@ def build_workflow_subgraph_index(
     lines = [
         "> Workflow-specific views generated from the same TTL ABox inputs as the repository topology.",
         "",
-        "| Workflow Scope | Integrated | Workflow | Data Stream | Phases | Nodes | Data Nodes |",
+        "| Workflow Scope | Integrated | Workflow | Artifact Stream | Phases | Nodes | Artifact Nodes |",
         "|---|---|---|---|---:|---:|---:|",
     ]
     for scope in scopes:
@@ -1384,7 +1670,7 @@ def build_workflow_subgraph_index(
         data_count = len(data_keys(graph, scope, data_registry))
         file_name = f"{scope}.md"
         lines.append(
-            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | [`{file_name}`](workflow-views/{file_name}) | [`{file_name}`](data-stream-views/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
+            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | [`{file_name}`](workflow-views/{file_name}) | [`{file_name}`](artifact-stream-views/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
         )
     return "\n".join(lines)
 
@@ -1526,10 +1812,14 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "",
             "- [workflow-topology.md](workflow-topology.md) — repository-level workflow graph",
             "- [workflow-subgraph-index.md](workflow-subgraph-index.md) — workflow-specific sub-graph index",
-            "- [workflow-subgraphs/](workflow-subgraphs/) — integrated workflow + data stream view per scoped workflow",
+            "- [workflow-subgraphs/](workflow-subgraphs/) — integrated workflow + artifact stream view per scoped workflow",
             "- [workflow-views/](workflow-views/) — task workflow spine view per scoped workflow",
-            "- [data-stream-views/](data-stream-views/) — data supply-chain view per scoped workflow",
-            "- [data-stream-report.md](data-stream-report.md) — produced/unconsumed data and external input checklist",
+            "- [artifact-stream-views/](artifact-stream-views/) — artifact supply-chain view per scoped workflow",
+            "- [artifact-stream-report.md](artifact-stream-report.md) — produced/unconsumed artifacts and external input checklist",
+            "- [resource-stream-views/](resource-stream-views/) — deprecated v0.4.0 compatibility alias for artifact-stream-views",
+            "- [resource-stream-report.md](resource-stream-report.md) — deprecated v0.4.0 compatibility alias for artifact-stream-report.md",
+            "- [data-stream-views/](data-stream-views/) — deprecated v0.4.0 compatibility alias for artifact-stream-views",
+            "- [data-stream-report.md](data-stream-report.md) — deprecated v0.4.0 compatibility alias for artifact-stream-report.md",
             "- [workflow-ssot-report.md](workflow-ssot-report.md)",
             "- [class-layer-map.md](class-layer-map.md)",
             "- [property-map.md](property-map.md)",
@@ -1552,6 +1842,16 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
     )
 
 
+def deprecated_alias_body(canonical_name: str, body: str) -> str:
+    return "\n".join(
+        [
+            f"> Deprecated v0.4.0 compatibility alias. Use `{canonical_name}` instead.",
+            "",
+            body,
+        ]
+    )
+
+
 def main() -> int:
     args = parse_args()
     workflow_dir, output_dir, ttl_paths = resolve_paths(args)
@@ -1567,7 +1867,18 @@ def main() -> int:
 
     write_markdown(output_dir / "workflow-topology.md", "MSO Repository Workflow Topology", build_workflow_topology(graph, data_registry=data_registry))
     write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
-    write_markdown(output_dir / "data-stream-report.md", "MSO Data Stream Report", build_data_stream_report(graph, data_registry=data_registry))
+    artifact_report = build_artifact_stream_report(graph, data_registry=data_registry)
+    write_markdown(output_dir / "artifact-stream-report.md", "MSO Artifact Stream Report", artifact_report)
+    write_markdown(
+        output_dir / "resource-stream-report.md",
+        "MSO Resource Stream Report",
+        deprecated_alias_body("artifact-stream-report.md", artifact_report),
+    )
+    write_markdown(
+        output_dir / "data-stream-report.md",
+        "MSO Data Stream Report",
+        deprecated_alias_body("artifact-stream-report.md", artifact_report),
+    )
     for scope in workflow_scopes(graph):
         write_markdown(
             output_dir / "workflow-subgraphs" / f"{scope}.md",
@@ -1579,11 +1890,37 @@ def main() -> int:
             f"MSO Workflow View — {scope_label(scope)}",
             build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="workflow"),
         )
+        artifact_stream_view = build_workflow_topology(
+            graph,
+            scope=scope,
+            data_registry=data_registry,
+            view="artifact-stream",
+        )
+        write_markdown(
+            output_dir / "artifact-stream-views" / f"{scope}.md",
+            f"MSO Artifact Stream View — {scope_label(scope)}",
+            artifact_stream_view,
+        )
+        write_markdown(
+            output_dir / "resource-stream-views" / f"{scope}.md",
+            f"MSO Resource Stream View — {scope_label(scope)}",
+            deprecated_alias_body(f"artifact-stream-views/{scope}.md", artifact_stream_view),
+        )
         write_markdown(
             output_dir / "data-stream-views" / f"{scope}.md",
             f"MSO Data Stream View — {scope_label(scope)}",
-            build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="data-stream"),
+            deprecated_alias_body(f"artifact-stream-views/{scope}.md", artifact_stream_view),
         )
+    write_markdown(
+        output_dir / "resource-stream-views" / "README.md",
+        "Deprecated Resource Stream View Alias",
+        "Deprecated v0.4.0 compatibility alias. Use `../artifact-stream-views/` instead.",
+    )
+    write_markdown(
+        output_dir / "data-stream-views" / "README.md",
+        "Deprecated Data Stream View Alias",
+        "Deprecated v0.4.0 compatibility alias. Use `../artifact-stream-views/` instead.",
+    )
     write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
     write_markdown(output_dir / "property-map.md", "MSO Workflow Property Map", build_property_map(graph))
