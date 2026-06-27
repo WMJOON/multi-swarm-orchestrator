@@ -1,10 +1,19 @@
-# Multi-Swarm Orchestrator (MSO) v0.3.6
+# Multi-Swarm Orchestrator (MSO) v0.4.0
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 **repository 구조·workflow·작업 기억을 선언하면, 에이전트가 실행 가능한 형태로 컴파일**한다.
 
 ---
+
+## v0.4.0 Graph Observability + Codex hook adapter 정식화
+
+v0.4.0은 workflow TTL-first 체제 위에 **graph observability**를 기본 내장하고, Codex hook adapter의 중복/잡음 문제를 정리한 정식 버전이다.
+
+- `mso-graph-observability`를 추가해 workflow graph는 Mermaid view로, work-memory/auditlog/worklog/intent turn은 runtime analysis로 관측한다.
+- graph observability 산출물은 `agent-context/observability/graph/` 아래에 둔다.
+- Codex hook adapter는 `Stop`/`PreCompact`에서 worklog만 기록하고, 기록 판단 넛지는 `SessionStart(compact|resume)`에만 둔다.
+- §11 NLU 경계 재편을 정식 버전에 포함한다. utterance→intent는 UUG, intent→action은 MSO가 맡는다.
 
 ## v0.3.6 TTL-first + Decision Governance 적용
 
@@ -92,7 +101,7 @@ Claude Code 세션
     │       → work-memory/worklog/WL-YYYY-MM-DD.jsonl
     │         {"session_id", "timestamp", "hook_event_name", ...}
     │
-    └── Stop · PreCompact (기록 판단 넛지)
+    └── SessionStart(compact/resume) (기록 판단 넛지)
             → hooks/work-memory-check.sh
             → track/insight entry 기록 시점을 비차단으로 상기 (로깅이 아니라 판단 트리거)
 ```
@@ -107,9 +116,9 @@ python3 skills/mso-repository-setup/scripts/init.py --hook . --provider codex \
 ```
 
 이 명령은 `.codex/scripts/`에 hook 스크립트를 복사하고 `.codex/config.toml`에
-`Stop`, `PreCompact`, `SessionStart(compact|resume)` hook을 등록한다. `.codex/hooks.json`도
-compatibility 파일로 함께 생성한다. Codex의 lifecycle hook에서는 worklog와 기록 판단
-넛지를 등록하고, Claude Code 전용 `PostToolUse` auditlog는 Claude 설정에만 둔다.
+`Stop`·`PreCompact` worklog와 `SessionStart(compact|resume)` 기록 판단 넛지를 등록한다.
+`.codex/hooks.json`은 중복 실행 방지를 위한 빈 compatibility 파일로 함께 생성한다.
+Claude Code 전용 `PostToolUse` auditlog는 Claude 설정에만 둔다.
 
 ### 3. Work-Memory 구조화 Logging
 
@@ -137,7 +146,7 @@ work-memory는 자동 기록(hook)과 수동 기록(`wm_node.py`) 두 층으로 
 
 **기록 판단 넛지 (hook)**
 
-자동 기록은 *무엇을 했는지*를 남기지만, track/insight entry를 *언제 남길지*는 판단이 필요하다. 그 판단 트리거가 없으면 수동 기록은 쉽게 누락된다. `hooks/work-memory-check.sh`가 Stop·PreCompact에서 비차단으로 그 판단을 상기시킨다.
+자동 기록은 *무엇을 했는지*를 남기지만, track/insight entry를 *언제 남길지*는 판단이 필요하다. 그 판단 트리거가 없으면 수동 기록은 쉽게 누락된다. `hooks/work-memory-check.sh`가 SessionStart(compact/resume)에서 비차단으로 그 판단을 상기시킨다.
 
 | 넛지 | 조건 | 권유 |
 |------|------|------|
@@ -203,8 +212,8 @@ wf_node.py harness-manifest workflow.yaml
 
 ## 스킬 구성
 
-v0.3.6은 **Design → Ops → Infra → Optimizer → Runtime/NLU** 다섯 레이어에 걸쳐 8개 스킬이 동작한다.
-v0.3.0의 5개 스킬(Design/Ops/Infra) 위에, workflow TTL을 LangGraph artifact로 컴파일하는 **Optimizer** 1개 스킬과 UUG가 제공한 intent를 실행 가능한 명령으로 dispatch/analytics 하는 **Runtime/NLU 후단** 2개 스킬이 붙는다.
+v0.4.0은 **Design → Observability → Ops → Infra → Optimizer → Runtime/NLU** 여섯 레이어에 걸쳐 9개 스킬이 동작한다.
+v0.3.0의 5개 스킬(Design/Ops/Infra) 위에, workflow TTL을 LangGraph artifact로 컴파일하는 **Optimizer**, 여러 운영 그래프를 관측하는 **Graph Observability**, UUG가 제공한 intent를 실행 가능한 명령으로 dispatch/analytics 하는 **Runtime/NLU 후단**이 붙는다.
 
 ```
 사용자 요청
@@ -215,6 +224,9 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
     ├── [Design]
     │   ├──> mso-scaffold-design     index.yaml SSOT · sf_node.py
     │   └──> mso-workflow-design     workflow TTL ABox SSOT · wf_node.py · Mermaid 변환
+    │
+    ├── [Observability]
+    │   └──> mso-graph-observability workflow/memory/audit/worklog/intent graph 관측
     │
     ├── [Optimizer]
     │   └──> mso-workflow-optimizer  workflow TTL → LangGraph artifact + work-memory ContextPack
@@ -237,12 +249,13 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
 | `mso-repository-setup` | Ops | `init.py` |
 | `mso-scaffold-design` | Design | `sf_node.py` |
 | `mso-workflow-design` | Design | `wf_node.py`, `workflow_to_mermaid.py` |
+| `mso-graph-observability` | Observability | `observe_graph.py` — workflow Mermaid view + runtime JSONL analysis |
 | `mso-workflow-optimizer` | Optimizer | `compile_workflow.py` — TTL→LangGraph, ContextPack, writeback queue |
 | `mso-work-memory` | Infra | `wm_node.py`, `hooks/auditlog.py`, `hooks/worklog.py`, `hooks/work-memory-check.sh` |
 | `mso-intent-analytics` *(§11)* | Data+Runtime | `src/lookup.py`(registry), `src/pipeline.py`(뒷단 dispatch), `references/schemas/nlu_intent.yaml` (LinkML) |
 | `mso-conversation-analytics` *(de-routed)* | Observability | `src/analytics.py` (DuckDB) — UUG 흡수 대기, 직접 호출만 |
 
-> **§11 NLU 경계 재편**: utterance→intent 분류(앞단)는 UUG(`01_user-utterance-grounding`)로 흡수, intent→action(뒷단 slot/dispatch)만 MSO(`mso-intent-analytics`). 구 `mso-utterance-grounding` 해체, `mso-intent-registry`→`mso-intent-analytics` 개명. 8 스킬.
+> **§11 NLU 경계 재편**: utterance→intent 분류(앞단)는 UUG(`01_user-utterance-grounding`)로 흡수, intent→action(뒷단 slot/dispatch)만 MSO(`mso-intent-analytics`). 구 `mso-utterance-grounding` 해체, `mso-intent-registry`→`mso-intent-analytics` 개명. v0.4.0 기준 9 스킬.
 
 ---
 
@@ -256,6 +269,8 @@ project/
 │   ├── workflow/
 │   │   ├── workflow-00.abox.ttl    ← workflow SSOT (mso-workflow-design)
 │   │   └── workflow-00.yaml        ← legacy/edit layer
+│   ├── observability/
+│   │   └── graph/                  ← Mermaid view + runtime analysis (mso-graph-observability)
 │   └── work-memory/
 │       ├── schema.yaml             ← entry 스키마 정의
 │       ├── auditlog/               ← AU-*.jsonl (hook 자동 기록 — 도구 사용)
@@ -332,7 +347,7 @@ python3 $WM graph IN-0001 --depth 2
 
 ## 설계 원칙
 
-**Working System First.** 완벽한 아키텍처보다 실제로 돌아가는 시스템을 먼저 만든다. v0.3.0은 5개 스킬이 실제로 동작하는 것을 검증한 milestone이고, v0.3.6은 UUG 경계 재편 이후 8개 스킬 체제와 workflow TTL-first + LangGraph artifact 컴파일 기준을 정식 repository에 승격한 milestone이다.
+**Working System First.** 완벽한 아키텍처보다 실제로 돌아가는 시스템을 먼저 만든다. v0.3.0은 5개 스킬이 실제로 동작하는 것을 검증한 milestone이고, v0.4.0은 UUG 경계 재편 이후 9개 스킬 체제와 graph observability 기준을 정식 repository에 승격한 milestone이다.
 
 **TTL이 workflow SSOT.** `index.yaml`과 workflow `*.abox.ttl`이 정본이다. YAML은 편집/마이그레이션 레이어이고, Markdown·Mermaid는 변환 산출물이지 편집 대상이 아니다.
 

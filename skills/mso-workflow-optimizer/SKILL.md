@@ -1,7 +1,7 @@
 ---
 name: mso-workflow-optimizer
 metadata:
-  version: "0.3.6"
+  version: "0.4.0"
 description: >
   MSO workflow TTL ABox를 실행 가능한 LangGraph artifact로 컴파일하는 optimizer 스킬.
   TTL을 SSOT로 유지하면서 Vertex별 instruction, work-memory ContextPack,

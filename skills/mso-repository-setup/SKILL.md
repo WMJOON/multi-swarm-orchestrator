@@ -1,6 +1,6 @@
 ---
 name: mso-repository-setup
-version: "0.3.6"
+version: "0.4.0"
 description: >
   MSO 스킬 팩의 init 진입점. 새 프로젝트(또는 기존 프로젝트)에 agent-context/
   표준 디렉토리 트리를 부트스트랩하고 mso-scaffold-design + mso-workflow-design +
@@ -43,7 +43,7 @@ python scripts/init.py --target /path/to/project [--name "Project Name"]
 │   └── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh 사본
 └── .codex/                           # --hook --provider codex 시 (copy-form)
     ├── config.toml                   # Stop·PreCompact·SessionStart hook 등록
-    ├── hooks.json                    # compatibility hook 설정
+    ├── hooks.json                    # empty compatibility file
     └── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh 사본
 ```
 
@@ -60,7 +60,8 @@ python scripts/init.py --hook /path/to/project --provider codex \
 hook 스크립트를 `.claude/scripts/` 로 **복사**하고 settings.json 은 `$CLAUDE_PROJECT_DIR`
 상대로만 참조한다(절대·스킬 경로를 커밋 파일에 박지 않음 → CI·타 머신 이식성).
 Codex는 `.codex/scripts/` 로 복사하고 `.codex/config.toml`을 `$CODEX_PROJECT_DIR`
-기준으로 등록한다. `.codex/hooks.json`도 compatibility 파일로 함께 갱신한다.
+기준으로 등록한다. `.codex/hooks.json`은 중복 실행 방지를 위해 빈 compatibility 파일로
+함께 갱신한다.
 `--worthy-paths` 는 "결정 가치 있는" 경로(`WM_WORTHY_PATHS`)를 주입한다(미지정 시 기본값).
 
 ## Flow (다음 진입점)
@@ -91,7 +92,7 @@ mso-repository-setup
 | `init.py --check <path>` | 기존 구조가 표준에 부합하는지 진단 |
 | `init.py --migrate <path>` | 기존 평탄 구조 → agent-context/ 이전 (단순 mv) |
 | `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop·PreCompact·PostToolUse) 등록 (copy-form) |
-| `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook 을 `.codex/scripts/` 로 복사하고 config.toml + hooks.json(Stop·PreCompact·SessionStart) 등록 (copy-form) |
+| `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook 을 `.codex/scripts/` 로 복사하고 config.toml(Stop·PreCompact worklog + SessionStart check) 등록, hooks.json은 빈 compatibility 파일로 갱신 (copy-form) |
 
 ## Non-Goals
 

@@ -2,7 +2,7 @@ id: https://mso.dev/nlu_intent
 name: nlu_intent
 version: "0.1.0"
 description: >
-  MSO v0.3.6 NLU Intent Layer Schema.
+  MSO v0.4.0 NLU Intent Layer Schema.
   Intent / SlotSpec / IntentTurn / SessionContext / IntentMatrixCell 클래스 정의.
   PCA nlu_intent.yaml 기반, MSO 도메인으로 재작성.
 

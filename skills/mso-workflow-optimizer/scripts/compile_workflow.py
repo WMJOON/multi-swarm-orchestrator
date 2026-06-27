@@ -777,7 +777,7 @@ def compile_workflow(
         "source_sha256": ir["source_sha256"],
         "workmem_dir": ir.get("workmem_dir"),
         "workmem_sha256": ir.get("workmem_sha256"),
-        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "artifacts": ["graph.py", "workflow_ir.json", "optimizer_policy.json"],
         "warnings": ir["warnings"],
     }

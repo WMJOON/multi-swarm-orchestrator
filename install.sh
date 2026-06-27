@@ -1,5 +1,5 @@
 #!/bin/bash
-# MSO v0.3.6 — install symlinks into ~/.{claude,codex,gemini}/skills/
+# MSO v0.4.0 — install symlinks into ~/.{claude,codex,gemini}/skills/
 # Usage: bash install.sh [--codex] [--all]
 set -euo pipefail
 
@@ -11,6 +11,7 @@ SKILLS=(
   mso-repository-setup
   mso-scaffold-design
   mso-workflow-design
+  mso-graph-observability
   mso-workflow-optimizer
   mso-work-memory
   mso-intent-analytics
@@ -28,7 +29,7 @@ for arg in "$@"; do
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(claude)
 
-echo "MSO v0.3.6 Install"
+echo "MSO v0.4.0 Install"
 echo "  Skills  : ${SKILLS[*]}"
 echo "  Targets : ${TARGETS[*]}"
 echo ""

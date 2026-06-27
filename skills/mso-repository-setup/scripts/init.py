@@ -300,7 +300,11 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     # 2) hook 설정 구성 — 경로는 provider project dir 상대로만 참조
     settings_path = target / provider_dir_name / settings_name
     existing: dict = {}
-    if settings_path.exists():
+    if provider == "codex":
+        # Codex uses config.toml as the canonical hook surface. Keep hooks.json as
+        # an inert compatibility file so older project-level hooks do not run twice.
+        existing = {"hooks": {}}
+    elif settings_path.exists():
         try:
             existing = json.loads(settings_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
@@ -316,7 +320,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     else:
         pd = '"$PROJECT_DIR"'
         workmem_env = 'WORKMEM_DIR="$PROJECT_DIR/agent-context/work-memory"'
-        prefix = 'PROJECT_DIR="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$PWD}}"; '
+        prefix = 'export PROJECT_DIR="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"; '
     worthy_env = f'WM_WORTHY_PATHS="{worthy_paths}" ' if worthy_paths else ""
 
     auditlog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/auditlog.py"
@@ -328,16 +332,12 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     if provider == "claude":
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
 
-    # Stop / PreCompact — worklog 스냅샷 (파일 기록 — stdout 전달 의미론과 무관)
-    for event, matcher in (("Stop", None), ("PreCompact", "auto")):
-        _upsert_hook(hooks_section, event, matcher, worklog_cmd, "worklog.py")
-    # work-memory-check 넛지 — 출력이 *모델 컨텍스트에 도달하는* 이벤트에만 등록한다.
-    #   Stop          → 훅이 hookSpecificOutput.additionalContext JSON 으로 비차단 주입
-    #   SessionStart  → plain stdout 이 컨텍스트로 주입됨 (compact/resume 직후 세션 회고)
-    # PreCompact·SessionEnd 의 plain stdout 은 모델에 도달하지 않으므로 등록하지 않는다.
-    _upsert_hook(hooks_section, "Stop", None, check_cmd, "work-memory-check.sh")
-    for matcher in ("compact", "resume"):
-        _upsert_hook(hooks_section, "SessionStart", matcher, check_cmd, "work-memory-check.sh")
+        # Stop / PreCompact — worklog 스냅샷 (파일 기록 — stdout 전달 의미론과 무관)
+        for event, matcher in (("Stop", None), ("PreCompact", "auto")):
+            _upsert_hook(hooks_section, event, matcher, worklog_cmd, "worklog.py")
+        # work-memory-check 넛지 — provider 간 공통으로 확인된 SessionStart 에만 둔다.
+        for matcher in ("compact", "resume"):
+            _upsert_hook(hooks_section, "SessionStart", matcher, check_cmd, "work-memory-check.sh")
 
     settings_path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
@@ -351,10 +351,10 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + Stop·SessionStart[compact,resume] work-memory-check)")
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check)")
     else:
-        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact worklog + Stop·SessionStart[compact,resume] work-memory-check)")
-        print(f"  + .codex/hooks.json 갱신 (compatibility)")
+        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check)")
+        print(f"  + .codex/hooks.json 갱신 (empty compatibility)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
     print()
@@ -449,11 +449,6 @@ def _upsert_codex_config_toml(config_path: Path, worklog_cmd: str, check_cmd: st
 type = "command"
 command = {_toml_literal(worklog_cmd)}
 statusMessage = "Writing MSO worklog"
-
-[[hooks.Stop.hooks]]
-type = "command"
-command = {_toml_literal(check_cmd)}
-statusMessage = "Checking MSO work-memory reminders"
 
 [[hooks.PreCompact]]
 matcher = "auto"

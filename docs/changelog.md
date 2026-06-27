@@ -1,6 +1,37 @@
 # 변경 이력
 
-## Unreleased — §11 NLU 경계 재편 (2026-06-17)
+## v0.4.0 (2026-06-27) — Graph Observability + Codex hook adapter 정식화
+
+> **MSO graph observability 내장 + v0.4.0 정식 버전 bump.** workflow TTL/ABox는 Mermaid view로, work-memory/auditlog/worklog/intent turn은 runtime analysis로 관측하는 `mso-graph-observability`를 추가했다. 동시에 Codex hook adapter의 Stop 잡음/중복 실행을 제거하고, §11 NLU 경계 재편을 정식 버전에 포함했다.
+
+### Added
+
+| 변경 | 내용 |
+|------|------|
+| `mso-graph-observability` | workflow topology/class/property Mermaid view + runtime JSONL analysis(`runtime-analysis.md`) 생성 |
+| `observe_graph.py` | workflow TTL/TBox를 읽어 `agent-context/observability/graph/` 산출물 생성. work-memory/auditlog/worklog/intent JSONL에서 실패 hotspot, workflow/intent 사용 빈도, 반복 ID, parse error를 요약 |
+| `requirements.txt` | graph observability와 기존 TTL tooling에 필요한 `rdflib>=7.0` 명시 |
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| 전체 버전 | README, install script, SKILL.md version field, manifest version을 v0.4.0으로 정렬 |
+| `mso-orchestration` | graph 관측·분석 의도를 `mso-graph-observability`로 라우팅 |
+
+## v0.4.0 Included — Codex hook adapter 안정화 (2026-06-26)
+
+> **Codex Stop hook 잡음/중복 실행 제거.** `work-memory-check.sh` 의 Stop `hookSpecificOutput.additionalContext` 경로는 Codex에서 출력 잡음과 중복 hook 실행을 만들 수 있어 폐기했다. 기록 판단 넛지는 provider 간 컨텍스트 도달이 확인된 `SessionStart(compact|resume)` 에만 둔다. `Stop`은 worklog 파일 기록만 수행한다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| `hooks/work-memory-check.sh` | Stop/PreCompact/SessionEnd 에서 조용히 종료. SessionStart 또는 수동 실행에서만 plain stdout 출력. Codex root fallback(`CODEX_PROJECT_DIR`/`PROJECT_DIR`) 반영 |
+| `mso-repository-setup/scripts/init.py` | Codex `config.toml` 생성 시 Stop에는 worklog만 등록하고, work-memory-check는 SessionStart(compact/resume)에만 등록. `.codex/hooks.json`은 중복 실행 방지를 위한 빈 compatibility 파일로 갱신 |
+| `settings-hook-snippet.json` / docs | Stop additionalContext 설명 제거. 수동 스니펫도 Stop check hook을 제거해 자동 생성 경로와 일치 |
+
+## v0.4.0 Included — §11 NLU 경계 재편 (2026-06-17)
 
 > **utterance→intent = UUG / intent→action = MSO.** NLU 앞단(자연어→intent 분류)을 UUG(`01_user-utterance-grounding`)로 흡수하고, MSO 는 intent→action(뒷단 slot/dispatch)만 보유. 스킬 8→7.
 
@@ -13,7 +44,7 @@
 | `mso-orchestration` | 운영 명령 라우팅 = UUG `ug ground`→intent_id→`mso-intent-analytics` dispatch. utterance-grounding 라우팅 제거, conversation-analytics de-route. |
 | UUG `uug-grounding` | namespace-agnostic 멀티-레지스트리 lookup + `projects.yaml intent_registry` + 도메인 intent commit 정책(MSO decisiveness 동등, fixture 84%≥80%). |
 
-> **비고**: 구조 변경이나 버전 헤더(v0.3.4)는 유지 — 정식 버전 bump(→v0.4.0)는 후속(모든 SKILL.md version 필드 일괄).
+> **비고**: v0.4.0에서 정식 버전 bump와 함께 포함.
 >
 > ⚠ **capability 회귀 (미해소)**: 구 `mso-utterance-grounding/slots/inference/serve.py` 는 **실제 Lv30 LLM(Claude Haiku) fallback + Lv20 모델 경로**를 가졌고, Lv10 keyword-miss(~20%)를 프로덕션에서 복구했다. 앞단 제거로 이 serve.py 가 삭제됐고 **UUG 의 Lv30 은 미빌드(후속)** → keyword-miss 발화의 LLM 복구 경로가 현재 **없음**. 비회귀 측정(UUG 84% ≥ MSO 80%)은 **양쪽 `GROUNDING_SKIP_LLM=1` Lv10-only** 수치라 이 Lv30 격차를 반영하지 않는다. serve.py 로직은 git history 에 보존 — UUG Lv30 으로 포팅 필요(미결).
 

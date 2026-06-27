@@ -1,0 +1,693 @@
+#!/usr/bin/env python3
+"""Generate graph observability views for MSO repositories.
+
+The first implemented scope is the workflow graph: Mermaid views from workflow
+TTL/ABox plus the bundled workflow TBox. Memory/audit/worklog graph analytics
+belong in this skill as later scopes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import re
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any, Iterable
+
+try:
+    from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
+    from rdflib.namespace import OWL, XSD
+except ImportError as exc:  # pragma: no cover - user environment guard
+    raise SystemExit(
+        "rdflib is required. Install project dependencies with `pip install -r requirements.txt`."
+    ) from exc
+
+
+WF = Namespace("https://mso.dev/ontology/workflow#")
+SKOS = Namespace("http://www.w3.org/2004/02/skos/core#")
+
+CLASS_TYPES = {OWL.Class, RDFS.Class}
+PROPERTY_TYPES = {OWL.ObjectProperty, OWL.DatatypeProperty, RDF.Property}
+LITERAL_RANGES = {
+    XSD.string,
+    XSD.boolean,
+    XSD.integer,
+    XSD.decimal,
+    XSD.date,
+    XSD.dateTime,
+    RDFS.Literal,
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate graph observability views for MSO repositories."
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root. Defaults to the current working directory.",
+    )
+    parser.add_argument(
+        "--workflow-dir",
+        type=Path,
+        help="Directory containing workflow TTL files. Defaults to <root>/agent-context/workflow if it exists, otherwise <root>.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output directory. Defaults to <root>/agent-context/observability/graph when available, otherwise <workflow-dir>/observability.",
+    )
+    parser.add_argument(
+        "--ontology",
+        type=Path,
+        action="append",
+        default=[],
+        help="Additional TTL file to parse. Can be repeated.",
+    )
+    parser.add_argument(
+        "--no-default-tbox",
+        action="store_true",
+        help="Do not include MSO's bundled workflow TBox.",
+    )
+    return parser.parse_args()
+
+
+def default_tbox_path() -> Path:
+    skill_dir = Path(__file__).resolve().parents[1]
+    skills_dir = skill_dir.parent
+    return skills_dir / "mso-workflow-design" / "references" / "tbox" / "workflow-tbox.ttl"
+
+
+def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, list[Path]]:
+    root = args.root.resolve()
+    workflow_dir = (
+        args.workflow_dir.resolve()
+        if args.workflow_dir
+        else (root / "agent-context" / "workflow")
+    )
+    if not workflow_dir.exists():
+        workflow_dir = root
+
+    output_dir = args.output_dir.resolve() if args.output_dir else default_output_dir(root, workflow_dir)
+
+    ttl_paths: list[Path] = []
+    if workflow_dir.exists():
+        ttl_paths.extend(sorted(p for p in workflow_dir.rglob("*.ttl") if p.is_file()))
+
+    if not args.no_default_tbox:
+        tbox = default_tbox_path()
+        if tbox.exists():
+            ttl_paths.append(tbox)
+
+    ttl_paths.extend(p.resolve() for p in args.ontology if p.exists())
+
+    seen: set[Path] = set()
+    unique_paths: list[Path] = []
+    for path in ttl_paths:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_paths.append(resolved)
+
+    return workflow_dir, output_dir, unique_paths
+
+
+def parse_graph(ttl_paths: Iterable[Path]) -> Graph:
+    graph = Graph()
+    for path in ttl_paths:
+        graph.parse(path, format="turtle")
+    return graph
+
+
+def default_output_dir(root: Path, workflow_dir: Path) -> Path:
+    agent_context = root / "agent-context"
+    if agent_context.exists():
+        return agent_context / "observability" / "graph"
+    return workflow_dir / "observability"
+
+
+def local_name(term: URIRef | Literal | str) -> str:
+    text = str(term)
+    if "#" in text:
+        return text.rsplit("#", 1)[1]
+    return text.rstrip("/").rsplit("/", 1)[-1]
+
+
+def literal_text(value: Literal | str) -> str:
+    return str(value).replace("\n", " ").strip()
+
+
+def preferred_label(graph: Graph, term: URIRef | Literal | str) -> str:
+    if isinstance(term, Literal):
+        return literal_text(term)
+    if not isinstance(term, URIRef):
+        return str(term)
+
+    for predicate in (RDFS.label, WF.label, SKOS.prefLabel):
+        value = graph.value(term, predicate)
+        if value:
+            return literal_text(value)
+    return local_name(term)
+
+
+def mermaid_id(prefix: str, term: URIRef | Literal | str) -> str:
+    digest = hashlib.sha1(str(term).encode("utf-8")).hexdigest()[:10]
+    cleaned = re.sub(r"[^A-Za-z0-9_]", "_", local_name(term))[:40].strip("_")
+    if not cleaned:
+        cleaned = "node"
+    return f"{prefix}_{cleaned}_{digest}"
+
+
+def mermaid_label(text: str, max_len: int = 72) -> str:
+    compact = re.sub(r"\s+", " ", text).strip()
+    if len(compact) > max_len:
+        compact = compact[: max_len - 1].rstrip() + "..."
+    return compact.replace('"', "'")
+
+
+def mermaid_node(graph: Graph, term: URIRef, prefix: str, suffix: str = "") -> str:
+    node_id = mermaid_id(prefix, term)
+    label = mermaid_label(preferred_label(graph, term))
+    if suffix:
+        label = mermaid_label(f"{label}\\n{suffix}")
+    return f'{node_id}["{label}"]'
+
+
+def subjects_of_type(graph: Graph, cls: URIRef) -> list[URIRef]:
+    return sorted(
+        (subject for subject in graph.subjects(RDF.type, cls) if isinstance(subject, URIRef)),
+        key=str,
+    )
+
+
+def first_literal(graph: Graph, subject: URIRef, predicate: URIRef) -> str | None:
+    value = graph.value(subject, predicate)
+    if isinstance(value, Literal):
+        return literal_text(value)
+    return None
+
+
+def write_markdown(path: Path, title: str, body: str) -> None:
+    path.write_text(f"# {title}\n\n{body.rstrip()}\n", encoding="utf-8")
+
+
+def iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                value = json.loads(stripped)
+            except json.JSONDecodeError:
+                yield {"_parse_error": True, "_path": str(path), "_line": line_number}
+                continue
+            if isinstance(value, dict):
+                value.setdefault("_path", str(path))
+                value.setdefault("_line", line_number)
+                yield value
+
+
+def nested_get(record: dict[str, Any], keys: Iterable[str]) -> Any:
+    for key in keys:
+        current: Any = record
+        for part in key.split("."):
+            if not isinstance(current, dict) or part not in current:
+                current = None
+                break
+            current = current[part]
+        if current not in (None, ""):
+            return current
+    return None
+
+
+def normalized_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value[:3])
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)[:120]
+    text = str(value).strip()
+    return text or None
+
+
+def discover_runtime_sources(root: Path) -> dict[str, list[Path]]:
+    work_memory = root / "agent-context" / "work-memory"
+    return {
+        "memory": sorted(
+            p
+            for p in work_memory.rglob("*.jsonl")
+            if p.is_file() and "auditlog" not in p.parts and "worklog" not in p.parts
+        )
+        if work_memory.exists()
+        else [],
+        "audit": sorted((work_memory / "auditlog").rglob("*.jsonl"))
+        if (work_memory / "auditlog").exists()
+        else [],
+        "worklog": sorted((work_memory / "worklog").rglob("*.jsonl"))
+        if (work_memory / "worklog").exists()
+        else [],
+        "intent": [root / ".mso-context" / "conversation" / "turns.jsonl"]
+        if (root / ".mso-context" / "conversation" / "turns.jsonl").exists()
+        else [],
+    }
+
+
+def is_failure_like(record: dict[str, Any]) -> bool:
+    fields = [
+        nested_get(record, ["status", "result.status", "metadata.status"]),
+        nested_get(record, ["event_type", "type", "entry_type", "kind"]),
+        nested_get(record, ["error", "exception", "failure", "metadata.severity"]),
+    ]
+    text = " ".join(str(field).lower() for field in fields if field is not None)
+    return any(token in text for token in ("fail", "failed", "error", "blocked", "timeout", "exception"))
+
+
+def top_items(counter: Counter[str], limit: int = 10) -> str:
+    if not counter:
+        return "- _No data._"
+    return "\n".join(f"- `{key}`: {count}" for key, count in counter.most_common(limit))
+
+
+def table_rows(rows: list[tuple[str, str, int]], limit: int = 12) -> str:
+    if not rows:
+        return "_No repeated signals found._"
+    lines = ["| Dimension | Value | Count |", "|---|---:|---:|"]
+    for dimension, value, count in rows[:limit]:
+        lines.append(f"| `{dimension}` | `{value}` | {count} |")
+    return "\n".join(lines)
+
+
+def build_runtime_analysis(root: Path) -> str:
+    sources = discover_runtime_sources(root)
+    source_counts = {scope: len(paths) for scope, paths in sources.items()}
+    records_by_scope: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    parse_errors: list[dict[str, Any]] = []
+
+    for scope, paths in sources.items():
+        for path in paths:
+            for record in iter_jsonl(path):
+                if record.get("_parse_error"):
+                    parse_errors.append(record)
+                records_by_scope[scope].append(record)
+
+    status_counts: Counter[str] = Counter()
+    event_counts: Counter[str] = Counter()
+    workflow_counts: Counter[str] = Counter()
+    intent_counts: Counter[str] = Counter()
+    failure_hotspots: Counter[str] = Counter()
+    repeated_signals: Counter[tuple[str, str]] = Counter()
+    memory_prefixes: Counter[str] = Counter()
+
+    id_keys = ["id", "entry_id", "metadata.id", "run_id", "ticket_id", "intent_id"]
+    hotspot_keys = {
+        "workflow": ["workflow", "workflow_id", "metadata.workflow", "metadata.workflow_id"],
+        "phase": ["phase", "phase_id", "metadata.phase", "metadata.phase_id"],
+        "node": ["node", "node_id", "metadata.node", "metadata.node_id"],
+        "tool": ["tool", "tool_name", "tool.name", "metadata.tool", "command"],
+        "intent": ["intent_id", "intent.id", "metadata.intent_id"],
+    }
+
+    for scope, records in records_by_scope.items():
+        for record in records:
+            status = normalized_value(nested_get(record, ["status", "result.status", "metadata.status"]))
+            event = normalized_value(nested_get(record, ["event_type", "type", "entry_type", "kind"]))
+            workflow = normalized_value(nested_get(record, hotspot_keys["workflow"]))
+            intent = normalized_value(nested_get(record, hotspot_keys["intent"]))
+
+            if status:
+                status_counts[f"{scope}:{status}"] += 1
+            if event:
+                event_counts[f"{scope}:{event}"] += 1
+            if workflow:
+                workflow_counts[workflow] += 1
+            if intent:
+                intent_counts[intent] += 1
+
+            record_id = normalized_value(nested_get(record, id_keys))
+            if record_id:
+                repeated_signals[(scope, record_id)] += 1
+                prefix_match = re.match(r"^([A-Z]{2})[-_]", record_id)
+                if prefix_match:
+                    memory_prefixes[prefix_match.group(1)] += 1
+
+            if is_failure_like(record):
+                for dimension, keys in hotspot_keys.items():
+                    value = normalized_value(nested_get(record, keys))
+                    if value:
+                        failure_hotspots[f"{dimension}:{value}"] += 1
+                if not any(normalized_value(nested_get(record, keys)) for keys in hotspot_keys.values()):
+                    failure_hotspots[f"{scope}:unknown"] += 1
+
+    repeated_rows = [
+        (dimension, value, count)
+        for (dimension, value), count in repeated_signals.items()
+        if count > 1
+    ]
+    repeated_rows.sort(key=lambda item: item[2], reverse=True)
+
+    source_lines = "\n".join(f"- `{scope}`: {count} files" for scope, count in source_counts.items())
+    record_lines = "\n".join(
+        f"- `{scope}`: {len(records)} records" for scope, records in sorted(records_by_scope.items())
+    )
+    parse_error_lines = "\n".join(
+        f"- `{error.get('_path')}` line {error.get('_line')}" for error in parse_errors[:10]
+    )
+
+    return "\n".join(
+        [
+            "> Baseline runtime graph analysis from MSO JSONL sources. Treat this as an operational signal, not a formal audit.",
+            "",
+            "## Sources",
+            "",
+            source_lines or "- _No runtime JSONL sources found._",
+            "",
+            "## Records",
+            "",
+            record_lines or "- _No records found._",
+            "",
+            "## Failure Hotspots",
+            "",
+            top_items(failure_hotspots),
+            "",
+            "## Workflow Usage",
+            "",
+            top_items(workflow_counts),
+            "",
+            "## Intent Usage",
+            "",
+            top_items(intent_counts),
+            "",
+            "## Status Counts",
+            "",
+            top_items(status_counts),
+            "",
+            "## Event Counts",
+            "",
+            top_items(event_counts),
+            "",
+            "## Repeated IDs",
+            "",
+            table_rows(repeated_rows),
+            "",
+            "## Memory Entry Prefixes",
+            "",
+            top_items(memory_prefixes),
+            "",
+            "## Parse Errors",
+            "",
+            parse_error_lines or "- _No parse errors._",
+        ]
+    )
+
+
+def build_workflow_topology(graph: Graph) -> str:
+    lines: list[str] = [
+        "> Generated from MSO workflow TTL. Edit the TTL/YAML source, then regenerate this view.",
+        "",
+        "```mermaid",
+        "flowchart LR",
+    ]
+    declared: set[str] = set()
+
+    def declare(term: URIRef, prefix: str, cls: str | None = None, suffix: str = "") -> str:
+        node_id = mermaid_id(prefix, term)
+        if node_id not in declared:
+            lines.append(f"  {mermaid_node(graph, term, prefix, suffix)}")
+            if cls:
+                lines.append(f"  class {node_id} {cls}")
+            declared.add(node_id)
+        return node_id
+
+    phases = subjects_of_type(graph, WF.Phase)
+    for phase in phases:
+        status = first_literal(graph, phase, WF.status)
+        phase_cls = f"status_{status}" if status in {"completed", "active", "pending"} else "phase"
+        suffix = f"Phase / {status}" if status else "Phase"
+        declare(phase, "phase", phase_cls, suffix)
+
+    node_classes = [
+        (WF.Step, "step"),
+        (WF.Decision, "decision"),
+        (WF.Validation, "validation"),
+        (WF.Group, "group"),
+        (WF.WorkflowRef, "workflowRef"),
+    ]
+    for cls, css_class in node_classes:
+        for node in subjects_of_type(graph, cls):
+            status = first_literal(graph, node, WF.status)
+            suffix = local_name(cls)
+            if status:
+                suffix = f"{suffix} / {status}"
+            declare(node, local_name(cls).lower(), css_class, suffix)
+
+    for module in subjects_of_type(graph, WF.Module):
+        declare(module, "module", "module", "Module")
+
+    for milestone in subjects_of_type(graph, WF.Milestone):
+        status = first_literal(graph, milestone, WF.status)
+        suffix = f"Milestone / {status}" if status else "Milestone"
+        declare(milestone, "milestone", "milestone", suffix)
+
+    for phase in phases:
+        phase_id = declare(phase, "phase")
+        for dep in sorted(graph.objects(phase, WF.dependsOn), key=str):
+            if isinstance(dep, URIRef):
+                dep_id = declare(dep, "phase")
+                lines.append(f"  {dep_id} -->|dependsOn| {phase_id}")
+        for node in sorted(graph.objects(phase, WF.hasNode), key=str):
+            if isinstance(node, URIRef):
+                node_id = declare(node, "node")
+                lines.append(f"  {phase_id} -->|hasNode| {node_id}")
+        for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
+            if isinstance(ref, URIRef):
+                ref_id = declare(ref, "workflowref", "workflowRef", "WorkflowRef")
+                lines.append(f"  {phase_id} -->|hasWorkflowRef| {ref_id}")
+
+    for decision in subjects_of_type(graph, WF.Decision):
+        decision_id = declare(decision, "decision")
+        for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
+            if isinstance(branch, URIRef):
+                branch_id = declare(branch, "branch", "branch", "Branch")
+                lines.append(f"  {decision_id} -->|hasBranch| {branch_id}")
+
+    for module in subjects_of_type(graph, WF.Module):
+        module_id = declare(module, "module")
+        for dep in sorted(graph.objects(module, WF.criticalDep), key=str):
+            if isinstance(dep, URIRef):
+                dep_id = declare(dep, "module")
+                lines.append(f"  {dep_id} -->|criticalDep| {module_id}")
+
+    for milestone in subjects_of_type(graph, WF.Milestone):
+        milestone_id = declare(milestone, "milestone")
+        phase = graph.value(milestone, WF.milestoneOf)
+        if isinstance(phase, URIRef):
+            phase_id = declare(phase, "phase")
+            lines.append(f"  {milestone_id} -.->|milestoneOf| {phase_id}")
+
+    lines.extend(
+        [
+            "  classDef phase fill:#eef2ff,stroke:#4f46e5,color:#111827",
+            "  classDef status_completed fill:#dcfce7,stroke:#16a34a,color:#111827",
+            "  classDef status_active fill:#fef3c7,stroke:#d97706,color:#111827",
+            "  classDef status_pending fill:#f3f4f6,stroke:#6b7280,color:#111827",
+            "  classDef step fill:#ecfeff,stroke:#0891b2,color:#111827",
+            "  classDef decision fill:#fae8ff,stroke:#c026d3,color:#111827",
+            "  classDef validation fill:#fee2e2,stroke:#dc2626,color:#111827",
+            "  classDef group fill:#f5f5f4,stroke:#78716c,color:#111827",
+            "  classDef workflowRef fill:#e0f2fe,stroke:#0284c7,color:#111827",
+            "  classDef branch fill:#fff7ed,stroke:#ea580c,color:#111827",
+            "  classDef module fill:#f0fdf4,stroke:#15803d,color:#111827",
+            "  classDef milestone fill:#fdf2f8,stroke:#db2777,color:#111827",
+            "```",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_class_layer_map(graph: Graph) -> str:
+    classes = sorted(
+        {
+            subject
+            for subject in graph.subjects(RDF.type, None)
+            if isinstance(subject, URIRef)
+            and any((subject, RDF.type, cls_type) in graph for cls_type in CLASS_TYPES)
+        },
+        key=str,
+    )
+    if not classes:
+        return "_No OWL/RDFS classes found._"
+
+    lines = [
+        "> Generated from the workflow TBox and parsed TTL files.",
+        "",
+        "```mermaid",
+        "flowchart TB",
+    ]
+    declared: set[str] = set()
+
+    def declare(cls: URIRef) -> str:
+        node_id = mermaid_id("class", cls)
+        if node_id not in declared:
+            lines.append(f'  {node_id}["{mermaid_label(preferred_label(graph, cls))}"]')
+            declared.add(node_id)
+        return node_id
+
+    for cls in classes:
+        declare(cls)
+
+    for cls in classes:
+        child_id = declare(cls)
+        parents = sorted(
+            (parent for parent in graph.objects(cls, RDFS.subClassOf) if isinstance(parent, URIRef)),
+            key=str,
+        )
+        for parent in parents:
+            parent_id = declare(parent)
+            lines.append(f"  {parent_id} -->|subClassOf| {child_id}")
+
+    lines.extend(
+        [
+            "  classDef default fill:#f8fafc,stroke:#64748b,color:#111827",
+            "```",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_property_map(graph: Graph, limit: int = 140) -> str:
+    properties = sorted(
+        {
+            subject
+            for prop_type in PROPERTY_TYPES
+            for subject in graph.subjects(RDF.type, prop_type)
+            if isinstance(subject, URIRef)
+        },
+        key=str,
+    )
+    if not properties:
+        return "_No RDF/OWL properties found._"
+
+    lines = [
+        f"> Generated property domain/range map. Showing up to {limit} edges.",
+        "",
+        "```mermaid",
+        "flowchart LR",
+    ]
+    declared: set[str] = set()
+    edge_count = 0
+
+    def declare(term: URIRef, prefix: str, cls: str) -> str:
+        node_id = mermaid_id(prefix, term)
+        if node_id not in declared:
+            lines.append(f'  {node_id}["{mermaid_label(preferred_label(graph, term))}"]')
+            lines.append(f"  class {node_id} {cls}")
+            declared.add(node_id)
+        return node_id
+
+    for prop in properties:
+        domains = sorted(
+            (domain for domain in graph.objects(prop, RDFS.domain) if isinstance(domain, URIRef)),
+            key=str,
+        ) or [URIRef("urn:mso:AnySubject")]
+        ranges = sorted(
+            (rng for rng in graph.objects(prop, RDFS.range) if isinstance(rng, URIRef)),
+            key=str,
+        ) or [URIRef("urn:mso:AnyValue")]
+
+        prop_type = "datatypeProperty" if (prop, RDF.type, OWL.DatatypeProperty) in graph else "objectProperty"
+        for domain in domains:
+            for rng in ranges:
+                if edge_count >= limit:
+                    break
+                domain_id = declare(domain, "domain", "classNode")
+                range_cls = "literalNode" if rng in LITERAL_RANGES or str(rng).startswith(str(XSD)) else "classNode"
+                range_id = declare(rng, "range", range_cls)
+                label = mermaid_label(f"{preferred_label(graph, prop)} ({prop_type})", 48)
+                lines.append(f"  {domain_id} -->|{label}| {range_id}")
+                edge_count += 1
+            if edge_count >= limit:
+                break
+        if edge_count >= limit:
+            break
+
+    if edge_count >= limit and len(properties) > limit:
+        lines.append(f"  note_limit[\"Output truncated at {limit} edges\"]")
+
+    lines.extend(
+        [
+            "  classDef classNode fill:#eef2ff,stroke:#4f46e5,color:#111827",
+            "  classDef literalNode fill:#fef3c7,stroke:#d97706,color:#111827",
+            "```",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) -> str:
+    generated_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+    rel_paths = []
+    for path in ttl_paths:
+        try:
+            rel_paths.append(path.relative_to(workflow_dir.parent))
+        except ValueError:
+            rel_paths.append(path)
+
+    inputs = "\n".join(f"- `{path}`" for path in rel_paths)
+    return "\n".join(
+        [
+            f"> Generated at `{generated_at}`.",
+            "",
+            "## Views",
+            "",
+            "- [workflow-topology.md](workflow-topology.md)",
+            "- [class-layer-map.md](class-layer-map.md)",
+            "- [property-map.md](property-map.md)",
+            "- [runtime-analysis.md](runtime-analysis.md)",
+            "",
+            "## Source TTL",
+            "",
+            inputs or "- _No TTL input recorded._",
+            "",
+            "## Regeneration",
+            "",
+            "Run the MSO graph observability exporter again after changing workflow TTL/YAML sources.",
+            "",
+            "```bash",
+            "python skills/mso-graph-observability/scripts/observe_graph.py --root .",
+            "```",
+            "",
+            f"Output directory: `{output_dir}`",
+        ]
+    )
+
+
+def main() -> int:
+    args = parse_args()
+    workflow_dir, output_dir, ttl_paths = resolve_paths(args)
+    if not ttl_paths:
+        print("No TTL files found. Point --workflow-dir or --ontology at workflow TTL files.", file=sys.stderr)
+        return 2
+
+    graph = parse_graph(ttl_paths)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    write_markdown(output_dir / "workflow-topology.md", "MSO Workflow Topology", build_workflow_topology(graph))
+    write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
+    write_markdown(output_dir / "property-map.md", "MSO Workflow Property Map", build_property_map(graph))
+    write_markdown(output_dir / "runtime-analysis.md", "MSO Runtime Graph Analysis", build_runtime_analysis(args.root.resolve()))
+    write_markdown(output_dir / "README.md", "MSO Graph Observability Views", build_readme(workflow_dir, ttl_paths, output_dir))
+
+    print(f"Wrote graph observability views to {output_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

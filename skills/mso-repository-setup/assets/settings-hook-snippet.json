@@ -21,10 +21,6 @@
           {
             "type": "command",
             "command": "WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" python3 \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/worklog.py"
-          },
-          {
-            "type": "command",
-            "command": "WM_WORTHY_PATHS=\"agent-context/workflow agent-context/index .claude CLAUDE.md\" WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/work-memory-check.sh"
           }
         ]
       }
@@ -40,7 +36,7 @@
         ]
       }
     ],
-    "//work-memory-check": "넛지는 stdout 이 모델 컨텍스트에 도달하는 이벤트에만 둔다. Stop 은 훅이 hookSpecificOutput.additionalContext JSON 으로 비차단 주입; SessionStart(compact/resume)는 plain stdout 이 주입됨. PreCompact/SessionEnd 의 plain stdout 은 모델에 도달하지 않으므로 work-memory-check 를 걸지 않는다.",
+    "//work-memory-check": "넛지는 provider 간 컨텍스트 도달이 확인된 SessionStart(compact/resume)에만 둔다. Stop/PreCompact/SessionEnd 에서는 출력이 잡음이 되거나 모델에 도달하지 않을 수 있으므로 work-memory-check 를 걸지 않는다.",
     "SessionStart": [
       {
         "matcher": "compact",

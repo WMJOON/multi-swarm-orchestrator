@@ -6,14 +6,10 @@
 # entry 를 언제 남길지"에 대한 판단 트리거가 없었다. 이 훅이 그 넛지를 제공한다.
 #
 # ── 전달 의미론 (중요) ──────────────────────────────────────────────────
-# Claude Code 훅의 plain stdout 은 일부 이벤트에서만 모델 컨텍스트로 주입된다:
-#   SessionStart / UserPromptSubmit → plain stdout 주입됨.
-#   Stop / PreCompact / SessionEnd → plain stdout 은 디버그 로그 전용(모델 미도달).
-# 따라서 넛지가 *에이전트에 실제로 도달*하려면 이벤트별로 전달 방식을 달리한다:
-#   • Stop          → hookSpecificOutput.additionalContext JSON (문서상 "continues
-#                     the conversation" — 실측 1회 확인 권장. 안 닿으면 UserPromptSubmit 대체)
-#   • SessionStart  → plain stdout (compact/resume 직후 회고 컨텍스트로 주입)
-#   • PreCompact/SessionEnd → 출력이 모델에 도달하지 않으므로 등록하지 않음(early exit).
+# Provider별 훅 stdout 의미론이 다르므로 work-memory-check 는 컨텍스트 도달이
+# 확인된 SessionStart(compact/resume) 에서만 plain stdout 으로 넛지를 전달한다.
+# Stop / PreCompact / SessionEnd 에서는 출력이 사용자에게 잡음처럼 보이거나
+# 모델에 도달하지 않을 수 있으므로 조용히 종료한다.
 #
 # ── 판단 ────────────────────────────────────────────────────────────────
 #  (1)  track 넛지 — "결정 가치 있는" 변경이 WM 최신 기록보다 앞서면 UD/AD/IN/TS 권유.
@@ -25,7 +21,9 @@
 # 환경변수:
 #   WM_WORTHY_PATHS  공백 구분 경로 목록. 프로젝트가 "결정 가치 있는" 경로를 지정.
 #   WORKMEM_DIR      work-memory 루트 (미설정 시 agent-context/work-memory, repo-relative)
-#   CLAUDE_PROJECT_DIR  프로젝트 루트 (미설정 시 git toplevel)
+#   CLAUDE_PROJECT_DIR  Claude 프로젝트 루트
+#   CODEX_PROJECT_DIR   Codex 프로젝트 루트
+#   PROJECT_DIR         provider wrapper 가 넘긴 프로젝트 루트
 set -uo pipefail
 
 # stdin payload 파싱 (파이프일 때만 읽어 수동 실행 차단 방지).
@@ -46,16 +44,16 @@ print("true" if d.get("stop_hook_active") else "false")
   STOP_ACTIVE=$(printf '%s\n' "$_parsed" | sed -n '2p')
 fi
 
-# 출력이 모델에 도달하지 않는 이벤트는 일찍 종료 (PreCompact/SessionEnd 등).
+# 출력이 모델에 도달하지 않거나 잡음이 되는 이벤트는 일찍 종료한다.
 case "$HOOK_EVENT" in
-  Stop|SessionStart|"") : ;;
+  SessionStart|"") : ;;
   *) exit 0 ;;
 esac
 
-# Stop 루프 방지: 이미 넛지로 한 번 continue 된 상태면 재넛지하지 않는다.
+# Stop 루프 방지 필드는 Claude 계열 입력 호환용으로만 유지한다.
 [ "$STOP_ACTIVE" = "true" ] && exit 0
 
-ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+ROOT="${CLAUDE_PROJECT_DIR:-${CODEX_PROJECT_DIR:-${PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}}}"
 cd "$ROOT" 2>/dev/null || exit 0
 
 # WORKMEM_DIR 가 절대경로면 repo-relative 로 변환 (git log/status 는 상대경로 필요)
@@ -142,14 +140,7 @@ fi
 # ── 전달 ────────────────────────────────────────────────────────────────
 [ -z "$MSGS" ] && exit 0
 
-if [ "$HOOK_EVENT" = "Stop" ]; then
-  # Stop: plain stdout 은 모델 미도달 → additionalContext JSON 으로 비차단 주입.
-  # python3 로 안전하게 JSON 직렬화 (hook 스위트가 이미 python3 의존).
-  python3 -c 'import json,sys; print(json.dumps({"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":sys.argv[1]}}))' "$MSGS" 2>/dev/null \
-    || true
-else
-  # SessionStart(또는 수동 실행): plain stdout 이 주입되거나 디버그로 표시된다.
-  printf '%s\n' "$MSGS"
-fi
+# SessionStart(또는 수동 실행): plain stdout 이 주입되거나 디버그로 표시된다.
+printf '%s\n' "$MSGS"
 
 exit 0

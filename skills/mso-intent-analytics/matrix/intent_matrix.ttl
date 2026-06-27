@@ -3,9 +3,9 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
 # ═══════════════════════════════════════════════════════════
-# MSO Intent Matrix  (v0.3.6)
+# MSO Intent Matrix  (v0.4.0)
 # (verb × target) coverage enumeration
-# v0.3.6 filled: 10 cells
+# v0.4.0 filled: 10 cells
 # ═══════════════════════════════════════════════════════════
 
 mso:IntentMatrixCell a rdfs:Class ;

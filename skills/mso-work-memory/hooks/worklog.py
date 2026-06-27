@@ -44,6 +44,16 @@ def main():
         },
     }
 
+    # Codex may dispatch overlapping Stop hooks within the same second.
+    # Keep append-only history, but skip an exact duplicate id already at EOF.
+    if file_path.exists():
+        try:
+            last_line = file_path.read_text(encoding="utf-8").splitlines()[-1]
+            if json.loads(last_line).get("id") == entry["id"]:
+                return
+        except Exception:
+            pass
+
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
