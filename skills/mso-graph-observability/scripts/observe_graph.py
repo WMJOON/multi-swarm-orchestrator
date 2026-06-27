@@ -551,6 +551,67 @@ def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
     return filter_scope(sorted(node_terms, key=str), scope)
 
 
+def data_id(key: str) -> str:
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
+    cleaned = re.sub(r"[^A-Za-z0-9_]", "_", key)[:40].strip("_")
+    if not cleaned:
+        cleaned = "data"
+    return f"data_{cleaned}_{digest}"
+
+
+def data_label(data_type: str, location: str, detail: str | None = None) -> str:
+    parts = ["DATA", f"type: {data_type}", f"location: {location}"]
+    if detail:
+        parts.append(f"detail: {detail}")
+    return mermaid_label("\\n".join(parts), 112)
+
+
+def directory_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str, str]]:
+    data_items: list[tuple[str, str, str]] = []
+    for directory in graph.objects(node, WF.directory):
+        path_value = graph.value(directory, WF.dirPath)
+        if not isinstance(path_value, Literal):
+            continue
+        role_value = graph.value(directory, WF.dirRole)
+        role = literal_text(role_value) if isinstance(role_value, Literal) else "reference"
+        path = literal_text(path_value)
+        if path:
+            data_items.append((role, path, f"local_file:{path}"))
+    return data_items
+
+
+def deliverable_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str]]:
+    data_items: list[tuple[str, str]] = []
+    for value in graph.objects(node, WF.deliverables):
+        if isinstance(value, Literal):
+            text = literal_text(value)
+            if text:
+                data_items.append((text, f"deliverable:{text}"))
+    return data_items
+
+
+def data_edge_labels(role: str) -> tuple[bool, bool, str | None]:
+    role_norm = role.lower().replace("-", "_")
+    produces = "output" in role_norm or role_norm in {"staging", "generated", "write"}
+    consumes = (
+        "input" in role_norm
+        or "reference" in role_norm
+        or "instruction" in role_norm
+        or role_norm in {"staging", "read"}
+    )
+    detail = "" if role_norm in {"output", "input", "reference", "input_output"} else role.strip()
+    suffix = f":{mermaid_label(detail, 24)}" if detail else ""
+    return produces, consumes, suffix
+
+
+def data_keys(graph: Graph, scope: str) -> set[str]:
+    keys: set[str] = set()
+    for node in workflow_node_terms(graph, scope):
+        keys.update(key for _, _, key in directory_data_for_node(graph, node))
+        keys.update(key for _, key in deliverable_data_for_node(graph, node))
+    return keys
+
+
 def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
     intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
     if scope:
@@ -570,6 +631,14 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
             lines.append(f"  {mermaid_node(graph, term, prefix, suffix)}")
             if cls:
                 lines.append(f"  class {node_id} {cls}")
+            declared.add(node_id)
+        return node_id
+
+    def declare_data(key: str, label: str) -> str:
+        node_id = data_id(key)
+        if node_id not in declared:
+            lines.append(f'  {node_id}["{label}"]')
+            lines.append(f"  class {node_id} data")
             declared.add(node_id)
         return node_id
 
@@ -661,6 +730,18 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                     target_id = declare(target, target_prefix, target_cls, target_suffix)
                     lines.append(f"  {source_id} -->|next| {target_id}")
 
+            for role, path, key in directory_data_for_node(graph, node):
+                data_node_id = declare_data(key, data_label("local_file", path))
+                produces, consumes, label_suffix = data_edge_labels(role)
+                if produces:
+                    lines.append(f"  {source_id} -->|produces{label_suffix}| {data_node_id}")
+                if consumes:
+                    lines.append(f"  {data_node_id} -->|consumes{label_suffix}| {source_id}")
+
+            for deliverable, key in deliverable_data_for_node(graph, node):
+                data_node_id = declare_data(key, data_label("local_file", "declared deliverable", deliverable))
+                lines.append(f"  {source_id} -->|declares| {data_node_id}")
+
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
         for dep in sorted(graph.objects(module, WF.criticalDep), key=str):
@@ -689,6 +770,7 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
             "  classDef branch fill:#fff7ed,stroke:#ea580c,color:#111827",
             "  classDef module fill:#f0fdf4,stroke:#15803d,color:#111827",
             "  classDef milestone fill:#fdf2f8,stroke:#db2777,color:#111827",
+            "  classDef data fill:#f8fafc,stroke:#475569,stroke-dasharray: 4 3,color:#111827",
             "```",
         ]
     )
@@ -703,15 +785,16 @@ def build_workflow_subgraph_index(graph: Graph) -> str:
     lines = [
         "> Workflow-specific sub-graphs generated from the same TTL ABox inputs as the repository topology.",
         "",
-        "| Workflow Scope | Sub-graph | Phases | Nodes |",
-        "|---|---:|---:|---:|",
+        "| Workflow Scope | Sub-graph | Phases | Nodes | Data Nodes |",
+        "|---|---:|---:|---:|---:|",
     ]
     for scope in scopes:
         phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
         node_terms = workflow_node_terms(graph, scope)
+        data_count = len(data_keys(graph, scope))
         file_name = f"{scope}.md"
         lines.append(
-            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | {phase_count} | {len(node_terms)} |"
+            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
         )
     return "\n".join(lines)
 

@@ -1,6 +1,6 @@
 ---
 name: mso-orchestration
-version: "0.4.2"
+version: "0.4.3"
 description: "MSO 스킬 팩 라우터. §11 NLU 재편: utterance→intent 는 UUG(uug-grounding) 위임, MSO 는 intent→action(mso-intent-analytics 뒷단 dispatch). name-only 라우팅."
 triggers:
   - "mso 시작"

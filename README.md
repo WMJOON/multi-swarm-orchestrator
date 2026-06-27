@@ -1,10 +1,19 @@
-# Multi-Swarm Orchestrator (MSO) v0.4.2
+# Multi-Swarm Orchestrator (MSO) v0.4.3
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 **repository 구조·workflow·작업 기억을 선언하면, 에이전트가 실행 가능한 형태로 컴파일**한다.
 
 ---
+
+## v0.4.3 Dataflow Observability Patch
+
+v0.4.3은 workflow sub-graph에서 산출물/입력 데이터 흐름을 볼 수 있게 만든 관측성 패치다. 실행 노드만 보던 그래프에 Data node를 파생해, 실제로 어떤 데이터가 다음 task의 입력이 되는지 드러낸다.
+
+- `wf:directory`를 `data_type=local_file`, `location=<dirPath>` Data node로 파생한다. `role: output`은 `produces`, `role: input/reference`는 `consumes`, `role: input_output`은 양방향으로 표시한다.
+- `wf:deliverables`는 선언 산출물 Data node로 표시하고 `declares` edge로 연결한다. 현재는 local file deliverable 힌트로 렌더링한다.
+- repository-level topology는 계속 phase/module/milestone 중심으로 유지하고, Data node 흐름은 workflow별 sub-graph에서만 펼친다.
+- 이후 API endpoint, MCP resource, database table 같은 비파일 입력/출력도 같은 Data node 계층으로 확장한다.
 
 ## v0.4.2 Decision/Oracle Gate Separation Patch
 

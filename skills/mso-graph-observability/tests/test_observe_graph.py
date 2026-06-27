@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from rdflib import Graph, Literal, Namespace, RDF, RDFS, OWL, XSD
+from rdflib import BNode, Graph, Literal, Namespace, RDF, RDFS, OWL, XSD
 
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "observe_graph.py"
@@ -80,3 +80,39 @@ def test_repository_topology_hides_internal_node_flow():
 
     assert "-->|hasNode|" not in markdown
     assert "-->|next|" not in markdown
+
+
+def test_workflow_subgraph_renders_dataflow_nodes():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/producer"]
+    consumer = wf["node/demo/consumer"]
+    phase = wf["phase/demo/p"]
+
+    for node, label in ((producer, "Produce"), (consumer, "Consume")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+
+    out_dir = BNode()
+    graph.add((producer, wf.directory, out_dir))
+    graph.add((out_dir, wf.dirRole, Literal("output")))
+    graph.add((out_dir, wf.dirPath, Literal("generated/results/")))
+    graph.add((producer, wf.deliverables, Literal("report.md")))
+
+    in_dir = BNode()
+    graph.add((consumer, wf.directory, in_dir))
+    graph.add((in_dir, wf.dirRole, Literal("input")))
+    graph.add((in_dir, wf.dirPath, Literal("generated/results/")))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo")
+
+    assert "DATA\\ntype: local_file\\nlocation: generated/results/" in markdown
+    assert "-->|produces|" in markdown
+    assert "-->|consumes|" in markdown
+    assert "DATA\\ntype: local_file\\nlocation: declared deliverable\\ndetail: report.md" in markdown
+    assert "-->|declares|" in markdown
+    assert "classDef data" in markdown

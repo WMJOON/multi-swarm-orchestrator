@@ -1,5 +1,18 @@
 # 변경 이력
 
+## v0.4.3 (2026-06-27) — Data node observability
+
+> **Task-only topology에서 data-aware topology로 확장.** workflow sub-graph에서 `wf:directory`와 `wf:deliverables`를 Data node로 파생해 `task --produces--> data --consumes--> task` 흐름을 볼 수 있게 했다. 현재는 local file/directory를 우선 지원하고, API/MCP/database 같은 비파일 data type으로 확장 가능하게 명명했다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| `mso-graph-observability` | workflow별 subgraph에 Data node와 input/output edge 추가 |
+| `observe_graph.py` | `wf:directory`를 `data_type=local_file`, `location=dirPath`로 해석. output은 `produces`, input/reference는 `consumes`, input_output은 양방향 |
+| `workflow-subgraph-index.md` | workflow별 Data node 개수 컬럼 추가 |
+| 전체 버전 | README와 SKILL.md version field를 v0.4.3으로 정렬 |
+
 ## v0.4.2 (2026-06-27) — Decision/Oracle gate separation
 
 > **Decision gate와 Oracle gate 분리.** workflow topology는 task/decision/oracle node와 process edge로 관측한다. 순환 자체는 금지하지 않고, 산출물 재귀 소비 loop 안에 별도 Oracle gate가 없을 때만 uncontrolled feedback loop로 판정한다.
