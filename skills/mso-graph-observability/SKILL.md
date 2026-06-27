@@ -16,7 +16,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - workflow topology 입력은 TTL ABox뿐이다. YAML은 legacy migration 입력일 뿐 Mermaid topology 생성 입력으로 쓰지 않는다.
 - 관측 결과는 기본적으로 `agent-context/observability/graph/` 아래에 둔다.
 - 시각적으로 보는 1차 대상은 workflow graph다.
-- workflow별 sub-graph는 task 목록이 아니라 **data stream topology**로 본다. `wf:directory`/`wf:deliverables`를 Data node로 파생해 `data --upstream--> task --downstream--> data` supply chain을 보여준다.
+- workflow별 관측 뷰는 세 가지로 분리한다. `data-stream`은 `data --upstream--> task --downstream--> data` supply chain을, `workflow`는 그 stream에서 파생한 `((start)) --next--> task --next--> ((end))` task spine을, `integrated`는 둘을 한 화면에 함께 보여준다.
 - 같은 target Data id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
 - Data node는 `data_type`과 `location`을 가진 관측 노드다. 현재 TTL에서는 `wf:directory`를 `data_type=local_file`로 해석하되, `agent-context/index/index.yaml` 또는 `index.yaml`의 `data_registry`/module/subdir registry를 통해 `location=index:<data-id>`로 렌더링한다. 실제 path/API endpoint/MCP resource는 `locator`로 분리한다.
 - Mermaid graph 안의 Data node label은 `DATA`와 `id`만 표시한다. `type`, `location`, `locator`, `detail`은 graph 아래 `Data Node Index` 표로 분리해 시각적 복잡도를 낮춘다.
@@ -67,7 +67,9 @@ agent-context/observability/graph/
 - `README.md` — 생성 결과 인덱스
 - `workflow-topology.md` — repository 전체 Phase, Module, Milestone 중심 topology graph
 - `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
-- `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나의 data stream topology를 보는 Mermaid sub-graph. phase는 Mermaid `subgraph` 컨테이너로, task/decision/oracle은 stream 변환 노드로, Data node는 `upstream`/`downstream` supply chain으로 표시
+- `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나의 integrated view. data stream과 workflow spine을 함께 표시
+- `workflow-views/<workflow-scope>.md` — 특정 workflow 하나의 workflow view. Data node는 숨기고 stream에서 파생한 task spine만 표시
+- `data-stream-views/<workflow-scope>.md` — 특정 workflow 하나의 data stream view. `upstream`/`downstream` supply chain만 표시
 - `workflow-ssot-report.md` — legacy workflow YAML 대비 sibling `*.abox.ttl` 누락 여부. YAML-only workflow는 관측에서 제외됨을 경고
 - `class-layer-map.md` — workflow ontology class hierarchy
 - `property-map.md` — workflow ontology property domain/range map
@@ -120,7 +122,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 
 - `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
 - `wf:hasNode`, `wf:hasWorkflowRef`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 Branch node나 `hasBranch` edge로 렌더링하지 않고, `decision -.->|on:<condition>| target` 조건부 process edge로 직접 표현한다.
-- `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨기고, workflow별 sub-graph에서 보조 control-flow hint로만 표현한다. workflow의 1차 정의는 task 순서가 아니라 data stream continuity다.
+- `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨긴다. workflow view의 `next` spine은 공유 Data id의 producer/consumer 관계에서 먼저 파생하고, stream 정보가 부족할 때만 `wf:next`를 fallback으로 사용한다.
 - `wf:directory`는 Data node로 파생한다. 현재는 `data_type=local_file`, `location=index:<data-id>`, `locator=<dirPath>`로 표시한다. index에 없으면 raw local_file fallback key를 쓴다. `role: input/reference`는 `data --upstream--> task`, `role: output`은 `task --downstream--> data`, `role: input_output`은 양방향 stream edge로 표현한다.
 - `wf:deliverables`는 downstream Data node로 표시한다. 현재는 `data_type=local_file`, `location=declared deliverable`, `detail=<deliverable>`로 렌더링하고 `task --downstream--> data` edge로 연결한다. 이후 schema가 확장되면 `data_type=api`/`mcp`/`database` 등으로 같은 표현을 재사용한다.
 - 전체 repository graph는 `workflow-topology.md`에 생성하고, workflow scope별 sub-graph는 `workflow-subgraphs/`에 분리한다.

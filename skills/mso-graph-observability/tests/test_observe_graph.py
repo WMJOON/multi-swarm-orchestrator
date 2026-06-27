@@ -123,9 +123,66 @@ def test_workflow_subgraph_renders_dataflow_nodes():
     assert "`generated/results/`" in markdown
     assert "-->|downstream|" in markdown
     assert "-->|upstream|" in markdown
+    assert "boundary_start_demo_start_" in markdown
+    assert "boundary_end_demo_end_" in markdown
+    assert "-->|next|" in markdown
+    assert any(
+        "boundary_start_demo_start_" in line and "-->|next|" in line and "step_node_demo_producer_" in line
+        for line in markdown.splitlines()
+    )
+    assert any(
+        "step_node_demo_producer_" in line and "-->|next|" in line and "step_node_demo_consumer_" in line
+        for line in markdown.splitlines()
+    )
+    assert any(
+        "step_node_demo_consumer_" in line and "-->|next|" in line and "boundary_end_demo_end_" in line
+        for line in markdown.splitlines()
+    )
     assert "DATA\\nid: deliverable:" in markdown
     assert "report.md" in markdown
     assert "classDef data" in markdown
+
+
+def test_workflow_and_data_stream_views_are_separated():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/producer"]
+    consumer = wf["node/demo/consumer"]
+    phase = wf["phase/demo/p"]
+
+    for node, label in ((producer, "Produce"), (consumer, "Consume")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+
+    out_dir = BNode()
+    graph.add((producer, wf.directory, out_dir))
+    graph.add((out_dir, wf.dirRole, Literal("output")))
+    graph.add((out_dir, wf.dirPath, Literal("generated/results/")))
+
+    in_dir = BNode()
+    graph.add((consumer, wf.directory, in_dir))
+    graph.add((in_dir, wf.dirRole, Literal("input")))
+    graph.add((in_dir, wf.dirPath, Literal("generated/results/")))
+
+    workflow = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+    data_stream = observe_graph.build_workflow_topology(graph, scope="demo", view="data-stream")
+
+    assert "((start))" in workflow
+    assert "((end))" in workflow
+    assert "-->|next|" in workflow
+    assert "DATA\\nid:" not in workflow
+    assert "-->|upstream|" not in workflow
+    assert "-->|downstream|" not in workflow
+
+    assert "DATA\\nid: local_file:generated/results/" in data_stream
+    assert "-->|upstream|" in data_stream
+    assert "-->|downstream|" in data_stream
+    assert "((start))" not in data_stream
+    assert "-->|next|" not in data_stream
 
 
 def test_workflow_subgraph_uses_index_data_ids_for_locations():

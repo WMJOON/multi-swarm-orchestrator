@@ -10,7 +10,7 @@
 |------|------|
 | `mso-graph-observability` | workflow별 subgraph에 Data node와 input/output edge 추가 |
 | `observe_graph.py` | `wf:directory`를 `data_type=local_file`, `location=dirPath`로 해석. input/reference는 `upstream`, output/deliverable은 `downstream`, input_output은 양방향 stream |
-| Stream boundary | workflow별 subgraph에 `((start))`, `((end))`를 추가. Data node가 있으면 task가 아니라 data stream entry/exit에 연결 |
+| View separation | workflow별 `integrated`, `workflow`, `data-stream` view 생성. `workflow` view는 공유 Data id 기반 task spine으로 `((start)) --next--> task --next--> ((end))`를 표시 |
 | Workflow semantics | 같은 target Data id로 이어지는 stream은 하나의 workflow, 분기되거나 다르게 소비되는 stream은 별도 workflow boundary 후보로 해석 |
 | Mermaid shape | GitHub 호환 classic flowchart syntax 기준으로 task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]` 적용 |
 | Phase containment | workflow별 subgraph에서 `hasNode` edge 대신 Mermaid `subgraph` 블록으로 phase membership 표현 |

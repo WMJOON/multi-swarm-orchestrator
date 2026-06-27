@@ -842,16 +842,22 @@ def build_workflow_topology(
     graph: Graph,
     scope: str | None = None,
     data_registry: dict[str, dict[str, str]] | None = None,
+    view: str = "integrated",
 ) -> str:
     data_registry = data_registry or {}
     intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
     notes: list[str] = []
     if scope:
-        intro = f"> Sub-graph for workflow scope `{scope}`. Generated from MSO workflow TTL."
-        notes.append(
-            "> Stream semantics: `data --upstream--> task --downstream--> data`; `next`/`on:*` edges are control-flow hints, not the primary workflow boundary."
-        )
+        intro = f"> `{view}` view for workflow scope `{scope}`. Generated from MSO workflow TTL."
+        if view == "data-stream":
+            notes.append("> Data stream view: `data --upstream--> task --downstream--> data` supply chain only.")
+        elif view == "workflow":
+            notes.append("> Workflow view: `((start)) --next--> task --next--> task --next--> ((end))` spine derived from shared Data ids where possible.")
+        else:
+            notes.append("> Integrated view: data stream supply chain plus the derived task workflow spine.")
     include_internal = scope is not None
+    show_data_stream = include_internal and view in {"integrated", "data-stream"}
+    show_workflow_spine = include_internal and view in {"integrated", "workflow"}
     lines: list[str] = [
         intro,
         *notes,
@@ -991,6 +997,8 @@ def build_workflow_topology(
         data_node_ids: set[str] = set()
         produced_data_node_ids: set[str] = set()
         consumed_data_node_ids: set[str] = set()
+        data_producers: dict[str, set[URIRef]] = {}
+        data_consumers: dict[str, set[URIRef]] = {}
 
         for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
             for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
@@ -1010,76 +1018,112 @@ def build_workflow_topology(
                     control_incoming.add(target)
                     control_outgoing.add(node)
 
-        for source, arrow, label, target in control_edges:
-            source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
-            target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
-            source_id = declare(source, source_prefix, source_cls, source_suffix, source_shape)
-            target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
-            edge(source_id, arrow, label, target_id)
+        if show_workflow_spine:
+            for source, arrow, label, target in control_edges:
+                if arrow != "-.->":
+                    continue
+                source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
+                target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
+                source_id = declare(source, source_prefix, source_cls, source_suffix, source_shape)
+                target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
+                edge(source_id, arrow, label, target_id)
 
         for node in process_nodes:
             source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
             source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
             for role, path, _ in directory_data_for_node(graph, node):
                 ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
-                data_refs.setdefault(ref["id"], ref)
-                data_node_id = declare_data(
-                    ref["id"],
-                    data_label(
-                        ref["data_type"],
-                        ref["location"],
-                        node_id=ref["id"],
-                        locator=ref["locator"],
-                    ),
-                )
+                if show_data_stream:
+                    data_refs.setdefault(ref["id"], ref)
+                    data_node_id = declare_data(
+                        ref["id"],
+                        data_label(
+                            ref["data_type"],
+                            ref["location"],
+                            node_id=ref["id"],
+                            locator=ref["locator"],
+                        ),
+                    )
+                else:
+                    data_node_id = data_id(ref["id"])
                 data_node_ids.add(data_node_id)
                 produces, consumes, label_suffix = data_edge_labels(role)
                 if produces:
                     produced_data_node_ids.add(data_node_id)
-                    edge(source_id, "-->", f"downstream{label_suffix}", data_node_id)
+                    data_producers.setdefault(data_node_id, set()).add(node)
+                    if show_data_stream:
+                        edge(source_id, "-->", f"downstream{label_suffix}", data_node_id)
                 if consumes:
                     consumed_data_node_ids.add(data_node_id)
-                    edge(data_node_id, "-->", f"upstream{label_suffix}", source_id)
+                    data_consumers.setdefault(data_node_id, set()).add(node)
+                    if show_data_stream:
+                        edge(data_node_id, "-->", f"upstream{label_suffix}", source_id)
 
             for deliverable, _ in deliverable_data_for_node(graph, node):
                 ref = deliverable_data_ref(deliverable)
-                data_refs.setdefault(ref["id"], ref)
-                data_node_id = declare_data(
-                    ref["id"],
-                    data_label(
-                        ref["data_type"],
-                        ref["location"],
-                        deliverable,
-                        node_id=ref["id"],
-                        locator=ref["locator"],
-                    ),
-                )
+                if show_data_stream:
+                    data_refs.setdefault(ref["id"], ref)
+                    data_node_id = declare_data(
+                        ref["id"],
+                        data_label(
+                            ref["data_type"],
+                            ref["location"],
+                            deliverable,
+                            node_id=ref["id"],
+                            locator=ref["locator"],
+                        ),
+                    )
+                else:
+                    data_node_id = data_id(ref["id"])
                 data_node_ids.add(data_node_id)
                 produced_data_node_ids.add(data_node_id)
-                edge(source_id, "-->", "downstream", data_node_id)
+                data_producers.setdefault(data_node_id, set()).add(node)
+                if show_data_stream:
+                    edge(source_id, "-->", "downstream", data_node_id)
 
-        if data_node_ids:
+        stream_task_edges: set[tuple[URIRef, URIRef]] = set()
+        for data_node_id in sorted(data_node_ids):
+            for producer in data_producers.get(data_node_id, set()):
+                for consumer in data_consumers.get(data_node_id, set()):
+                    if producer != consumer:
+                        stream_task_edges.add((producer, consumer))
+
+        if not stream_task_edges:
+            stream_task_edges = {
+                (source, target)
+                for source, arrow, label, target in control_edges
+                if arrow == "-->" and label == "next"
+            }
+
+        if show_workflow_spine:
+            for source, target in sorted(stream_task_edges, key=lambda pair: (str(pair[0]), str(pair[1]))):
+                source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
+                target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
+                source_id = declare(source, source_prefix, source_cls, source_suffix, source_shape)
+                target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
+                edge(source_id, "-->", "next", target_id)
+
+        if show_workflow_spine and process_nodes:
             start_id = declare_boundary("start")
             end_id = declare_boundary("end")
-            stream_entry_data = consumed_data_node_ids - produced_data_node_ids
-            stream_exit_data = produced_data_node_ids - consumed_data_node_ids
-            for data_node_id in sorted(stream_entry_data):
-                edge(start_id, "-->", "", data_node_id)
-            if not stream_entry_data:
-                for node in process_nodes:
-                    if node not in control_incoming:
-                        node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
-                        node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
-                        edge(start_id, "-->", "", node_id)
-            for data_node_id in sorted(stream_exit_data):
-                edge(data_node_id, "-->", "", end_id)
-            if not stream_exit_data:
-                for node in process_nodes:
-                    if node not in control_outgoing:
-                        node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
-                        node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
-                        edge(node_id, "-->", "", end_id)
-        elif process_nodes:
+            if stream_task_edges:
+                spine_sources = {source for source, _ in stream_task_edges}
+                spine_targets = {target for _, target in stream_task_edges}
+                entry_nodes = spine_sources - spine_targets
+                exit_nodes = spine_targets - spine_sources
+            else:
+                entry_nodes = {node for node in process_nodes if node not in control_incoming}
+                exit_nodes = {node for node in process_nodes if node not in control_outgoing}
+
+            for node in sorted(entry_nodes, key=str):
+                node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
+                edge(start_id, "-->", "next", node_id)
+            for node in sorted(exit_nodes, key=str):
+                node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
+                edge(node_id, "-->", "next", end_id)
+        elif show_workflow_spine and process_nodes:
             start_id = declare_boundary("start")
             end_id = declare_boundary("end")
             for node in process_nodes:
@@ -1123,7 +1167,7 @@ def build_workflow_topology(
             "```",
         ]
     )
-    if include_internal and data_refs:
+    if include_internal and show_data_stream and data_refs:
         lines.extend(
             [
                 "",
@@ -1160,10 +1204,10 @@ def build_workflow_subgraph_index(
         return "_No scoped workflow sub-graphs found. Regenerate TTL ABoxes with scoped workflow URIs._"
 
     lines = [
-        "> Workflow-specific sub-graphs generated from the same TTL ABox inputs as the repository topology.",
+        "> Workflow-specific views generated from the same TTL ABox inputs as the repository topology.",
         "",
-        "| Workflow Scope | Sub-graph | Phases | Nodes | Data Nodes |",
-        "|---|---:|---:|---:|---:|",
+        "| Workflow Scope | Integrated | Workflow | Data Stream | Phases | Nodes | Data Nodes |",
+        "|---|---|---|---|---:|---:|---:|",
     ]
     for scope in scopes:
         phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
@@ -1171,7 +1215,7 @@ def build_workflow_subgraph_index(
         data_count = len(data_keys(graph, scope, data_registry))
         file_name = f"{scope}.md"
         lines.append(
-            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
+            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | [`{file_name}`](workflow-views/{file_name}) | [`{file_name}`](data-stream-views/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
         )
     return "\n".join(lines)
 
@@ -1313,7 +1357,9 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "",
             "- [workflow-topology.md](workflow-topology.md) — repository-level workflow graph",
             "- [workflow-subgraph-index.md](workflow-subgraph-index.md) — workflow-specific sub-graph index",
-            "- [workflow-subgraphs/](workflow-subgraphs/) — one Mermaid view per scoped workflow",
+            "- [workflow-subgraphs/](workflow-subgraphs/) — integrated workflow + data stream view per scoped workflow",
+            "- [workflow-views/](workflow-views/) — task workflow spine view per scoped workflow",
+            "- [data-stream-views/](data-stream-views/) — data supply-chain view per scoped workflow",
             "- [workflow-ssot-report.md](workflow-ssot-report.md)",
             "- [class-layer-map.md](class-layer-map.md)",
             "- [property-map.md](property-map.md)",
@@ -1354,8 +1400,18 @@ def main() -> int:
     for scope in workflow_scopes(graph):
         write_markdown(
             output_dir / "workflow-subgraphs" / f"{scope}.md",
-            f"MSO Workflow Sub-Graph — {scope_label(scope)}",
-            build_workflow_topology(graph, scope=scope, data_registry=data_registry),
+            f"MSO Integrated Workflow View — {scope_label(scope)}",
+            build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="integrated"),
+        )
+        write_markdown(
+            output_dir / "workflow-views" / f"{scope}.md",
+            f"MSO Workflow View — {scope_label(scope)}",
+            build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="workflow"),
+        )
+        write_markdown(
+            output_dir / "data-stream-views" / f"{scope}.md",
+            f"MSO Data Stream View — {scope_label(scope)}",
+            build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="data-stream"),
         )
     write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
