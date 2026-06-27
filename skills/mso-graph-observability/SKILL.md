@@ -18,6 +18,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 시각적으로 보는 1차 대상은 workflow graph다.
 - workflow별 sub-graph에서는 `wf:directory`/`wf:deliverables`를 Data node로 파생해 `task --produces--> data --consumes--> task` 데이터 흐름을 함께 보여준다.
 - Data node는 `data_type`과 `location`을 가진 관측 노드다. 현재 TTL에서는 `wf:directory`를 `data_type=local_file`, `location=<dirPath>`로 해석하며, 이후 API endpoint나 MCP resource도 같은 Data node 계층으로 확장할 수 있다.
+- Mermaid shape는 GitHub Markdown 호환성을 우선해 classic flowchart syntax를 쓴다. task는 `["label"]`, data는 `(["label"])`, decision은 `{{"label"}}`, oracle은 `[/"label"\]`로 렌더링한다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
 - 분석 목적은 “어떤 흐름에서 실패가 많았는가”, “어떤 workflow가 자주 실행되는가”, “에이전트가 어디서 반복/이탈/재시도하는가”를 드러내는 것이다.
 

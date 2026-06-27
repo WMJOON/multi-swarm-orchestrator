@@ -235,12 +235,22 @@ def mermaid_label(text: str, max_len: int = 72) -> str:
     return compact.replace('"', "'")
 
 
-def mermaid_node(graph: Graph, term: URIRef, prefix: str, suffix: str = "") -> str:
+def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
+    if shape == "stadium":
+        return f'{node_id}(["{label}"])'
+    if shape == "hexagon":
+        return f'{node_id}{{{{"{label}"}}}}'
+    if shape == "trapezoid":
+        return f'{node_id}[/"{label}"\\]'
+    return f'{node_id}["{label}"]'
+
+
+def mermaid_node(graph: Graph, term: URIRef, prefix: str, suffix: str = "", shape: str = "rect") -> str:
     node_id = mermaid_id(prefix, term)
     label = mermaid_label(preferred_label(graph, term))
     if suffix:
         label = mermaid_label(f"{label}\\n{suffix}")
-    return f'{node_id}["{label}"]'
+    return mermaid_shape(node_id, label, shape)
 
 
 def subjects_of_type(graph: Graph, cls: URIRef) -> list[URIRef]:
@@ -524,7 +534,7 @@ def build_runtime_analysis(root: Path) -> str:
 def workflow_scopes(graph: Graph) -> list[str]:
     scopes = {
         scope
-        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Validation, WF.Group, WF.WorkflowRef)
+        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group, WF.WorkflowRef)
         for subject in subjects_of_type(graph, cls)
         for scope in [workflow_scope(subject)]
         if scope
@@ -545,7 +555,7 @@ def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
 def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
     node_terms = {
         node
-        for cls in (WF.Step, WF.Decision, WF.Validation, WF.Group, WF.WorkflowRef)
+        for cls in (WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group, WF.WorkflowRef)
         for node in subjects_of_type(graph, cls)
     }
     return filter_scope(sorted(node_terms, key=str), scope)
@@ -625,10 +635,16 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
     ]
     declared: set[str] = set()
 
-    def declare(term: URIRef, prefix: str, cls: str | None = None, suffix: str = "") -> str:
+    def declare(
+        term: URIRef,
+        prefix: str,
+        cls: str | None = None,
+        suffix: str = "",
+        shape: str = "rect",
+    ) -> str:
         node_id = mermaid_id(prefix, term)
         if node_id not in declared:
-            lines.append(f"  {mermaid_node(graph, term, prefix, suffix)}")
+            lines.append(f"  {mermaid_node(graph, term, prefix, suffix, shape)}")
             if cls:
                 lines.append(f"  class {node_id} {cls}")
             declared.add(node_id)
@@ -637,15 +653,16 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
     def declare_data(key: str, label: str) -> str:
         node_id = data_id(key)
         if node_id not in declared:
-            lines.append(f'  {node_id}["{label}"]')
+            lines.append(f'  {mermaid_shape(node_id, label, "stadium")}')
             lines.append(f"  class {node_id} data")
             declared.add(node_id)
         return node_id
 
-    def visual_kind(term: URIRef) -> tuple[str, str | None, str]:
+    def visual_kind(term: URIRef) -> tuple[str, str | None, str, str]:
         for rdf_type, css_class in (
             (WF.Step, "step"),
             (WF.Decision, "decision"),
+            (WF.Oracle, "oracle"),
             (WF.Validation, "validation"),
             (WF.Group, "group"),
             (WF.WorkflowRef, "workflowRef"),
@@ -655,8 +672,14 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                 status = first_literal(graph, term, WF.status)
                 if status:
                     suffix = f"{suffix} / {status}"
-                return local_name(rdf_type).lower(), css_class, suffix
-        return "node", None, ""
+                if rdf_type == WF.Decision:
+                    shape = "hexagon"
+                elif rdf_type == WF.Oracle:
+                    shape = "trapezoid"
+                else:
+                    shape = "rect"
+                return local_name(rdf_type).lower(), css_class, suffix, shape
+        return "node", None, "", "rect"
 
     phases = filter_scope(subjects_of_type(graph, WF.Phase), scope)
     for phase in phases:
@@ -669,6 +692,7 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
         node_classes = [
             (WF.Step, "step"),
             (WF.Decision, "decision"),
+            (WF.Oracle, "oracle"),
             (WF.Validation, "validation"),
             (WF.Group, "group"),
             (WF.WorkflowRef, "workflowRef"),
@@ -679,7 +703,8 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                 suffix = local_name(cls)
                 if status:
                     suffix = f"{suffix} / {status}"
-                declare(node, local_name(cls).lower(), css_class, suffix)
+                shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Oracle else "rect"
+                declare(node, local_name(cls).lower(), css_class, suffix, shape)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         declare(module, "module", "module", "Module")
@@ -698,8 +723,8 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
         if include_internal:
             for node in sorted(graph.objects(phase, WF.hasNode), key=str):
                 if isinstance(node, URIRef) and workflow_scope(node) == scope:
-                    node_prefix, node_cls, node_suffix = visual_kind(node)
-                    node_id = declare(node, node_prefix, node_cls, node_suffix)
+                    node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                    node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
                     lines.append(f"  {phase_id} -->|hasNode| {node_id}")
             for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
                 if isinstance(ref, URIRef) and workflow_scope(ref) == scope:
@@ -717,17 +742,17 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                     branch_label = f"on: {branch_condition}" if branch_condition else "goto"
                     for target in sorted(graph.objects(branch, WF.gotoNode), key=str):
                         if isinstance(target, URIRef) and workflow_scope(target) == scope:
-                            target_prefix, target_cls, target_suffix = visual_kind(target)
-                            target_id = declare(target, target_prefix, target_cls, target_suffix)
+                            target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
+                            target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
                             lines.append(f"  {decision_id} -.->|{mermaid_label(branch_label, 32)}| {target_id}")
 
         for node in workflow_node_terms(graph, scope):
-            source_prefix, source_cls, source_suffix = visual_kind(node)
-            source_id = declare(node, source_prefix, source_cls, source_suffix)
+            source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
+            source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
             for target in sorted(graph.objects(node, WF.next), key=str):
                 if isinstance(target, URIRef) and workflow_scope(target) == scope:
-                    target_prefix, target_cls, target_suffix = visual_kind(target)
-                    target_id = declare(target, target_prefix, target_cls, target_suffix)
+                    target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
+                    target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
                     lines.append(f"  {source_id} -->|next| {target_id}")
 
             for role, path, key in directory_data_for_node(graph, node):
@@ -764,6 +789,7 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
             "  classDef status_pending fill:#f3f4f6,stroke:#6b7280,color:#111827",
             "  classDef step fill:#ecfeff,stroke:#0891b2,color:#111827",
             "  classDef decision fill:#fae8ff,stroke:#c026d3,color:#111827",
+            "  classDef oracle fill:#ffedd5,stroke:#ea580c,color:#111827",
             "  classDef validation fill:#fee2e2,stroke:#dc2626,color:#111827",
             "  classDef group fill:#f5f5f4,stroke:#78716c,color:#111827",
             "  classDef workflowRef fill:#e0f2fe,stroke:#0284c7,color:#111827",

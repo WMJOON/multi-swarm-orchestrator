@@ -58,6 +58,8 @@ def test_workflow_topology_renders_execution_edges():
 
     assert "-->|next|" in markdown
     assert "-.->|on: rejected|" in markdown
+    assert '["A\\nStep"]' in markdown
+    assert '{{"Gate\\nDecision"}}' in markdown
 
 
 def test_repository_topology_hides_internal_node_flow():
@@ -110,9 +112,33 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert "DATA\\ntype: local_file\\nlocation: generated/results/" in markdown
+    assert '(["DATA\\ntype: local_file\\nlocation: generated/results/"])' in markdown
     assert "-->|produces|" in markdown
     assert "-->|consumes|" in markdown
     assert "DATA\\ntype: local_file\\nlocation: declared deliverable\\ndetail: report.md" in markdown
     assert "-->|declares|" in markdown
     assert "classDef data" in markdown
+
+
+def test_workflow_subgraph_renders_oracle_shape():
+    graph = Graph()
+    wf = observe_graph.WF
+    task = wf["node/demo/task"]
+    oracle = wf["node/demo/oracle"]
+    phase = wf["phase/demo/p"]
+
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+    for node, cls, label in ((task, wf.Step, "Task"), (oracle, wf.Oracle, "Quality Gate")):
+        graph.add((node, RDF.type, cls))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((task, wf.next, oracle))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo")
+
+    assert '["Task\\nStep"]' in markdown
+    assert '[/"Quality Gate\\nOracle"\\]' in markdown
+    assert "-->|next|" in markdown
+    assert "classDef oracle" in markdown

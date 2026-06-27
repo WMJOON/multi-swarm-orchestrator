@@ -12,6 +12,7 @@ v0.4.3은 workflow sub-graph에서 산출물/입력 데이터 흐름을 볼 수 
 
 - `wf:directory`를 `data_type=local_file`, `location=<dirPath>` Data node로 파생한다. `role: output`은 `produces`, `role: input/reference`는 `consumes`, `role: input_output`은 양방향으로 표시한다.
 - `wf:deliverables`는 선언 산출물 Data node로 표시하고 `declares` edge로 연결한다. 현재는 local file deliverable 힌트로 렌더링한다.
+- GitHub Mermaid 호환성을 위해 classic flowchart shape를 사용한다: task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]`.
 - repository-level topology는 계속 phase/module/milestone 중심으로 유지하고, Data node 흐름은 workflow별 sub-graph에서만 펼친다.
 - 이후 API endpoint, MCP resource, database table 같은 비파일 입력/출력도 같은 Data node 계층으로 확장한다.
 
