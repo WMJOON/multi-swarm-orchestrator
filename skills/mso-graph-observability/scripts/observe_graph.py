@@ -838,6 +838,175 @@ def data_keys(graph: Graph, scope: str, data_registry: dict[str, dict[str, str]]
     return keys
 
 
+def collect_data_streams(
+    graph: Graph,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> dict[str, dict[str, object]]:
+    data_registry = data_registry or {}
+    streams: dict[str, dict[str, object]] = {}
+    for scope in workflow_scopes(graph):
+        refs: dict[str, dict[str, str]] = {}
+        producers: dict[str, set[str]] = {}
+        consumers: dict[str, set[str]] = {}
+        for node in workflow_node_terms(graph, scope):
+            node_id = display_id(node)
+            for role, path, _ in directory_data_for_node(graph, node):
+                ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+                refs.setdefault(ref["id"], ref)
+                produces, consumes, _ = data_edge_labels(role)
+                if produces:
+                    producers.setdefault(ref["id"], set()).add(node_id)
+                if consumes:
+                    consumers.setdefault(ref["id"], set()).add(node_id)
+            for deliverable, _ in deliverable_data_for_node(graph, node):
+                ref = deliverable_data_ref(deliverable)
+                refs.setdefault(ref["id"], ref)
+                producers.setdefault(ref["id"], set()).add(node_id)
+        streams[scope] = {
+            "refs": refs,
+            "producers": producers,
+            "consumers": consumers,
+        }
+    return streams
+
+
+def build_data_stream_report(
+    graph: Graph,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    streams = collect_data_streams(graph, data_registry)
+    if not streams:
+        return "_No scoped workflow data streams found._"
+
+    consumers_by_data: dict[str, set[str]] = {}
+    for scope, stream in streams.items():
+        consumers = stream["consumers"]
+        assert isinstance(consumers, dict)
+        for data_ref, consumer_nodes in consumers.items():
+            for node_id in consumer_nodes:
+                consumers_by_data.setdefault(data_ref, set()).add(f"{scope}:{node_id}")
+
+    rows: list[dict[str, str]] = []
+    input_rows: list[dict[str, str]] = []
+    for scope, stream in streams.items():
+        refs = stream["refs"]
+        producers = stream["producers"]
+        consumers = stream["consumers"]
+        assert isinstance(refs, dict)
+        assert isinstance(producers, dict)
+        assert isinstance(consumers, dict)
+        produced_ids = set(producers)
+        consumed_ids = set(consumers)
+        for data_ref in sorted(produced_ids - consumed_ids):
+            ref = refs.get(data_ref, {"id": data_ref})
+            external_consumers = sorted(
+                consumer for consumer in consumers_by_data.get(data_ref, set()) if not consumer.startswith(f"{scope}:")
+            )
+            detail = ref.get("detail") or ref.get("locator") or ref.get("location") or ""
+            if external_consumers:
+                hint = "cross-workflow output"
+                next_action = "link cross-workflow dependency or split workflow boundary"
+            elif str(data_ref).startswith("deliverable:"):
+                hint = "final deliverable candidate"
+                next_action = "confirm this is an intentional terminal artifact"
+            else:
+                hint = "missing consumer candidate"
+                next_action = "add upstream use, mark terminal, or move to another workflow"
+            rows.append(
+                {
+                    "scope": scope,
+                    "data": data_ref,
+                    "producer": ", ".join(sorted(producers[data_ref])),
+                    "detail": detail,
+                    "hint": hint,
+                    "next_action": next_action,
+                }
+            )
+
+        for data_ref in sorted(consumed_ids - produced_ids):
+            ref = refs.get(data_ref, {"id": data_ref})
+            input_rows.append(
+                {
+                    "scope": scope,
+                    "data": data_ref,
+                    "consumer": ", ".join(sorted(consumers[data_ref])),
+                    "detail": ref.get("detail") or ref.get("locator") or ref.get("location") or "",
+                }
+            )
+
+    by_hint: dict[str, int] = {}
+    for row in rows:
+        by_hint[row["hint"]] = by_hint.get(row["hint"], 0) + 1
+
+    lines = [
+        "> Generated from workflow TTL Data nodes. This report highlights supply-chain breaks that are easy to miss in Mermaid.",
+        "",
+        "## Summary",
+        "",
+        f"- Workflow scopes: {len(streams)}",
+        f"- Produced but unconsumed data: {len(rows)}",
+        f"- External input data: {len(input_rows)}",
+    ]
+    for hint, count in sorted(by_hint.items()):
+        lines.append(f"- {hint}: {count}")
+
+    lines.extend(
+        [
+            "",
+            "## Produced But Unconsumed",
+            "",
+            "| Workflow | Data | Producer Task(s) | Detail | Hint | Suggested Check |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    if rows:
+        for row in rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{markdown_cell(row['scope'], 32)}`",
+                        f"`{markdown_cell(row['data'], 72)}`",
+                        markdown_cell(row["producer"], 72),
+                        markdown_cell(row["detail"], 96),
+                        markdown_cell(row["hint"], 40),
+                        markdown_cell(row["next_action"], 80),
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | - |")
+
+    lines.extend(
+        [
+            "",
+            "## External Inputs",
+            "",
+            "| Workflow | Data | Consumer Task(s) | Detail |",
+            "|---|---|---|---|",
+        ]
+    )
+    if input_rows:
+        for row in input_rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{markdown_cell(row['scope'], 32)}`",
+                        f"`{markdown_cell(row['data'], 72)}`",
+                        markdown_cell(row["consumer"], 72),
+                        markdown_cell(row["detail"], 96),
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - |")
+
+    return "\n".join(lines)
+
+
 def build_workflow_topology(
     graph: Graph,
     scope: str | None = None,
@@ -1360,6 +1529,7 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "- [workflow-subgraphs/](workflow-subgraphs/) — integrated workflow + data stream view per scoped workflow",
             "- [workflow-views/](workflow-views/) — task workflow spine view per scoped workflow",
             "- [data-stream-views/](data-stream-views/) — data supply-chain view per scoped workflow",
+            "- [data-stream-report.md](data-stream-report.md) — produced/unconsumed data and external input checklist",
             "- [workflow-ssot-report.md](workflow-ssot-report.md)",
             "- [class-layer-map.md](class-layer-map.md)",
             "- [property-map.md](property-map.md)",
@@ -1397,6 +1567,7 @@ def main() -> int:
 
     write_markdown(output_dir / "workflow-topology.md", "MSO Repository Workflow Topology", build_workflow_topology(graph, data_registry=data_registry))
     write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
+    write_markdown(output_dir / "data-stream-report.md", "MSO Data Stream Report", build_data_stream_report(graph, data_registry=data_registry))
     for scope in workflow_scopes(graph):
         write_markdown(
             output_dir / "workflow-subgraphs" / f"{scope}.md",

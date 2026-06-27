@@ -185,6 +185,42 @@ def test_workflow_and_data_stream_views_are_separated():
     assert "-->|next|" not in data_stream
 
 
+def test_data_stream_report_flags_unconsumed_outputs_and_external_inputs():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/producer"]
+    consumer = wf["node/demo/consumer"]
+    phase = wf["phase/demo/p"]
+
+    for node, label in ((producer, "Produce"), (consumer, "Consume")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+
+    output_dir = BNode()
+    graph.add((producer, wf.directory, output_dir))
+    graph.add((output_dir, wf.dirRole, Literal("output")))
+    graph.add((output_dir, wf.dirPath, Literal("generated/results/")))
+    graph.add((producer, wf.deliverables, Literal("final-report.md")))
+
+    input_dir = BNode()
+    graph.add((consumer, wf.directory, input_dir))
+    graph.add((input_dir, wf.dirRole, Literal("input")))
+    graph.add((input_dir, wf.dirPath, Literal("external/source/")))
+
+    report = observe_graph.build_data_stream_report(graph)
+
+    assert "Produced But Unconsumed" in report
+    assert "External Inputs" in report
+    assert "local_file:generated/results/" in report
+    assert "missing consumer candidate" in report
+    assert "final deliverable candidate" in report
+    assert "local_file:external/source/" in report
+
+
 def test_workflow_subgraph_uses_index_data_ids_for_locations():
     graph = Graph()
     wf = observe_graph.WF

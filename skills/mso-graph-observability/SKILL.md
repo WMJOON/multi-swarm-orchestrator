@@ -20,6 +20,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 같은 target Data id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
 - Data node는 `data_type`과 `location`을 가진 관측 노드다. 현재 TTL에서는 `wf:directory`를 `data_type=local_file`로 해석하되, `agent-context/index/index.yaml` 또는 `index.yaml`의 `data_registry`/module/subdir registry를 통해 `location=index:<data-id>`로 렌더링한다. 실제 path/API endpoint/MCP resource는 `locator`로 분리한다.
 - Mermaid graph 안의 Data node label은 `DATA`와 `id`만 표시한다. `type`, `location`, `locator`, `detail`은 graph 아래 `Data Node Index` 표로 분리해 시각적 복잡도를 낮춘다.
+- `data-stream-report.md`는 생산됐지만 같은 workflow 안에서 소비되지 않는 Data를 점검한다. 각 항목은 `final deliverable candidate`, `cross-workflow output`, `missing consumer candidate` 힌트로 분류한다.
 - Mermaid shape는 GitHub Markdown 호환성을 우선해 classic flowchart syntax를 쓴다. task는 `["label"]`, data는 `(["label"])`, decision은 `{{"label"}}`, oracle은 `[/"label"\]`로 렌더링한다.
 - Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Data node는 index data id(`content.draft` 등)를 우선 사용하고 미등록 Data만 `local_file:<path>`/짧은 `deliverable:<hash>` key를 쓴다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
@@ -70,6 +71,7 @@ agent-context/observability/graph/
 - `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나의 integrated view. data stream과 workflow spine을 함께 표시
 - `workflow-views/<workflow-scope>.md` — 특정 workflow 하나의 workflow view. Data node는 숨기고 stream에서 파생한 task spine만 표시
 - `data-stream-views/<workflow-scope>.md` — 특정 workflow 하나의 data stream view. `upstream`/`downstream` supply chain만 표시
+- `data-stream-report.md` — workflow별 produced-but-unconsumed data와 external input checklist. 산출물 과잉, missing consumer, cross-workflow boundary 후보를 점검
 - `workflow-ssot-report.md` — legacy workflow YAML 대비 sibling `*.abox.ttl` 누락 여부. YAML-only workflow는 관측에서 제외됨을 경고
 - `class-layer-map.md` — workflow ontology class hierarchy
 - `property-map.md` — workflow ontology property domain/range map

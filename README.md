@@ -14,6 +14,7 @@ v0.4.0은 workflow sub-graph에서 산출물/입력 데이터 흐름을 볼 수 
 - `wf:deliverables`는 선언 산출물 Data node로 표시하고 `task --downstream--> data` edge로 연결한다. 현재는 local file deliverable 힌트로 렌더링한다.
 - 같은 target Data id로 연속되는 stream은 하나의 workflow로 보고, 분기되거나 다른 방식으로 소비되는 stream은 별도 workflow boundary 후보로 해석한다.
 - workflow별 관측 뷰는 `integrated`, `workflow`, `data-stream`으로 나뉜다. `data-stream`은 supply chain을, `workflow`는 그 supply chain에서 파생한 `((start)) --next--> task --next--> ((end))` spine을, `integrated`는 둘을 함께 보여준다.
+- `data-stream-report.md`는 생산됐지만 소비되지 않는 data를 `final deliverable candidate`, `cross-workflow output`, `missing consumer candidate`로 분류해 산출물 과잉과 workflow boundary 후보를 점검한다.
 - GitHub Mermaid 호환성을 위해 classic flowchart shape를 사용한다: task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]`.
 - workflow별 sub-graph에서 phase membership은 `hasNode` edge 대신 Mermaid `subgraph` containment로 렌더링한다.
 - Mermaid label에 `id: <node-id>`를 노출해 사용자가 특정 node id를 지목해 수정 요청할 수 있게 한다.
