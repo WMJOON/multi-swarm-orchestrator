@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.4.3
+# Multi-Swarm Orchestrator (MSO) v0.4.0
 
 MSO는 **filesystem/repository 중심 agentic workflow compiler**다.
 
@@ -6,31 +6,33 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 ---
 
-## v0.4.3 Dataflow Observability Patch
+## v0.4.0 Dataflow Observability Patch
 
-v0.4.3은 workflow sub-graph에서 산출물/입력 데이터 흐름을 볼 수 있게 만든 관측성 패치다. 실행 노드만 보던 그래프에 Data node를 파생해, 실제로 어떤 데이터가 다음 task의 입력이 되는지 드러낸다.
+v0.4.0은 workflow sub-graph에서 산출물/입력 데이터 흐름을 볼 수 있게 만든 관측성 패치다. 실행 노드만 보던 그래프에 Data node를 파생해, workflow를 task 묶음이 아니라 **data stream topology**로 관측한다.
 
-- `wf:directory`를 `data_type=local_file`, `location=<dirPath>` Data node로 파생한다. `role: output`은 `produces`, `role: input/reference`는 `consumes`, `role: input_output`은 양방향으로 표시한다.
-- `wf:deliverables`는 선언 산출물 Data node로 표시하고 `declares` edge로 연결한다. 현재는 local file deliverable 힌트로 렌더링한다.
+- `wf:directory`를 `data_type=local_file`, `location=<dirPath>` Data node로 파생한다. `role: input/reference`는 `data --upstream--> task`, `role: output`은 `task --downstream--> data`, `role: input_output`은 양방향 stream으로 표시한다.
+- `wf:deliverables`는 선언 산출물 Data node로 표시하고 `task --downstream--> data` edge로 연결한다. 현재는 local file deliverable 힌트로 렌더링한다.
+- 같은 target Data id로 연속되는 stream은 하나의 workflow로 보고, 분기되거나 다른 방식으로 소비되는 stream은 별도 workflow boundary 후보로 해석한다.
+- workflow별 sub-graph에는 stream boundary로 `((start))`, `((end))`를 표시한다. Data node가 있으면 start/end는 task가 아니라 data stream의 entry/exit에 붙는다.
 - GitHub Mermaid 호환성을 위해 classic flowchart shape를 사용한다: task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]`.
 - workflow별 sub-graph에서 phase membership은 `hasNode` edge 대신 Mermaid `subgraph` containment로 렌더링한다.
 - Mermaid label에 `id: <node-id>`를 노출해 사용자가 특정 node id를 지목해 수정 요청할 수 있게 한다.
-- Data node location은 raw path 대신 index 기반 `location: index:<data-id>`를 우선 사용하고, 실제 path/API/MCP resource는 `locator:`로 분리한다.
+- Data node label은 `DATA`와 `id`만 표시한다. `location: index:<data-id>`와 실제 path/API/MCP resource `locator:`는 graph 아래 `Data Node Index` 표로 분리한다.
 - repository-level topology는 계속 phase/module/milestone 중심으로 유지하고, Data node 흐름은 workflow별 sub-graph에서만 펼친다.
 - 이후 API endpoint, MCP resource, database table 같은 비파일 입력/출력도 같은 Data node 계층으로 확장한다.
 
-## v0.4.2 Decision/Oracle Gate Separation Patch
+## v0.4.0 Decision/Oracle Gate Separation Patch
 
-v0.4.2는 workflow topology에서 **process decision**과 **artifact oracle**을 분리한 패치다. 순환 자체는 허용하지만, 산출물이 재귀 소비되는 feedback loop에는 별도 Oracle gate가 있어야 한다.
+v0.4.0는 workflow topology에서 **process decision**과 **artifact oracle**을 분리한 패치다. 순환 자체는 허용하지만, 산출물이 재귀 소비되는 feedback loop에는 별도 Oracle gate가 있어야 한다.
 
 - `decision`은 진행/분기를 제어한다. user decision은 HITL/HITLFE/HOTL/HOOTL, agent decision은 AGENT judge로 표현한다.
 - `oracle`은 산출물 품질·정합·수용 가능성을 평가한다. `oracle_type`은 user/agent/metric을 지원한다.
 - `wf_to_ttl.py`와 generated SHACL은 DAG를 강제하지 않고, Oracle gate 없는 uncontrolled feedback loop만 오류로 판정한다.
 - workflow subgraph에는 `wf:next`와 branch `gotoNode` 흐름을 표시하고, repository topology는 phase/module/milestone 수준으로 유지한다.
 
-## v0.4.1 TTL-only Workflow Observability Patch
+## v0.4.0 TTL-only Workflow Observability Patch
 
-v0.4.1은 workflow SSOT 경계를 더 엄격하게 고정한 패치다. YAML은 신규 작성/역생성 대상이 아니라 **legacy migration input**으로만 남긴다.
+v0.4.0은 workflow SSOT 경계를 더 엄격하게 고정한 패치다. YAML은 신규 작성/역생성 대상이 아니라 **legacy migration input**으로만 남긴다.
 
 - `mso-graph-observability`는 TTL ABox만 topology 입력으로 사용하고, repository 전체 graph와 workflow별 sub-graph를 함께 생성한다.
 - `workflow-ssot-report.md`는 legacy YAML 중 sibling `.abox.ttl`이 없는 항목을 drift로 표시한다.

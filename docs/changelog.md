@@ -1,23 +1,25 @@
 # 변경 이력
 
-## v0.4.3 (2026-06-27) — Data node observability
+## v0.4.0 (2026-06-27) — Data node observability
 
-> **Task-only topology에서 data-aware topology로 확장.** workflow sub-graph에서 `wf:directory`와 `wf:deliverables`를 Data node로 파생해 `task --produces--> data --consumes--> task` 흐름을 볼 수 있게 했다. 현재는 local file/directory를 우선 지원하고, API/MCP/database 같은 비파일 data type으로 확장 가능하게 명명했다.
+> **Task-only topology에서 data stream topology로 확장.** workflow sub-graph에서 `wf:directory`와 `wf:deliverables`를 Data node로 파생해 `data --upstream--> task --downstream--> data` supply chain을 볼 수 있게 했다. 현재는 local file/directory를 우선 지원하고, API/MCP/database 같은 비파일 data type으로 확장 가능하게 명명했다.
 
 ### Changed
 
 | 변경 | 내용 |
 |------|------|
 | `mso-graph-observability` | workflow별 subgraph에 Data node와 input/output edge 추가 |
-| `observe_graph.py` | `wf:directory`를 `data_type=local_file`, `location=dirPath`로 해석. output은 `produces`, input/reference는 `consumes`, input_output은 양방향 |
+| `observe_graph.py` | `wf:directory`를 `data_type=local_file`, `location=dirPath`로 해석. input/reference는 `upstream`, output/deliverable은 `downstream`, input_output은 양방향 stream |
+| Stream boundary | workflow별 subgraph에 `((start))`, `((end))`를 추가. Data node가 있으면 task가 아니라 data stream entry/exit에 연결 |
+| Workflow semantics | 같은 target Data id로 이어지는 stream은 하나의 workflow, 분기되거나 다르게 소비되는 stream은 별도 workflow boundary 후보로 해석 |
 | Mermaid shape | GitHub 호환 classic flowchart syntax 기준으로 task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]` 적용 |
 | Phase containment | workflow별 subgraph에서 `hasNode` edge 대신 Mermaid `subgraph` 블록으로 phase membership 표현 |
 | Node id labels | Mermaid label에 `id: <node-id>`를 표시해 사용자가 특정 workflow node를 지목할 수 있도록 개선 |
-| Data registry location | Data node `location`을 raw path 대신 `index:<data-id>`로 우선 표시하고 실제 접근자는 `locator`로 분리 |
+| Data registry location | Mermaid node label은 `DATA`와 `id`만 표시하고, `location=index:<data-id>`와 실제 접근자 `locator`는 `Data Node Index` 표로 분리 |
 | `workflow-subgraph-index.md` | workflow별 Data node 개수 컬럼 추가 |
-| 전체 버전 | README와 SKILL.md version field를 v0.4.3으로 정렬 |
+| 전체 버전 | README와 SKILL.md version field를 v0.4.0으로 정렬 |
 
-## v0.4.2 (2026-06-27) — Decision/Oracle gate separation
+## v0.4.0 (2026-06-27) — Decision/Oracle gate separation
 
 > **Decision gate와 Oracle gate 분리.** workflow topology는 task/decision/oracle node와 process edge로 관측한다. 순환 자체는 금지하지 않고, 산출물 재귀 소비 loop 안에 별도 Oracle gate가 없을 때만 uncontrolled feedback loop로 판정한다.
 
@@ -35,9 +37,9 @@
 |------|------|
 | feedback loop validation | DAG/비순환 강제가 아니라 Oracle gate 없는 feedback loop를 오류로 판정 |
 | `decision.schema.yaml` | `judge`에 `AGENT` 추가. decision은 process branch/진행 판단만 담당하고 산출물 품질평가는 `oracle`로 분리 |
-| 전체 버전 | README와 SKILL.md version field를 v0.4.2로 정렬 |
+| 전체 버전 | README와 SKILL.md version field를 v0.4.0로 정렬 |
 
-## v0.4.1 (2026-06-27) — TTL-only workflow observability patch
+## v0.4.0 (2026-06-27) — TTL-only workflow observability patch
 
 > **YAML 생성 루프 제거 + workflow sub-graph 관측 추가.** workflow SSOT는 TTL ABox만 사용한다. YAML은 신규 작성/역생성 대상이 아니라 legacy migration input으로만 남긴다.
 

@@ -120,7 +120,7 @@ def test_dissolved_utterance_grounding_not_routed():
 def test_readme_reflects_current_version_and_structure():
     """README 헤더 버전과 핵심 구조 어휘가 현재 패치와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.4.3" in readme, "README header is not v0.4.3"
+    assert "MSO) v0.4.0" in readme, "README header is not v0.4.0"
     assert "스킬 구성" in readme
     assert "Work-Memory" in readme
     assert "mso-graph-observability" in readme
@@ -131,7 +131,7 @@ def test_skill_versions_are_current_patch():
     """정식 repository 스킬 메타가 현재 패치 버전으로 정렬되어 있다."""
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
         text = skill_md.read_text()
-        assert 'version: "0.4.3"' in text, f"{skill_md.parent.name} version is not 0.4.3"
+        assert 'version: "0.4.0"' in text, f"{skill_md.parent.name} version is not 0.4.0"
 
 
 def test_work_memory_decision_governance_schema_contract():

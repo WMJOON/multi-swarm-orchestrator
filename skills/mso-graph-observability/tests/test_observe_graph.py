@@ -60,6 +60,10 @@ def test_workflow_topology_renders_execution_edges():
     assert "-.->|on: rejected|" in markdown
     assert "subgraph phase_phase_demo_p_" in markdown
     assert "-->|hasNode|" not in markdown
+    assert "-->|hasBranch|" not in markdown
+    assert "Branch" not in markdown
+    assert "((start))" in markdown
+    assert "((end))" in markdown
     assert '["A\\nid: a\\nStep"]' in markdown
     assert '{{"Gate\\nid: d\\nDecision"}}' in markdown
 
@@ -114,11 +118,13 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '(["DATA\\nid: local_file:generated/results/\\ntype: local_file\\nlocation: generated/results/\\nlocator: generated/results/"])' in markdown
-    assert "-->|produces|" in markdown
-    assert "-->|consumes|" in markdown
-    assert "DATA\\nid: deliverable:report.md\\ntype: local_file\\nlocation: declared deliverable\\ndetail: report.md" in markdown
-    assert "-->|declares|" in markdown
+    assert '(["DATA\\nid: local_file:generated/results/"])' in markdown
+    assert "## Data Node Index" in markdown
+    assert "`generated/results/`" in markdown
+    assert "-->|downstream|" in markdown
+    assert "-->|upstream|" in markdown
+    assert "DATA\\nid: deliverable:" in markdown
+    assert "report.md" in markdown
     assert "classDef data" in markdown
 
 
@@ -139,11 +145,22 @@ def test_workflow_subgraph_uses_index_data_ids_for_locations():
     graph.add((out_dir, wf.dirRole, Literal("output")))
     graph.add((out_dir, wf.dirPath, Literal("content/draft/")))
 
+    duplicate_out_dir = BNode()
+    graph.add((producer, wf.directory, duplicate_out_dir))
+    graph.add((duplicate_out_dir, wf.dirRole, Literal("output")))
+    graph.add((duplicate_out_dir, wf.dirPath, Literal("content/draft/archive/")))
+
     data_registry = {
         "content/draft/": {
             "id": "content.draft",
             "data_type": "local_file",
             "locator": "content/draft/",
+            "source": "subdir",
+        },
+        "content/draft/archive/": {
+            "id": "content.draft",
+            "data_type": "local_file",
+            "locator": "content/draft/archive/",
             "source": "subdir",
         }
     }
@@ -151,9 +168,11 @@ def test_workflow_subgraph_uses_index_data_ids_for_locations():
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", data_registry=data_registry)
 
     assert "id: content.draft" in markdown
-    assert "location: index:content.draft" in markdown
-    assert "locator: content/draft/" in markdown
-    assert "-->|produces|" in markdown
+    assert markdown.count('(["DATA\\nid: content.draft"])') == 1
+    assert "`index:content.draft`" in markdown
+    assert "`content/draft/`" in markdown
+    assert "-->|downstream|" in markdown
+    assert markdown.count("-->|downstream|") == 1
 
 
 def test_data_registry_uses_longest_locator_prefix():

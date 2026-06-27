@@ -367,6 +367,8 @@ def mermaid_label(text: str, max_len: int = 72) -> str:
 
 
 def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
+    if shape == "circle":
+        return f"{node_id}(({label}))"
     if shape == "stadium":
         return f'{node_id}(["{label}"])'
     if shape == "hexagon":
@@ -719,12 +721,7 @@ def data_label(
     parts = ["DATA"]
     if node_id:
         parts.append(f"id: {node_id}")
-    parts.extend([f"type: {data_type}", f"location: {location}"])
-    if locator:
-        parts.append(f"locator: {locator}")
-    if detail:
-        parts.append(f"detail: {detail}")
-    return mermaid_label("\\n".join(parts), 160)
+    return mermaid_label("\\n".join(parts), 72)
 
 
 def data_ref_for_locator(
@@ -773,13 +770,15 @@ def data_ref_for_locator(
 
 
 def deliverable_data_ref(deliverable: str) -> dict[str, str]:
-    key = f"deliverable:{deliverable}"
+    digest = hashlib.sha1(deliverable.encode("utf-8")).hexdigest()[:10]
+    key = f"deliverable:{digest}"
     return {
         "key": key,
         "id": key,
         "data_type": "local_file",
         "location": "declared deliverable",
         "locator": "",
+        "detail": deliverable,
     }
 
 
@@ -821,14 +820,21 @@ def data_edge_labels(role: str) -> tuple[bool, bool, str | None]:
     return produces, consumes, suffix
 
 
+def markdown_cell(value: str | None, max_len: int = 96) -> str:
+    text = re.sub(r"\s+", " ", value or "").strip()
+    if len(text) > max_len:
+        text = text[: max_len - 1].rstrip() + "..."
+    return text.replace("|", "\\|") or "-"
+
+
 def data_keys(graph: Graph, scope: str, data_registry: dict[str, dict[str, str]] | None = None) -> set[str]:
     data_registry = data_registry or {}
     keys: set[str] = set()
     for node in workflow_node_terms(graph, scope):
         for _, path, _ in directory_data_for_node(graph, node):
-            keys.add(data_ref_for_locator(data_registry, data_type="local_file", locator=path)["key"])
+            keys.add(data_ref_for_locator(data_registry, data_type="local_file", locator=path)["id"])
         for deliverable, _ in deliverable_data_for_node(graph, node):
-            keys.add(deliverable_data_ref(deliverable)["key"])
+            keys.add(deliverable_data_ref(deliverable)["id"])
     return keys
 
 
@@ -839,16 +845,23 @@ def build_workflow_topology(
 ) -> str:
     data_registry = data_registry or {}
     intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
+    notes: list[str] = []
     if scope:
         intro = f"> Sub-graph for workflow scope `{scope}`. Generated from MSO workflow TTL."
+        notes.append(
+            "> Stream semantics: `data --upstream--> task --downstream--> data`; `next`/`on:*` edges are control-flow hints, not the primary workflow boundary."
+        )
     include_internal = scope is not None
     lines: list[str] = [
         intro,
+        *notes,
         "",
         "```mermaid",
         "flowchart LR",
     ]
     declared: set[str] = set()
+    emitted_edges: set[str] = set()
+    data_refs: dict[str, dict[str, str]] = {}
 
     def declare(
         term: URIRef,
@@ -865,11 +878,26 @@ def build_workflow_topology(
             declared.add(node_id)
         return node_id
 
-    def declare_data(key: str, label: str) -> str:
-        node_id = data_id(key)
+    def declare_data(logical_id: str, label: str) -> str:
+        node_id = data_id(logical_id)
         if node_id not in declared:
             lines.append(f'  {mermaid_shape(node_id, label, "stadium")}')
             lines.append(f"  class {node_id} data")
+            declared.add(node_id)
+        return node_id
+
+    def edge(source_id: str, arrow: str, label: str, target_id: str) -> None:
+        label_part = f"|{label}|" if label else ""
+        line = f"  {source_id} {arrow}{label_part} {target_id}"
+        if line not in emitted_edges:
+            lines.append(line)
+            emitted_edges.add(line)
+
+    def declare_boundary(kind: str) -> str:
+        node_id = mermaid_id(f"boundary_{kind}", f"{scope}:{kind}")
+        if node_id not in declared:
+            lines.append(f"  {mermaid_shape(node_id, kind, 'circle')}")
+            lines.append(f"  class {node_id} boundary")
             declared.add(node_id)
         return node_id
 
@@ -953,36 +981,50 @@ def build_workflow_topology(
         for dep in sorted(graph.objects(phase, WF.dependsOn), key=str):
             if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
                 dep_id = mermaid_id("phase", dep) if include_internal else declare(dep, "phase")
-                lines.append(f"  {dep_id} -->|dependsOn| {phase_id}")
+                edge(dep_id, "-->", "dependsOn", phase_id)
 
     if include_internal:
+        process_nodes = workflow_node_terms(graph, scope)
+        control_edges: list[tuple[URIRef, str, str, URIRef]] = []
+        control_incoming: set[URIRef] = set()
+        control_outgoing: set[URIRef] = set()
+        data_node_ids: set[str] = set()
+        produced_data_node_ids: set[str] = set()
+        consumed_data_node_ids: set[str] = set()
+
         for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
-            decision_id = declare(decision, "decision")
             for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
                 if isinstance(branch, URIRef) and workflow_scope(branch) == scope:
-                    branch_id = declare(branch, "branch", "branch", "Branch")
-                    lines.append(f"  {decision_id} -->|hasBranch| {branch_id}")
                     branch_condition = first_literal(graph, branch, WF.on)
                     branch_label = f"on: {branch_condition}" if branch_condition else "goto"
                     for target in sorted(graph.objects(branch, WF.gotoNode), key=str):
                         if isinstance(target, URIRef) and workflow_scope(target) == scope:
-                            target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
-                            target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
-                            lines.append(f"  {decision_id} -.->|{mermaid_label(branch_label, 32)}| {target_id}")
+                            control_edges.append((decision, "-.->", mermaid_label(branch_label, 32), target))
+                            control_incoming.add(target)
+                            control_outgoing.add(decision)
 
-        for node in workflow_node_terms(graph, scope):
-            source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
-            source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
+        for node in process_nodes:
             for target in sorted(graph.objects(node, WF.next), key=str):
                 if isinstance(target, URIRef) and workflow_scope(target) == scope:
-                    target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
-                    target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
-                    lines.append(f"  {source_id} -->|next| {target_id}")
+                    control_edges.append((node, "-->", "next", target))
+                    control_incoming.add(target)
+                    control_outgoing.add(node)
 
+        for source, arrow, label, target in control_edges:
+            source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
+            target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
+            source_id = declare(source, source_prefix, source_cls, source_suffix, source_shape)
+            target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
+            edge(source_id, arrow, label, target_id)
+
+        for node in process_nodes:
+            source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
+            source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
             for role, path, _ in directory_data_for_node(graph, node):
                 ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+                data_refs.setdefault(ref["id"], ref)
                 data_node_id = declare_data(
-                    ref["key"],
+                    ref["id"],
                     data_label(
                         ref["data_type"],
                         ref["location"],
@@ -990,16 +1032,20 @@ def build_workflow_topology(
                         locator=ref["locator"],
                     ),
                 )
+                data_node_ids.add(data_node_id)
                 produces, consumes, label_suffix = data_edge_labels(role)
                 if produces:
-                    lines.append(f"  {source_id} -->|produces{label_suffix}| {data_node_id}")
+                    produced_data_node_ids.add(data_node_id)
+                    edge(source_id, "-->", f"downstream{label_suffix}", data_node_id)
                 if consumes:
-                    lines.append(f"  {data_node_id} -->|consumes{label_suffix}| {source_id}")
+                    consumed_data_node_ids.add(data_node_id)
+                    edge(data_node_id, "-->", f"upstream{label_suffix}", source_id)
 
             for deliverable, _ in deliverable_data_for_node(graph, node):
                 ref = deliverable_data_ref(deliverable)
+                data_refs.setdefault(ref["id"], ref)
                 data_node_id = declare_data(
-                    ref["key"],
+                    ref["id"],
                     data_label(
                         ref["data_type"],
                         ref["location"],
@@ -1008,21 +1054,55 @@ def build_workflow_topology(
                         locator=ref["locator"],
                     ),
                 )
-                lines.append(f"  {source_id} -->|declares| {data_node_id}")
+                data_node_ids.add(data_node_id)
+                produced_data_node_ids.add(data_node_id)
+                edge(source_id, "-->", "downstream", data_node_id)
+
+        if data_node_ids:
+            start_id = declare_boundary("start")
+            end_id = declare_boundary("end")
+            stream_entry_data = consumed_data_node_ids - produced_data_node_ids
+            stream_exit_data = produced_data_node_ids - consumed_data_node_ids
+            for data_node_id in sorted(stream_entry_data):
+                edge(start_id, "-->", "", data_node_id)
+            if not stream_entry_data:
+                for node in process_nodes:
+                    if node not in control_incoming:
+                        node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                        node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
+                        edge(start_id, "-->", "", node_id)
+            for data_node_id in sorted(stream_exit_data):
+                edge(data_node_id, "-->", "", end_id)
+            if not stream_exit_data:
+                for node in process_nodes:
+                    if node not in control_outgoing:
+                        node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                        node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
+                        edge(node_id, "-->", "", end_id)
+        elif process_nodes:
+            start_id = declare_boundary("start")
+            end_id = declare_boundary("end")
+            for node in process_nodes:
+                node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
+                if node not in control_incoming:
+                    edge(start_id, "-->", "", node_id)
+                if node not in control_outgoing:
+                    edge(node_id, "-->", "", end_id)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
         for dep in sorted(graph.objects(module, WF.criticalDep), key=str):
             if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
                 dep_id = declare(dep, "module")
-                lines.append(f"  {dep_id} -->|criticalDep| {module_id}")
+                edge(dep_id, "-->", "criticalDep", module_id)
 
     for milestone in filter_scope(subjects_of_type(graph, WF.Milestone), scope):
         milestone_id = declare(milestone, "milestone")
         phase = graph.value(milestone, WF.milestoneOf)
         if isinstance(phase, URIRef) and (scope is None or workflow_scope(phase) == scope):
             phase_id = mermaid_id("phase", phase) if include_internal else declare(phase, "phase")
-            lines.append(f"  {milestone_id} -.->|milestoneOf| {phase_id}")
+            edge(milestone_id, "-.->", "milestoneOf", phase_id)
 
     lines.extend(
         [
@@ -1036,13 +1116,37 @@ def build_workflow_topology(
             "  classDef validation fill:#fee2e2,stroke:#dc2626,color:#111827",
             "  classDef group fill:#f5f5f4,stroke:#78716c,color:#111827",
             "  classDef workflowRef fill:#e0f2fe,stroke:#0284c7,color:#111827",
-            "  classDef branch fill:#fff7ed,stroke:#ea580c,color:#111827",
             "  classDef module fill:#f0fdf4,stroke:#15803d,color:#111827",
             "  classDef milestone fill:#fdf2f8,stroke:#db2777,color:#111827",
             "  classDef data fill:#f8fafc,stroke:#475569,stroke-dasharray: 4 3,color:#111827",
+            "  classDef boundary fill:#ffffff,stroke:#111827,color:#111827",
             "```",
         ]
     )
+    if include_internal and data_refs:
+        lines.extend(
+            [
+                "",
+                "## Data Node Index",
+                "",
+                "| Id | Type | Location | Locator | Detail |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for ref in sorted(data_refs.values(), key=lambda item: item["id"]):
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{markdown_cell(ref.get('id'), 72)}`",
+                        markdown_cell(ref.get("data_type"), 24),
+                        f"`{markdown_cell(ref.get('location'), 72)}`",
+                        f"`{markdown_cell(ref.get('locator'), 72)}`",
+                        markdown_cell(ref.get("detail"), 96),
+                    ]
+                )
+                + " |"
+            )
     return "\n".join(lines)
 
 
