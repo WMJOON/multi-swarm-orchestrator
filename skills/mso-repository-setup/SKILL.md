@@ -9,8 +9,8 @@ description: >
   (1) 새 프로젝트의 MSO init,
   (2) 기존 프로젝트를 agent-context/ 구조로 마이그레이션,
   (3) work-memory 디렉토리 트리 추가,
-  (4) work-memory hook(auditlog·worklog·work-memory-check) 을 .claude/ 또는
-      .codex/ 에 copy-form 으로 자동 등록 (--hook, --provider).
+  (4) work-memory hook(auditlog·worklog·work-memory-check) 과 scaffold-check hook 을
+      .claude/ 또는 .codex/ 에 copy-form 으로 자동 등록 (--hook, --provider).
 ---
 
 # MSO Repository Setup
@@ -40,11 +40,13 @@ python scripts/init.py --target /path/to/project [--name "Project Name"]
 ├── .gitignore                        # agent-context/work-memory/.zvec/ 등록
 ├── .claude/                          # --hook --provider claude 시 (copy-form)
 │   ├── settings.json                 # Stop·PreCompact·PostToolUse hook 등록
-│   └── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh 사본
+│   ├── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh · scaffold-check.sh · sf_node.py 사본
+│   └── references/schemas/           # scaffold index schema 사본
 └── .codex/                           # --hook --provider codex 시 (copy-form)
     ├── config.toml                   # Stop·PreCompact·SessionStart hook 등록
     ├── hooks.json                    # empty compatibility file
-    └── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh 사본
+    ├── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh · scaffold-check.sh · sf_node.py 사본
+    └── references/schemas/           # scaffold index schema 사본
 ```
 
 hook 자동 등록 (디렉토리 부트스트랩과 별개 단계):
@@ -61,7 +63,8 @@ hook 스크립트를 `.claude/scripts/` 로 **복사**하고 settings.json 은 `
 상대로만 참조한다(절대·스킬 경로를 커밋 파일에 박지 않음 → CI·타 머신 이식성).
 Codex는 `.codex/scripts/` 로 복사하고 `.codex/config.toml`을 `$CODEX_PROJECT_DIR`
 기준으로 등록한다. `.codex/hooks.json`은 중복 실행 방지를 위해 빈 compatibility 파일로
-함께 갱신한다.
+함께 갱신한다. `scaffold-check.sh` 는 `sf_node.py validate/inventory` 를 실행해
+index SSOT 와 실제 디렉토리의 불일치를 non-blocking guardrail 로 알린다.
 `--worthy-paths` 는 "결정 가치 있는" 경로(`WM_WORTHY_PATHS`)를 주입한다(미지정 시 기본값).
 
 ## Flow (다음 진입점)
@@ -75,8 +78,9 @@ mso-repository-setup
         ├──> [trigger: "워크플로우 설계"] →  mso-workflow-design
         │                                       (workflow TTL ABox · legacy YAML · validation/decision 노드)
         │
-        ├──> [harness: logging]          →  hook → work-memory/auditlog
+        ├──> [harness: logging/check]    →  hook → work-memory/auditlog
         │                                       work-memory/worklog
+        │                                       scaffold index/inventory check
         │
         ├──> [decision/trigger]          →  mso-work-memory
         │                                       (track-record → insight-record)
@@ -91,8 +95,8 @@ mso-repository-setup
 | `init.py --target <path>` | 표준 디렉토리 + 최소 index.yaml/schema.yaml 생성 |
 | `init.py --check <path>` | 기존 구조가 표준에 부합하는지 진단 |
 | `init.py --migrate <path>` | 기존 평탄 구조 → agent-context/ 이전 (단순 mv) |
-| `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop·PreCompact·PostToolUse) 등록 (copy-form) |
-| `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook 을 `.codex/scripts/` 로 복사하고 config.toml(Stop·PreCompact worklog + SessionStart check) 등록, hooks.json은 빈 compatibility 파일로 갱신 (copy-form) |
+| `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook + scaffold-check hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop·PreCompact·PostToolUse·SessionStart) 등록 (copy-form) |
+| `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook + scaffold-check hook 을 `.codex/scripts/` 로 복사하고 config.toml(Stop·PreCompact worklog + SessionStart check) 등록, hooks.json은 빈 compatibility 파일로 갱신 (copy-form) |
 
 ## Non-Goals
 
@@ -100,7 +104,8 @@ mso-repository-setup
 - workflow yaml 작성 → `mso-workflow-design`
 - 작업 기록 (entry CRUD, 검색, 그래프) → `mso-work-memory`
 - hook **스크립트 구현**(auditlog/worklog/work-memory-check 의 로직) → `mso-work-memory`.
-  본 스킬은 그 스크립트를 프로젝트 `.claude/` 또는 `.codex/` 로 복사·등록만 한다(`--hook`).
+- scaffold index/inventory guardrail 구현(scaffold-check.sh, sf_node.py, schema) → `mso-scaffold-design`.
+  본 스킬은 해당 스크립트와 의존 파일을 프로젝트 `.claude/` 또는 `.codex/` 로 복사·등록만 한다(`--hook`).
   단 provider 설정 디렉토리 변경은 HITL 대상이므로 사용자 승인 후 실행.
 
 ## Dependencies

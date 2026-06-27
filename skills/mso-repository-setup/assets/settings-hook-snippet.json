@@ -1,6 +1,7 @@
 {
   "//": "수동 등록 참고용. 보통은 init.py --hook <path> [--worthy-paths \"...\"] 로 자동 생성한다.",
   "//copy-form": "hook 스크립트는 .claude/scripts/ 로 복사하고 경로는 $CLAUDE_PROJECT_DIR 상대로만 참조 — 커밋/CI/타 머신 이식성.",
+  "//scaffold-check": "scaffold-check.sh 는 sf_node.py validate/inventory 로 index SSOT 와 실제 디렉토리 불일치를 non-blocking 으로 알린다. 강제 실패가 필요하면 MSO_SCAFFOLD_CHECK_STRICT=1 을 설정한다.",
   "//worthy-paths": "WM_WORTHY_PATHS 는 프로젝트의 '결정 가치 있는' 경로. 아래는 오케스트레이션 레이어 기본값 — 프로젝트에 맞게 바꾸고 data/·build 등 고빈도 경로는 뺀다.",
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "hooks": {
@@ -11,6 +12,10 @@
           {
             "type": "command",
             "command": "WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" python3 \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/auditlog.py"
+          },
+          {
+            "type": "command",
+            "command": "MSO_SCAFFOLD_TOOL=\"$CLAUDE_PROJECT_DIR/.claude/scripts/sf_node.py\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/scaffold-check.sh"
           }
         ]
       }
@@ -44,6 +49,10 @@
           {
             "type": "command",
             "command": "WM_WORTHY_PATHS=\"agent-context/workflow agent-context/index .claude CLAUDE.md\" WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/work-memory-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "MSO_SCAFFOLD_TOOL=\"$CLAUDE_PROJECT_DIR/.claude/scripts/sf_node.py\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/scaffold-check.sh"
           }
         ]
       },
@@ -53,6 +62,10 @@
           {
             "type": "command",
             "command": "WM_WORTHY_PATHS=\"agent-context/workflow agent-context/index .claude CLAUDE.md\" WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/work-memory-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "MSO_SCAFFOLD_TOOL=\"$CLAUDE_PROJECT_DIR/.claude/scripts/sf_node.py\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/scaffold-check.sh"
           }
         ]
       }

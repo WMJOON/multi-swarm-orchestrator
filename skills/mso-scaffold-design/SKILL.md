@@ -64,6 +64,32 @@ description: >
 > - **검증**: `sf_node.py validate <root_index.yaml>` (sub_index 자동 해석).
 > - **트리 확인**: `sf_node.py tree <root_index.yaml>` 로 계층 평탄화 결과 확인.
 
+## Directory Refinement Protocol
+
+디렉토리 정리는 파일 이동으로 끝나지 않는다. 완료 조건은 **index SSOT와 실제 파일시스템 트리가 다시 일치하는 것**이다.
+
+1. 변경할 Artifact/Directory boundary를 workflow와 consumer fit 관점에서 결정한다.
+2. 디렉토리 추가·삭제·이동·rename을 수행한다.
+3. 같은 변경 안에서 `agent-context/index/index.yaml` 또는 root `index.yaml`을 갱신한다.
+4. `sf_node.py validate <index.yaml>`로 schema와 계층 참조를 검증한다.
+5. `sf_node.py inventory <index.yaml>`로 선언과 실제 트리를 대조한다.
+6. workflow TTL이 경로를 참조한다면 영향 받은 `wf:directory`/deliverable reference를 검토한다.
+7. observability가 필요한 repository는 graph view를 재생성한다.
+8. 구조 결정은 work-memory `user-decision` 또는 `agent-decision`으로 기록한다.
+
+`validate`와 `inventory`가 모두 통과해야 디렉토리 정리가 완료된 것으로 본다.
+
+### Hook Guardrail
+
+`hooks/scaffold-check.sh`는 provider hook 또는 수동 실행에서 `validate + inventory`를 함께 실행한다. 기본은 non-blocking warning이며, `MSO_SCAFFOLD_CHECK_STRICT=1`을 설정하면 mismatch 때 exit 1로 차단할 수 있다.
+
+```bash
+bash skills/mso-scaffold-design/hooks/scaffold-check.sh
+MSO_SCAFFOLD_CHECK_STRICT=1 bash skills/mso-scaffold-design/hooks/scaffold-check.sh
+```
+
+`mso-repository-setup scripts/init.py --hook`은 이 hook과 `sf_node.py`/schema 사본을 `.claude/` 또는 `.codex/` provider scripts에 함께 복사한다.
+
 ### 계층 참조 (Monorepo/Subrepo 패턴)
 
 대형 모듈은 자체 `sub_index` 로 내부 구조를 자율 선언할 수 있다.
@@ -200,6 +226,8 @@ modules:
 **Workflow 정합성 (먼저 확인)**
 - [ ] 디렉토리를 삭제·rename한 경우 workflow YAML 의 `directories.path` 를 검색했는가
 - [ ] 새 디렉토리를 workflow 가 참조할 예정이면 index.yaml 에 먼저 등록했는가
+- [ ] 디렉토리 정리 후 `sf_node.py validate <index.yaml>` 를 통과했는가
+- [ ] 디렉토리 정리 후 `sf_node.py inventory <index.yaml>` 에서 선언과 실제 트리가 일치하는가
 
 **Scaffold 구조 (스킬이 검증)**
 - [ ] `project.name`, `id`, `owner`, `updated` 모두 존재
@@ -226,4 +254,5 @@ pyyaml>=6.0
 - **YAML 문법 스펙**: [references/yaml-schema.md](references/yaml-schema.md)
 - **네이밍 컨벤션 예시**: [assets/conventions-example.md](assets/conventions-example.md)
 - **검증 스크립트**: [scripts/sf_node.py](scripts/sf_node.py)
+- **Scaffold guardrail hook**: [hooks/scaffold-check.sh](hooks/scaffold-check.sh)
 - **템플릿**: [assets/index-template.yaml](assets/index-template.yaml)

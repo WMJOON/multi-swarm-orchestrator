@@ -255,7 +255,8 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-HOOK_FILES = ["auditlog.py", "worklog.py", "work-memory-check.sh"]
+WORK_MEMORY_HOOK_FILES = ["auditlog.py", "worklog.py", "work-memory-check.sh"]
+SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 
 
 def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "claude"):
@@ -282,6 +283,13 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         for p in _hook_candidates():
             print(f"    {p}")
         return 1
+    scaffold_skill_dir = _find_scaffold_skill_dir()
+    if scaffold_skill_dir is None:
+        print("[ERROR] mso-scaffold-design/ 를 찾을 수 없습니다.")
+        print("  탐색 경로:")
+        for p in _scaffold_skill_candidates():
+            print(f"    {p}")
+        return 1
 
     provider_dir_name = ".claude" if provider == "claude" else ".codex"
     settings_name = "settings.json" if provider == "claude" else "hooks.json"
@@ -290,12 +298,35 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     scripts_dst = target / provider_dir_name / "scripts"
     scripts_dst.mkdir(parents=True, exist_ok=True)
     copied = []
-    for fn in HOOK_FILES:
+    for fn in WORK_MEMORY_HOOK_FILES:
         src = hooks_dir / fn
         if src.exists():
             shutil.copy(src, scripts_dst / fn)
             (scripts_dst / fn).chmod(0o755)
             copied.append(fn)
+    scaffold_hooks_dir = scaffold_skill_dir / "hooks"
+    for fn in SCAFFOLD_HOOK_FILES:
+        src = scaffold_hooks_dir / fn
+        if src.exists():
+            shutil.copy(src, scripts_dst / fn)
+            (scripts_dst / fn).chmod(0o755)
+            copied.append(fn)
+
+    # scaffold-check.sh uses sf_node.py and its schema directory. Copy them into
+    # the provider dir so project hooks do not depend on the original skill path.
+    sf_src = scaffold_skill_dir / "scripts" / "sf_node.py"
+    schema_src = scaffold_skill_dir / "references" / "schemas"
+    if sf_src.exists():
+        shutil.copy(sf_src, scripts_dst / "sf_node.py")
+        (scripts_dst / "sf_node.py").chmod(0o755)
+        copied.append("sf_node.py")
+    if schema_src.exists():
+        schema_dst = target / provider_dir_name / "references" / "schemas"
+        if schema_dst.exists():
+            shutil.rmtree(schema_dst)
+        schema_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(schema_src, schema_dst)
+        copied.append("scaffold schemas")
 
     # 2) hook 설정 구성 — 경로는 provider project dir 상대로만 참조
     settings_path = target / provider_dir_name / settings_name
@@ -326,11 +357,13 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     auditlog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/auditlog.py"
     worklog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/worklog.py"
     check_cmd = f"{prefix}{worthy_env}{workmem_env} bash {pd}/{provider_dir_name}/scripts/work-memory-check.sh"
+    scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
 
     # Claude Code supports tool-level PostToolUse audit logging. Codex hook examples
     # available locally are lifecycle-only, so Codex keeps worklog/check hooks only.
     if provider == "claude":
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
+        _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", scaffold_cmd, "scaffold-check.sh")
 
         # Stop / PreCompact — worklog 스냅샷 (파일 기록 — stdout 전달 의미론과 무관)
         for event, matcher in (("Stop", None), ("PreCompact", "auto")):
@@ -338,6 +371,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         # work-memory-check 넛지 — provider 간 공통으로 확인된 SessionStart 에만 둔다.
         for matcher in ("compact", "resume"):
             _upsert_hook(hooks_section, "SessionStart", matcher, check_cmd, "work-memory-check.sh")
+            _upsert_hook(hooks_section, "SessionStart", matcher, scaffold_cmd, "scaffold-check.sh")
 
     settings_path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
@@ -348,12 +382,13 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             target / provider_dir_name / "config.toml",
             worklog_cmd=worklog_cmd,
             check_cmd=check_cmd,
+            scaffold_cmd=scaffold_cmd,
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog + Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check)")
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check/scaffold-check)")
     else:
-        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check)")
+        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check/scaffold-check)")
         print(f"  + .codex/hooks.json 갱신 (empty compatibility)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
@@ -379,6 +414,20 @@ def _hook_candidates() -> list[Path]:
 
 def _find_hooks_dir() -> Path | None:
     return next((p for p in _hook_candidates() if (p / "auditlog.py").exists()), None)
+
+
+def _scaffold_skill_candidates() -> list[Path]:
+    """mso-scaffold-design/ 탐색 후보 목록."""
+    skill_root = Path(__file__).parent.parent.parent  # repository/skills/
+    return [
+        skill_root / "mso-scaffold-design",
+        Path.home() / ".claude" / "skills" / "mso-scaffold-design",
+        Path.home() / ".codex" / "skills" / "mso-scaffold-design",
+    ]
+
+
+def _find_scaffold_skill_dir() -> Path | None:
+    return next((p for p in _scaffold_skill_candidates() if (p / "scripts" / "sf_node.py").exists()), None)
 
 
 def _upsert_hook(hooks: dict, event: str, matcher: str | None, command: str, marker: str):
@@ -430,8 +479,8 @@ def _ensure_codex_hooks_feature(text: str) -> str:
     return prefix + text
 
 
-def _upsert_codex_config_toml(config_path: Path, worklog_cmd: str, check_cmd: str):
-    """Add a managed MSO work-memory hook block to .codex/config.toml."""
+def _upsert_codex_config_toml(config_path: Path, worklog_cmd: str, check_cmd: str, scaffold_cmd: str):
+    """Add a managed MSO hook block to .codex/config.toml."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     text = _remove_managed_block(text, "MSO_WORK_MEMORY_HOOKS")
@@ -466,6 +515,11 @@ type = "command"
 command = {_toml_literal(check_cmd)}
 statusMessage = "Checking MSO work-memory reminders"
 
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(scaffold_cmd)}
+statusMessage = "Checking MSO scaffold inventory"
+
 [[hooks.SessionStart]]
 matcher = "resume"
 
@@ -473,6 +527,11 @@ matcher = "resume"
 type = "command"
 command = {_toml_literal(check_cmd)}
 statusMessage = "Checking MSO work-memory reminders"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(scaffold_cmd)}
+statusMessage = "Checking MSO scaffold inventory"
 # END MSO_WORK_MEMORY_HOOKS
 """
     config_path.write_text(text + block, encoding="utf-8")

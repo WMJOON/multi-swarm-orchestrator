@@ -12,6 +12,7 @@ v0.3.0 "5-skill pack 전면 교체"에서 폐기됐다. 본 테스트는 현재 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -165,3 +166,72 @@ def test_repository_setup_bootstraps_alternatives_record_dir(tmp_path):
     schema = (target / "agent-context" / "work-memory" / "schema.yaml").read_text()
     assert "alternatives-record" in schema
     assert "boundary" in schema
+
+
+def test_scaffold_design_declares_directory_refinement_guardrail():
+    """디렉토리 정리는 self-workflow 가 아니라 scaffold skill + hook guardrail 이 담당한다."""
+    skill_md = (SKILLS / "mso-scaffold-design" / "SKILL.md").read_text()
+    hook_path = SKILLS / "mso-scaffold-design" / "hooks" / "scaffold-check.sh"
+    assert "Directory Refinement Protocol" in skill_md
+    assert "scaffold-check.sh" in skill_md
+    assert hook_path.exists()
+    assert os.access(hook_path, os.X_OK)
+
+
+def test_repository_setup_hook_installs_scaffold_guardrail_for_codex(tmp_path):
+    """--hook --provider codex 가 scaffold-check + sf_node + schema 를 self-contained 로 복사한다."""
+    init_py = SKILLS / "mso-repository-setup" / "scripts" / "init.py"
+    target = tmp_path / "project"
+    subprocess.run(
+        [sys.executable, str(init_py), "--target", str(target), "--name", "T", "--id", "t"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [sys.executable, str(init_py), "--hook", str(target), "--provider", "codex"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert (target / ".codex" / "scripts" / "scaffold-check.sh").exists()
+    assert (target / ".codex" / "scripts" / "sf_node.py").exists()
+    assert (target / ".codex" / "references" / "schemas" / "project.schema.yaml").exists()
+    config = (target / ".codex" / "config.toml").read_text()
+    assert "scaffold-check.sh" in config
+    assert "sf_node.py" in config
+
+
+def test_scaffold_check_strict_detects_index_inventory_mismatch(tmp_path):
+    """strict 모드에서는 index 에 없는 directory 가 생기면 hook 이 실패한다."""
+    init_py = SKILLS / "mso-repository-setup" / "scripts" / "init.py"
+    target = tmp_path / "project"
+    subprocess.run(
+        [sys.executable, str(init_py), "--target", str(target), "--name", "T", "--id", "t"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (target / "unexpected-dir").mkdir()
+    hook_path = SKILLS / "mso-scaffold-design" / "hooks" / "scaffold-check.sh"
+    sf_node = SKILLS / "mso-scaffold-design" / "scripts" / "sf_node.py"
+    env = os.environ.copy()
+    env.update(
+        {
+            "CODEX_PROJECT_DIR": str(target),
+            "MSO_SCAFFOLD_TOOL": str(sf_node),
+            "MSO_SCAFFOLD_CHECK_STRICT": "1",
+        }
+    )
+    result = subprocess.run(
+        ["bash", str(hook_path)],
+        cwd=target,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    output = result.stdout + result.stderr
+    assert "[scaffold-check]" in output
+    assert "unexpected-dir" in output
