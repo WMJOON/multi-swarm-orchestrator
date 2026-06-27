@@ -14,9 +14,10 @@
 2. [Project Schema](#2-project-schema)
 3. [Module Schema](#3-module-schema)
 4. [Subdir Schema](#4-subdir-schema)
-5. [References (Cross-module)](#5-references-cross-module)
-6. [Structural Invariants](#6-structural-invariants)
-7. [Full Example](#7-full-example)
+5. [Data Registry](#5-data-registry)
+6. [References (Cross-module)](#6-references-cross-module)
+7. [Structural Invariants](#7-structural-invariants)
+8. [Full Example](#8-full-example)
 
 ---
 
@@ -29,9 +30,12 @@ project:
 modules:
   - # — module.schema.yaml —
   - # — ...
+
+data_registry:
+  - # — data_registry.schema.yaml, optional —
 ```
 
-`project:` 1개, `modules:` 1개 이상.
+`project:` 1개, `modules:` 1개 이상. `data_registry:`는 optional이다.
 
 ---
 
@@ -83,7 +87,39 @@ subdirs:
 
 ---
 
-## 5. References (Cross-module)
+## 5. Data Registry
+
+`data_registry`는 workflow와 graph observability가 참조하는 Data source의 registry다. 기존 `modules[].path`와 `subdirs[].path`는 `data_type=local_file` data source로 자동 해석되지만, API/MCP/database처럼 디렉토리가 아닌 source나 더 안정적인 id가 필요한 source는 명시 등록한다.
+
+```yaml
+data_registry:
+  - id: content.draft
+    data_type: local_file
+    locator: content/draft/
+    description: 작성 중인 글 초안
+
+  - id: google.calendar.primary
+    data_type: mcp
+    locator: mcp://google-calendar/calendars/primary
+    description: 기본 Google Calendar MCP resource
+
+  - id: trend.api.search
+    data_type: api
+    locator: https://api.example.com/trends/search
+```
+
+Graph observability는 raw locator를 직접 location으로 쓰지 않고 `location: index:<id>`로 표시한다. 실제 경로·엔드포인트는 `locator:` 줄로 분리해 보여준다.
+
+지원 data_type 권장값:
+
+- `local_file`
+- `api`
+- `mcp`
+- `database`
+- `object_store`
+- `external_url`
+
+## 6. References (Cross-module)
 
 ```yaml
 references:
@@ -98,7 +134,7 @@ references:
 
 ---
 
-## 6. Structural Invariants (스킬이 검증)
+## 7. Structural Invariants (스킬이 검증)
 
 - `project.name`, `id`, `description`, `owner`, `updated` 모두 존재
 - 모든 모듈에 `id`, `path`, `description` 존재
@@ -106,12 +142,14 @@ references:
 - 모든 `path` (모듈·subdir) 는 `/` 로 끝남
 - 동일 모듈 내 `subdirs[].path` unique
 - `references.consumes` / `provides_to` 가 가리키는 모듈 id 가 존재
+- `data_registry[].id` 는 data registry 내 unique여야 한다
+- `data_registry[].locator` 는 data_type에 맞는 실제 접근자다
 
 > 그 외 네이밍 패턴·prefix·role enum 은 **프로젝트 컨벤션**으로 관리한다.
 
 ---
 
-## 7. Full Example
+## 8. Full Example
 
 ```yaml
 project:

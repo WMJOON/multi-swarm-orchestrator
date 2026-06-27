@@ -15,6 +15,7 @@ v0.4.3은 workflow sub-graph에서 산출물/입력 데이터 흐름을 볼 수 
 - GitHub Mermaid 호환성을 위해 classic flowchart shape를 사용한다: task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]`.
 - workflow별 sub-graph에서 phase membership은 `hasNode` edge 대신 Mermaid `subgraph` containment로 렌더링한다.
 - Mermaid label에 `id: <node-id>`를 노출해 사용자가 특정 node id를 지목해 수정 요청할 수 있게 한다.
+- Data node location은 raw path 대신 index 기반 `location: index:<data-id>`를 우선 사용하고, 실제 path/API/MCP resource는 `locator:`로 분리한다.
 - repository-level topology는 계속 phase/module/milestone 중심으로 유지하고, Data node 흐름은 workflow별 sub-graph에서만 펼친다.
 - 이후 API endpoint, MCP resource, database table 같은 비파일 입력/출력도 같은 Data node 계층으로 확장한다.
 

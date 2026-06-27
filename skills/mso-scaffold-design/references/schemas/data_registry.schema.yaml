@@ -1,0 +1,35 @@
+type: data_registry
+description: "`data_registry[]` 항목 — workflow/observability가 참조하는 Data source를 규정."
+
+fields:
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: "Data source 고유 식별자. Mermaid graph에는 `location: index:<id>`로 표시된다."
+
+  data_type:
+    required: true
+    type: enum
+    values: [local_file, api, mcp, database, object_store, external_url]
+    description: "Data source 종류. local_file 외 API/MCP/database 등을 같은 registry에서 관리한다."
+
+  locator:
+    required: true
+    type: string
+    description: "실제 위치 또는 접근자. local_file은 repo-root 기준 path, api는 endpoint, mcp는 resource URI 등."
+
+  description:
+    required: false
+    type: string
+    description: "Data source 설명."
+
+  owner:
+    required: false
+    type: string
+    description: "관리 주체 또는 책임 모듈."
+
+structural_invariants:
+  - "id 는 data_registry[] 내 unique"
+  - "data_type=local_file 인 경우 locator 는 repo-root 기준 path 로 해석"
+  - "workflow graph 에서는 raw locator 대신 index:<id> 를 location 으로 표시"

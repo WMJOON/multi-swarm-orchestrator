@@ -23,6 +23,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 try:
+    import yaml
+except ImportError:  # pragma: no cover - optional index registry support
+    yaml = None
+
+try:
     from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
     from rdflib.namespace import OWL, XSD
 except ImportError as exc:  # pragma: no cover - user environment guard
@@ -209,6 +214,124 @@ def display_id(term: URIRef | Literal | str) -> str:
         if parts:
             return parts[-1]
     return local_name(term)
+
+
+def normalize_locator(value: str) -> str:
+    text = re.sub(r"/+", "/", value.replace("\\", "/").strip())
+    if text.startswith("./"):
+        text = text[2:]
+    while text.startswith("../"):
+        text = text[3:]
+    if text and value.endswith("/") and not text.endswith("/"):
+        text = f"{text}/"
+    return text
+
+
+def locator_lookup_keys(value: str) -> set[str]:
+    normalized = normalize_locator(value)
+    keys = {value.strip(), normalized}
+    if normalized.endswith("/"):
+        keys.add(normalized.rstrip("/"))
+    elif normalized:
+        keys.add(f"{normalized}/")
+    return {key for key in keys if key}
+
+
+def load_yaml_file(path: Path) -> dict[str, Any]:
+    if yaml is None or not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+    except Exception:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def index_candidates(root: Path) -> list[Path]:
+    return [
+        root / "agent-context" / "index" / "index.yaml",
+        root / "index.yaml",
+    ]
+
+
+def register_data_ref(
+    registry: dict[str, dict[str, str]],
+    *,
+    data_id_value: str,
+    data_type: str,
+    locator: str,
+    source: str,
+) -> None:
+    locator_norm = normalize_locator(locator)
+    if not data_id_value or not locator_norm:
+        return
+    ref = {
+        "id": data_id_value,
+        "data_type": data_type or "local_file",
+        "locator": locator_norm,
+        "source": source,
+    }
+    for key in locator_lookup_keys(locator_norm):
+        registry.setdefault(key, ref)
+
+
+def load_data_registry(root: Path) -> dict[str, dict[str, str]]:
+    registry: dict[str, dict[str, str]] = {}
+    index_path = next((path for path in index_candidates(root) if path.exists()), None)
+    if index_path is None:
+        return registry
+
+    doc = load_yaml_file(index_path)
+    for item in doc.get("data_registry", []) or []:
+        if not isinstance(item, dict):
+            continue
+        data_id_value = str(item.get("id") or "").strip()
+        data_type = str(item.get("data_type") or item.get("type") or "local_file").strip()
+        locator = str(
+            item.get("locator")
+            or item.get("location")
+            or item.get("path")
+            or item.get("endpoint")
+            or item.get("resource")
+            or ""
+        ).strip()
+        register_data_ref(
+            registry,
+            data_id_value=data_id_value,
+            data_type=data_type,
+            locator=locator,
+            source="data_registry",
+        )
+
+    for module in doc.get("modules", []) or []:
+        if not isinstance(module, dict):
+            continue
+        module_id = str(module.get("id") or "").strip()
+        module_path = str(module.get("path") or "").strip()
+        register_data_ref(
+            registry,
+            data_id_value=module_id,
+            data_type=str(module.get("data_type") or "local_file"),
+            locator=module_path,
+            source="module",
+        )
+        for subdir in module.get("subdirs", []) or []:
+            if not isinstance(subdir, dict):
+                continue
+            sub_path = str(subdir.get("path") or "").strip()
+            sub_id = str(subdir.get("id") or "").strip()
+            if not sub_id:
+                sub_slug = normalize_locator(sub_path).strip("/").replace("/", ".")
+                sub_id = f"{module_id}.{sub_slug}" if sub_slug else module_id
+            register_data_ref(
+                registry,
+                data_id_value=sub_id,
+                data_type=str(subdir.get("data_type") or "local_file"),
+                locator=f"{module_path}{sub_path}",
+                source="subdir",
+            )
+    return registry
 
 
 def literal_text(value: Literal | str) -> str:
@@ -586,14 +709,78 @@ def data_id(key: str) -> str:
     return f"data_{cleaned}_{digest}"
 
 
-def data_label(data_type: str, location: str, detail: str | None = None, node_id: str | None = None) -> str:
+def data_label(
+    data_type: str,
+    location: str,
+    detail: str | None = None,
+    node_id: str | None = None,
+    locator: str | None = None,
+) -> str:
     parts = ["DATA"]
     if node_id:
         parts.append(f"id: {node_id}")
     parts.extend([f"type: {data_type}", f"location: {location}"])
+    if locator:
+        parts.append(f"locator: {locator}")
     if detail:
         parts.append(f"detail: {detail}")
     return mermaid_label("\\n".join(parts), 160)
+
+
+def data_ref_for_locator(
+    data_registry: dict[str, dict[str, str]],
+    *,
+    data_type: str,
+    locator: str,
+) -> dict[str, str]:
+    normalized = normalize_locator(locator)
+    for key in locator_lookup_keys(locator):
+        ref = data_registry.get(key)
+        if ref:
+            return {
+                "key": f"index:{ref['id']}",
+                "id": ref["id"],
+                "data_type": ref.get("data_type", data_type),
+                "location": f"index:{ref['id']}",
+                "locator": ref.get("locator", normalize_locator(locator)),
+            }
+    prefix_ref: dict[str, str] | None = None
+    prefix_len = -1
+    for ref in data_registry.values():
+        ref_locator = ref.get("locator", "")
+        if not ref_locator:
+            continue
+        prefix = ref_locator if ref_locator.endswith("/") else f"{ref_locator}/"
+        if normalized.startswith(prefix) and len(prefix) > prefix_len:
+            prefix_ref = ref
+            prefix_len = len(prefix)
+    if prefix_ref:
+        return {
+            "key": f"index:{prefix_ref['id']}",
+            "id": prefix_ref["id"],
+            "data_type": prefix_ref.get("data_type", data_type),
+            "location": f"index:{prefix_ref['id']}",
+            "locator": prefix_ref.get("locator", normalized),
+        }
+    fallback_id = f"{data_type}:{normalized}"
+    return {
+        "key": fallback_id,
+        "id": fallback_id,
+        "data_type": data_type,
+        "location": normalized,
+        "locator": normalized,
+    }
+
+
+def deliverable_data_ref(deliverable: str) -> dict[str, str]:
+    key = f"deliverable:{deliverable}"
+    return {
+        "key": key,
+        "id": key,
+        "data_type": "local_file",
+        "location": "declared deliverable",
+        "locator": "",
+    }
 
 
 def directory_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str, str]]:
@@ -634,15 +821,23 @@ def data_edge_labels(role: str) -> tuple[bool, bool, str | None]:
     return produces, consumes, suffix
 
 
-def data_keys(graph: Graph, scope: str) -> set[str]:
+def data_keys(graph: Graph, scope: str, data_registry: dict[str, dict[str, str]] | None = None) -> set[str]:
+    data_registry = data_registry or {}
     keys: set[str] = set()
     for node in workflow_node_terms(graph, scope):
-        keys.update(key for _, _, key in directory_data_for_node(graph, node))
-        keys.update(key for _, key in deliverable_data_for_node(graph, node))
+        for _, path, _ in directory_data_for_node(graph, node):
+            keys.add(data_ref_for_locator(data_registry, data_type="local_file", locator=path)["key"])
+        for deliverable, _ in deliverable_data_for_node(graph, node):
+            keys.add(deliverable_data_ref(deliverable)["key"])
     return keys
 
 
-def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
+def build_workflow_topology(
+    graph: Graph,
+    scope: str | None = None,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    data_registry = data_registry or {}
     intro = "> Generated from MSO workflow TTL. Edit the TTL source, then regenerate this view."
     if scope:
         intro = f"> Sub-graph for workflow scope `{scope}`. Generated from MSO workflow TTL."
@@ -784,18 +979,34 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                     target_id = declare(target, target_prefix, target_cls, target_suffix, target_shape)
                     lines.append(f"  {source_id} -->|next| {target_id}")
 
-            for role, path, key in directory_data_for_node(graph, node):
-                data_node_id = declare_data(key, data_label("local_file", path, node_id=key))
+            for role, path, _ in directory_data_for_node(graph, node):
+                ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+                data_node_id = declare_data(
+                    ref["key"],
+                    data_label(
+                        ref["data_type"],
+                        ref["location"],
+                        node_id=ref["id"],
+                        locator=ref["locator"],
+                    ),
+                )
                 produces, consumes, label_suffix = data_edge_labels(role)
                 if produces:
                     lines.append(f"  {source_id} -->|produces{label_suffix}| {data_node_id}")
                 if consumes:
                     lines.append(f"  {data_node_id} -->|consumes{label_suffix}| {source_id}")
 
-            for deliverable, key in deliverable_data_for_node(graph, node):
+            for deliverable, _ in deliverable_data_for_node(graph, node):
+                ref = deliverable_data_ref(deliverable)
                 data_node_id = declare_data(
-                    key,
-                    data_label("local_file", "declared deliverable", deliverable, node_id=key),
+                    ref["key"],
+                    data_label(
+                        ref["data_type"],
+                        ref["location"],
+                        deliverable,
+                        node_id=ref["id"],
+                        locator=ref["locator"],
+                    ),
                 )
                 lines.append(f"  {source_id} -->|declares| {data_node_id}")
 
@@ -835,7 +1046,11 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def build_workflow_subgraph_index(graph: Graph) -> str:
+def build_workflow_subgraph_index(
+    graph: Graph,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    data_registry = data_registry or {}
     scopes = workflow_scopes(graph)
     if not scopes:
         return "_No scoped workflow sub-graphs found. Regenerate TTL ABoxes with scoped workflow URIs._"
@@ -849,7 +1064,7 @@ def build_workflow_subgraph_index(graph: Graph) -> str:
     for scope in scopes:
         phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
         node_terms = workflow_node_terms(graph, scope)
-        data_count = len(data_keys(graph, scope))
+        data_count = len(data_keys(graph, scope, data_registry))
         file_name = f"{scope}.md"
         lines.append(
             f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
@@ -1026,16 +1241,17 @@ def main() -> int:
         return 2
 
     graph = parse_graph(ttl_paths)
+    data_registry = load_data_registry(args.root.resolve())
     output_dir.mkdir(parents=True, exist_ok=True)
     ssot_report, missing_ttl_count = build_workflow_ssot_report(workflow_dir)
 
-    write_markdown(output_dir / "workflow-topology.md", "MSO Repository Workflow Topology", build_workflow_topology(graph))
-    write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph))
+    write_markdown(output_dir / "workflow-topology.md", "MSO Repository Workflow Topology", build_workflow_topology(graph, data_registry=data_registry))
+    write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
     for scope in workflow_scopes(graph):
         write_markdown(
             output_dir / "workflow-subgraphs" / f"{scope}.md",
             f"MSO Workflow Sub-Graph — {scope_label(scope)}",
-            build_workflow_topology(graph, scope=scope),
+            build_workflow_topology(graph, scope=scope, data_registry=data_registry),
         )
     write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))

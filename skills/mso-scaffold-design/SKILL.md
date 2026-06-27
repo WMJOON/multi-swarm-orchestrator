@@ -2,10 +2,12 @@
 name: mso-scaffold-design
 version: "0.4.3"
 description: >
-  Repository Scaffolding(directory/reference/convention)을 규정한다.
+  Repository Scaffolding(directory/reference/data source/convention)을 규정한다.
   프로젝트 루트의 `index.yaml` 을 정본(SSOT)으로 두고, 모듈·서브디렉토리·
   키 파일·모듈 간 참조를 선언적으로 관리한다. mso-workflow-design가
-  workflow를 규정할 때 `directories.path` 로 참조하는 ground truth다.
+  workflow를 규정할 때 `directories.path` 로 참조하는 ground truth이며,
+  graph observability가 Data node location을 `index:<id>`로 표시할 수 있도록
+  local_file/API/MCP/database data source registry를 제공한다.
   노드 단위 스키마(references/schemas/)와 sf_node.py 툴로 validate·scaffold를 지원한다.
   다음 상황에서 사용한다:
   (1) 새 프로젝트의 디렉토리 구조 초기 설계,
@@ -41,7 +43,7 @@ description: >
 
 | 스킬 | 책임 | 산출물 |
 |------|------|--------|
-| **mso-scaffold-design** | Repository 구조(directory/reference/convention) 규정 | `index.yaml` (정본) |
+| **mso-scaffold-design** | Repository 구조(directory/reference/data source/convention) 규정 | `index.yaml` (정본) |
 | **mso-workflow-design** | scaffold 위 동작 시퀀스 규정 | `workflow/*-workflow-00.yaml` |
 
 ### 의존 규칙
@@ -143,6 +145,7 @@ python sf_node.py inventory ../../../../index.yaml
 | `project.schema.yaml` | top-level `project:` | name, id, description, owner, updated |
 | `module.schema.yaml` | `modules[]` | id, path, subdirs/key_files/references |
 | `subdir.schema.yaml` | `subdirs[]` | path, role, artifacts |
+| `data_registry.schema.yaml` | `data_registry[]` | id, data_type, locator |
 
 ### sf_node.py 사용법
 

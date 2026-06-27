@@ -17,9 +17,9 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 관측 결과는 기본적으로 `agent-context/observability/graph/` 아래에 둔다.
 - 시각적으로 보는 1차 대상은 workflow graph다.
 - workflow별 sub-graph에서는 `wf:directory`/`wf:deliverables`를 Data node로 파생해 `task --produces--> data --consumes--> task` 데이터 흐름을 함께 보여준다.
-- Data node는 `data_type`과 `location`을 가진 관측 노드다. 현재 TTL에서는 `wf:directory`를 `data_type=local_file`, `location=<dirPath>`로 해석하며, 이후 API endpoint나 MCP resource도 같은 Data node 계층으로 확장할 수 있다.
+- Data node는 `data_type`과 `location`을 가진 관측 노드다. 현재 TTL에서는 `wf:directory`를 `data_type=local_file`로 해석하되, `agent-context/index/index.yaml` 또는 `index.yaml`의 `data_registry`/module/subdir registry를 통해 `location=index:<data-id>`로 렌더링한다. 실제 path/API endpoint/MCP resource는 `locator`로 분리한다.
 - Mermaid shape는 GitHub Markdown 호환성을 우선해 classic flowchart syntax를 쓴다. task는 `["label"]`, data는 `(["label"])`, decision은 `{{"label"}}`, oracle은 `[/"label"\]`로 렌더링한다.
-- Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Data node는 `local_file:<path>`/`deliverable:<name>` key를 쓴다.
+- Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Data node는 index data id(`content.draft` 등)를 우선 사용하고 미등록 Data만 `local_file:<path>`/`deliverable:<name>` key를 쓴다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
 - 분석 목적은 “어떤 흐름에서 실패가 많았는가”, “어떤 workflow가 자주 실행되는가”, “에이전트가 어디서 반복/이탈/재시도하는가”를 드러내는 것이다.
 
@@ -119,7 +119,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 - `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
 - `wf:hasNode`, `wf:hasWorkflowRef`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 decision 내부 분기 구조로 표현한다.
 - `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨기고, workflow별 sub-graph에서 phase 내부 실행 흐름과 조건부 feedback loop로 표현한다.
-- `wf:directory`는 Data node로 파생한다. 현재는 `data_type=local_file`, `location=dirPath`로 표시한다. `role: output`은 `produces`, `role: input/reference`는 `consumes`, `role: input_output`은 양방향 edge로 표현한다.
+- `wf:directory`는 Data node로 파생한다. 현재는 `data_type=local_file`, `location=index:<data-id>`, `locator=<dirPath>`로 표시한다. index에 없으면 raw local_file fallback key를 쓴다. `role: output`은 `produces`, `role: input/reference`는 `consumes`, `role: input_output`은 양방향 edge로 표현한다.
 - `wf:deliverables`는 output-only Data node로 표시한다. 현재는 `data_type=local_file`, `location=declared deliverable`, `detail=<deliverable>`로 렌더링하고 `declares` edge로 연결한다. 이후 schema가 확장되면 `data_type=api`/`mcp`/`database` 등으로 같은 표현을 재사용한다.
 - 전체 repository graph는 `workflow-topology.md`에 생성하고, workflow scope별 sub-graph는 `workflow-subgraphs/`에 분리한다.
 - sub-graph 분리는 scoped URI(`phase/<workflow>/<phase>`, `node/<workflow>/<node>`)를 기준으로 한다. unscoped legacy TTL은 repository graph에는 보이지만 workflow별 sub-graph에는 포함되지 않는다.

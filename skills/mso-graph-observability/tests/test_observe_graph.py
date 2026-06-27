@@ -114,12 +114,72 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '(["DATA\\nid: local_file:generated/results/\\ntype: local_file\\nlocation: generated/results/"])' in markdown
+    assert '(["DATA\\nid: local_file:generated/results/\\ntype: local_file\\nlocation: generated/results/\\nlocator: generated/results/"])' in markdown
     assert "-->|produces|" in markdown
     assert "-->|consumes|" in markdown
     assert "DATA\\nid: deliverable:report.md\\ntype: local_file\\nlocation: declared deliverable\\ndetail: report.md" in markdown
     assert "-->|declares|" in markdown
     assert "classDef data" in markdown
+
+
+def test_workflow_subgraph_uses_index_data_ids_for_locations():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/producer"]
+    phase = wf["phase/demo/p"]
+    graph.add((producer, RDF.type, wf.Step))
+    graph.add((producer, RDF.type, wf.Node))
+    graph.add((producer, RDFS.label, Literal("Produce")))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+    graph.add((phase, wf.hasNode, producer))
+
+    out_dir = BNode()
+    graph.add((producer, wf.directory, out_dir))
+    graph.add((out_dir, wf.dirRole, Literal("output")))
+    graph.add((out_dir, wf.dirPath, Literal("content/draft/")))
+
+    data_registry = {
+        "content/draft/": {
+            "id": "content.draft",
+            "data_type": "local_file",
+            "locator": "content/draft/",
+            "source": "subdir",
+        }
+    }
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", data_registry=data_registry)
+
+    assert "id: content.draft" in markdown
+    assert "location: index:content.draft" in markdown
+    assert "locator: content/draft/" in markdown
+    assert "-->|produces|" in markdown
+
+
+def test_data_registry_uses_longest_locator_prefix():
+    data_registry = {
+        "agent-context/": {
+            "id": "agent-context",
+            "data_type": "local_file",
+            "locator": "agent-context/",
+            "source": "module",
+        },
+        "agent-context/work-memory/": {
+            "id": "agent-context.work-memory",
+            "data_type": "local_file",
+            "locator": "agent-context/work-memory/",
+            "source": "subdir",
+        },
+    }
+
+    ref = observe_graph.data_ref_for_locator(
+        data_registry,
+        data_type="local_file",
+        locator="agent-context/work-memory/track-record/user-decision/",
+    )
+
+    assert ref["id"] == "agent-context.work-memory"
+    assert ref["location"] == "index:agent-context.work-memory"
 
 
 def test_workflow_subgraph_renders_oracle_shape():

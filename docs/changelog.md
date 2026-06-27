@@ -13,6 +13,7 @@
 | Mermaid shape | GitHub 호환 classic flowchart syntax 기준으로 task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]` 적용 |
 | Phase containment | workflow별 subgraph에서 `hasNode` edge 대신 Mermaid `subgraph` 블록으로 phase membership 표현 |
 | Node id labels | Mermaid label에 `id: <node-id>`를 표시해 사용자가 특정 workflow node를 지목할 수 있도록 개선 |
+| Data registry location | Data node `location`을 raw path 대신 `index:<data-id>`로 우선 표시하고 실제 접근자는 `locator`로 분리 |
 | `workflow-subgraph-index.md` | workflow별 Data node 개수 컬럼 추가 |
 | 전체 버전 | README와 SKILL.md version field를 v0.4.3으로 정렬 |
 
