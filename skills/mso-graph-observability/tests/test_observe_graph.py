@@ -58,8 +58,10 @@ def test_workflow_topology_renders_execution_edges():
 
     assert "-->|next|" in markdown
     assert "-.->|on: rejected|" in markdown
-    assert '["A\\nStep"]' in markdown
-    assert '{{"Gate\\nDecision"}}' in markdown
+    assert "subgraph phase_phase_demo_p_" in markdown
+    assert "-->|hasNode|" not in markdown
+    assert '["A\\nid: a\\nStep"]' in markdown
+    assert '{{"Gate\\nid: d\\nDecision"}}' in markdown
 
 
 def test_repository_topology_hides_internal_node_flow():
@@ -112,10 +114,10 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '(["DATA\\ntype: local_file\\nlocation: generated/results/"])' in markdown
+    assert '(["DATA\\nid: local_file:generated/results/\\ntype: local_file\\nlocation: generated/results/"])' in markdown
     assert "-->|produces|" in markdown
     assert "-->|consumes|" in markdown
-    assert "DATA\\ntype: local_file\\nlocation: declared deliverable\\ndetail: report.md" in markdown
+    assert "DATA\\nid: deliverable:report.md\\ntype: local_file\\nlocation: declared deliverable\\ndetail: report.md" in markdown
     assert "-->|declares|" in markdown
     assert "classDef data" in markdown
 
@@ -138,7 +140,7 @@ def test_workflow_subgraph_renders_oracle_shape():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '["Task\\nStep"]' in markdown
-    assert '[/"Quality Gate\\nOracle"\\]' in markdown
+    assert '["Task\\nid: task\\nStep"]' in markdown
+    assert '[/"Quality Gate\\nid: oracle\\nOracle"\\]' in markdown
     assert "-->|next|" in markdown
     assert "classDef oracle" in markdown

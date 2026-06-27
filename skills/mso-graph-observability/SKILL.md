@@ -19,6 +19,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - workflow별 sub-graph에서는 `wf:directory`/`wf:deliverables`를 Data node로 파생해 `task --produces--> data --consumes--> task` 데이터 흐름을 함께 보여준다.
 - Data node는 `data_type`과 `location`을 가진 관측 노드다. 현재 TTL에서는 `wf:directory`를 `data_type=local_file`, `location=<dirPath>`로 해석하며, 이후 API endpoint나 MCP resource도 같은 Data node 계층으로 확장할 수 있다.
 - Mermaid shape는 GitHub Markdown 호환성을 우선해 classic flowchart syntax를 쓴다. task는 `["label"]`, data는 `(["label"])`, decision은 `{{"label"}}`, oracle은 `[/"label"\]`로 렌더링한다.
+- Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Data node는 `local_file:<path>`/`deliverable:<name>` key를 쓴다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
 - 분석 목적은 “어떤 흐름에서 실패가 많았는가”, “어떤 workflow가 자주 실행되는가”, “에이전트가 어디서 반복/이탈/재시도하는가”를 드러내는 것이다.
 
@@ -64,7 +65,7 @@ agent-context/observability/graph/
 - `README.md` — 생성 결과 인덱스
 - `workflow-topology.md` — repository 전체 Phase, Module, Milestone 중심 topology graph
 - `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
-- `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph. phase/node/process edge와 함께 Data node 기반 input/output 흐름을 표시
+- `workflow-subgraphs/<workflow-scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph. phase는 Mermaid `subgraph` 컨테이너로, node/process edge는 실행 흐름으로, Data node는 input/output 흐름으로 표시
 - `workflow-ssot-report.md` — legacy workflow YAML 대비 sibling `*.abox.ttl` 누락 여부. YAML-only workflow는 관측에서 제외됨을 경고
 - `class-layer-map.md` — workflow ontology class hierarchy
 - `property-map.md` — workflow ontology property domain/range map
@@ -116,7 +117,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 ## Notes
 
 - `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
-- `wf:hasNode`, `wf:hasWorkflowRef`, `wf:hasBranch`는 workflow별 sub-graph에서만 내부 구조 관계로 표현한다.
+- `wf:hasNode`, `wf:hasWorkflowRef`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 decision 내부 분기 구조로 표현한다.
 - `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨기고, workflow별 sub-graph에서 phase 내부 실행 흐름과 조건부 feedback loop로 표현한다.
 - `wf:directory`는 Data node로 파생한다. 현재는 `data_type=local_file`, `location=dirPath`로 표시한다. `role: output`은 `produces`, `role: input/reference`는 `consumes`, `role: input_output`은 양방향 edge로 표현한다.
 - `wf:deliverables`는 output-only Data node로 표시한다. 현재는 `data_type=local_file`, `location=declared deliverable`, `detail=<deliverable>`로 렌더링하고 `declares` edge로 연결한다. 이후 schema가 확장되면 `data_type=api`/`mcp`/`database` 등으로 같은 표현을 재사용한다.

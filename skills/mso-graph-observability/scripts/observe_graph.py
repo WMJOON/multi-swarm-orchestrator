@@ -203,6 +203,14 @@ def workflow_scope(term: URIRef | Literal | str) -> str | None:
     return None
 
 
+def display_id(term: URIRef | Literal | str) -> str:
+    for prefix in ("phase/", "node/"):
+        parts = scoped_local_parts(term, prefix)
+        if parts:
+            return parts[-1]
+    return local_name(term)
+
+
 def literal_text(value: Literal | str) -> str:
     return str(value).replace("\n", " ").strip()
 
@@ -245,11 +253,20 @@ def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
     return f'{node_id}["{label}"]'
 
 
+def mermaid_node_label(graph: Graph, term: URIRef, suffix: str = "") -> str:
+    label = preferred_label(graph, term)
+    node_id = display_id(term)
+    parts = [label]
+    if node_id and node_id != label:
+        parts.append(f"id: {node_id}")
+    if suffix:
+        parts.append(suffix)
+    return mermaid_label("\\n".join(parts), 140)
+
+
 def mermaid_node(graph: Graph, term: URIRef, prefix: str, suffix: str = "", shape: str = "rect") -> str:
     node_id = mermaid_id(prefix, term)
-    label = mermaid_label(preferred_label(graph, term))
-    if suffix:
-        label = mermaid_label(f"{label}\\n{suffix}")
+    label = mermaid_node_label(graph, term, suffix)
     return mermaid_shape(node_id, label, shape)
 
 
@@ -569,11 +586,14 @@ def data_id(key: str) -> str:
     return f"data_{cleaned}_{digest}"
 
 
-def data_label(data_type: str, location: str, detail: str | None = None) -> str:
-    parts = ["DATA", f"type: {data_type}", f"location: {location}"]
+def data_label(data_type: str, location: str, detail: str | None = None, node_id: str | None = None) -> str:
+    parts = ["DATA"]
+    if node_id:
+        parts.append(f"id: {node_id}")
+    parts.extend([f"type: {data_type}", f"location: {location}"])
     if detail:
         parts.append(f"detail: {detail}")
-    return mermaid_label("\\n".join(parts), 112)
+    return mermaid_label("\\n".join(parts), 160)
 
 
 def directory_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str, str]]:
@@ -682,11 +702,30 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
         return "node", None, "", "rect"
 
     phases = filter_scope(subjects_of_type(graph, WF.Phase), scope)
-    for phase in phases:
-        status = first_literal(graph, phase, WF.status)
-        phase_cls = f"status_{status}" if status in {"completed", "active", "pending"} else "phase"
-        suffix = f"Phase / {status}" if status else "Phase"
-        declare(phase, "phase", phase_cls, suffix)
+    if include_internal:
+        for phase in phases:
+            phase_id = mermaid_id("phase", phase)
+            status = first_literal(graph, phase, WF.status)
+            suffix = f"Phase / {status}" if status else "Phase"
+            label = mermaid_node_label(graph, phase, suffix)
+            if phase_id not in declared:
+                lines.append(f'  subgraph {phase_id}["{label}"]')
+                lines.append("    direction LR")
+                declared.add(phase_id)
+                for node in sorted(graph.objects(phase, WF.hasNode), key=str):
+                    if isinstance(node, URIRef) and workflow_scope(node) == scope:
+                        node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                        declare(node, node_prefix, node_cls, node_suffix, node_shape)
+                for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
+                    if isinstance(ref, URIRef) and workflow_scope(ref) == scope:
+                        declare(ref, "workflowref", "workflowRef", "WorkflowRef")
+                lines.append("  end")
+    else:
+        for phase in phases:
+            status = first_literal(graph, phase, WF.status)
+            phase_cls = f"status_{status}" if status in {"completed", "active", "pending"} else "phase"
+            suffix = f"Phase / {status}" if status else "Phase"
+            declare(phase, "phase", phase_cls, suffix)
 
     if include_internal:
         node_classes = [
@@ -715,21 +754,11 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
         declare(milestone, "milestone", "milestone", suffix)
 
     for phase in phases:
-        phase_id = declare(phase, "phase")
+        phase_id = mermaid_id("phase", phase) if include_internal else declare(phase, "phase")
         for dep in sorted(graph.objects(phase, WF.dependsOn), key=str):
             if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
-                dep_id = declare(dep, "phase")
+                dep_id = mermaid_id("phase", dep) if include_internal else declare(dep, "phase")
                 lines.append(f"  {dep_id} -->|dependsOn| {phase_id}")
-        if include_internal:
-            for node in sorted(graph.objects(phase, WF.hasNode), key=str):
-                if isinstance(node, URIRef) and workflow_scope(node) == scope:
-                    node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
-                    node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
-                    lines.append(f"  {phase_id} -->|hasNode| {node_id}")
-            for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
-                if isinstance(ref, URIRef) and workflow_scope(ref) == scope:
-                    ref_id = declare(ref, "workflowref", "workflowRef", "WorkflowRef")
-                    lines.append(f"  {phase_id} -->|hasWorkflowRef| {ref_id}")
 
     if include_internal:
         for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
@@ -756,7 +785,7 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                     lines.append(f"  {source_id} -->|next| {target_id}")
 
             for role, path, key in directory_data_for_node(graph, node):
-                data_node_id = declare_data(key, data_label("local_file", path))
+                data_node_id = declare_data(key, data_label("local_file", path, node_id=key))
                 produces, consumes, label_suffix = data_edge_labels(role)
                 if produces:
                     lines.append(f"  {source_id} -->|produces{label_suffix}| {data_node_id}")
@@ -764,7 +793,10 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
                     lines.append(f"  {data_node_id} -->|consumes{label_suffix}| {source_id}")
 
             for deliverable, key in deliverable_data_for_node(graph, node):
-                data_node_id = declare_data(key, data_label("local_file", "declared deliverable", deliverable))
+                data_node_id = declare_data(
+                    key,
+                    data_label("local_file", "declared deliverable", deliverable, node_id=key),
+                )
                 lines.append(f"  {source_id} -->|declares| {data_node_id}")
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
@@ -778,7 +810,7 @@ def build_workflow_topology(graph: Graph, scope: str | None = None) -> str:
         milestone_id = declare(milestone, "milestone")
         phase = graph.value(milestone, WF.milestoneOf)
         if isinstance(phase, URIRef) and (scope is None or workflow_scope(phase) == scope):
-            phase_id = declare(phase, "phase")
+            phase_id = mermaid_id("phase", phase) if include_internal else declare(phase, "phase")
             lines.append(f"  {milestone_id} -.->|milestoneOf| {phase_id}")
 
     lines.extend(

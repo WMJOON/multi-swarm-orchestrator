@@ -11,6 +11,8 @@
 | `mso-graph-observability` | workflow별 subgraph에 Data node와 input/output edge 추가 |
 | `observe_graph.py` | `wf:directory`를 `data_type=local_file`, `location=dirPath`로 해석. output은 `produces`, input/reference는 `consumes`, input_output은 양방향 |
 | Mermaid shape | GitHub 호환 classic flowchart syntax 기준으로 task `["label"]`, data `(["label"])`, decision `{{"label"}}`, oracle `[/"label"\]` 적용 |
+| Phase containment | workflow별 subgraph에서 `hasNode` edge 대신 Mermaid `subgraph` 블록으로 phase membership 표현 |
+| Node id labels | Mermaid label에 `id: <node-id>`를 표시해 사용자가 특정 workflow node를 지목할 수 있도록 개선 |
 | `workflow-subgraph-index.md` | workflow별 Data node 개수 컬럼 추가 |
 | 전체 버전 | README와 SKILL.md version field를 v0.4.3으로 정렬 |
 
