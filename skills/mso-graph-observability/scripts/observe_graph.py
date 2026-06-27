@@ -1816,10 +1816,6 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "- [workflow-views/](workflow-views/) — task workflow spine view per scoped workflow",
             "- [artifact-stream-views/](artifact-stream-views/) — artifact supply-chain view per scoped workflow",
             "- [artifact-stream-report.md](artifact-stream-report.md) — produced/unconsumed artifacts and external input checklist",
-            "- [resource-stream-views/](resource-stream-views/) — deprecated v0.4.0 compatibility alias for artifact-stream-views",
-            "- [resource-stream-report.md](resource-stream-report.md) — deprecated v0.4.0 compatibility alias for artifact-stream-report.md",
-            "- [data-stream-views/](data-stream-views/) — deprecated v0.4.0 compatibility alias for artifact-stream-views",
-            "- [data-stream-report.md](data-stream-report.md) — deprecated v0.4.0 compatibility alias for artifact-stream-report.md",
             "- [workflow-ssot-report.md](workflow-ssot-report.md)",
             "- [class-layer-map.md](class-layer-map.md)",
             "- [property-map.md](property-map.md)",
@@ -1842,16 +1838,6 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
     )
 
 
-def deprecated_alias_body(canonical_name: str, body: str) -> str:
-    return "\n".join(
-        [
-            f"> Deprecated v0.4.0 compatibility alias. Use `{canonical_name}` instead.",
-            "",
-            body,
-        ]
-    )
-
-
 def main() -> int:
     args = parse_args()
     workflow_dir, output_dir, ttl_paths = resolve_paths(args)
@@ -1869,16 +1855,6 @@ def main() -> int:
     write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
     artifact_report = build_artifact_stream_report(graph, data_registry=data_registry)
     write_markdown(output_dir / "artifact-stream-report.md", "MSO Artifact Stream Report", artifact_report)
-    write_markdown(
-        output_dir / "resource-stream-report.md",
-        "MSO Resource Stream Report",
-        deprecated_alias_body("artifact-stream-report.md", artifact_report),
-    )
-    write_markdown(
-        output_dir / "data-stream-report.md",
-        "MSO Data Stream Report",
-        deprecated_alias_body("artifact-stream-report.md", artifact_report),
-    )
     for scope in workflow_scopes(graph):
         write_markdown(
             output_dir / "workflow-subgraphs" / f"{scope}.md",
@@ -1901,26 +1877,6 @@ def main() -> int:
             f"MSO Artifact Stream View — {scope_label(scope)}",
             artifact_stream_view,
         )
-        write_markdown(
-            output_dir / "resource-stream-views" / f"{scope}.md",
-            f"MSO Resource Stream View — {scope_label(scope)}",
-            deprecated_alias_body(f"artifact-stream-views/{scope}.md", artifact_stream_view),
-        )
-        write_markdown(
-            output_dir / "data-stream-views" / f"{scope}.md",
-            f"MSO Data Stream View — {scope_label(scope)}",
-            deprecated_alias_body(f"artifact-stream-views/{scope}.md", artifact_stream_view),
-        )
-    write_markdown(
-        output_dir / "resource-stream-views" / "README.md",
-        "Deprecated Resource Stream View Alias",
-        "Deprecated v0.4.0 compatibility alias. Use `../artifact-stream-views/` instead.",
-    )
-    write_markdown(
-        output_dir / "data-stream-views" / "README.md",
-        "Deprecated Data Stream View Alias",
-        "Deprecated v0.4.0 compatibility alias. Use `../artifact-stream-views/` instead.",
-    )
     write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
     write_markdown(output_dir / "property-map.md", "MSO Workflow Property Map", build_property_map(graph))

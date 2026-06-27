@@ -11,7 +11,8 @@
 | `mso-graph-observability` | workflow별 subgraph에 Artifact node와 input/output edge 추가 |
 | `observe_graph.py` | `wf:directory`를 `data_type=local_file` Artifact로 해석. 명시 `artifact_type`이 없으면 locator/detail/role/data_type으로 knowledge_store, event_store, local_database, document, media를 추론 |
 | Deliverables | `wf:deliverables`는 detail 기반으로 Artifact Type 추론. `*.ttl`, `*.json`, `*.yaml` 등 구조화 산출물은 machine-native artifact로 분류 가능 |
-| View separation | workflow별 `integrated`, `workflow`, `artifact-stream` view 생성. `workflow` view는 공유 Artifact id 기반 task spine으로 `((start)) --next--> task --next--> ((end))`를 표시. `resource-stream-*`와 `data-stream-*`는 deprecated alias |
+| View separation | workflow별 `integrated`, `workflow`, `artifact-stream` view 생성. `workflow` view는 공유 Artifact id 기반 task spine으로 `((start)) --next--> task --next--> ((end))`를 표시 |
+| Observability output cleanup | 중복 파일을 줄이기 위해 `resource-stream-*`, `data-stream-*` deprecated alias 출력을 제거하고 canonical `artifact-stream-*`만 생성 |
 | Artifact stream report | `artifact-stream-report.md` 추가. produced-but-unconsumed artifact를 cross-workflow artifact, missing agent consumer, terminal/review document, terminal media deliverable 후보로 분류 |
 | Consumer fit heuristic | Markdown/document Artifact에 Agent/User 소비자가 없으면 생략하거나 JSONL/TTL/SQLite 같은 machine-native Artifact로 구조화하도록 report와 문서에 기준 추가 |
 | Directory boundary | 디렉토리는 workflow topology와 Artifact 소비 관계에서 파생되는 구현 경계로 보고, 소비자가 없는 Artifact boundary는 축소/병합 후보로 판단 |

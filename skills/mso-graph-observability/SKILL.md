@@ -16,7 +16,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - workflow topology 입력은 TTL ABox뿐이다. YAML은 legacy migration 입력일 뿐 Mermaid topology 생성 입력으로 쓰지 않는다.
 - 관측 결과는 기본적으로 `agent-context/observability/graph/` 아래에 둔다.
 - 시각적으로 보는 1차 대상은 workflow graph다.
-- workflow별 관측 뷰는 세 가지로 분리한다. `artifact-stream`은 `artifact --upstream--> task --downstream--> artifact` supply chain을, `workflow`는 그 stream에서 파생한 `((start)) --next--> task --next--> ((end))` task spine을, `integrated`는 둘을 한 화면에 함께 보여준다. `resource-stream`/`data-stream` 출력은 v0.4.0 호환 alias다.
+- workflow별 관측 뷰는 세 가지로 분리한다. `artifact-stream`은 `artifact --upstream--> task --downstream--> artifact` supply chain을, `workflow`는 그 stream에서 파생한 `((start)) --next--> task --next--> ((end))` task spine을, `integrated`는 둘을 한 화면에 함께 보여준다.
 - 같은 target Artifact id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
 - MSO는 Data Pipeline이 아니라 Artifact Supply Chain을 관측한다. Artifact는 repository가 관리하는 단위이고, Data는 Artifact 내부 표현 방식이며, Knowledge는 Data가 해석되었을 때 얻어지는 의미 계층이다.
 - Artifact node는 `artifact_type`, `data_type`, `location`을 가진 관측 노드다. `data_type`은 저장/접근 매체(local_file/api/mcp/database 등), `artifact_type`은 소비/운영 의미를 뜻한다.
@@ -78,7 +78,6 @@ agent-context/observability/graph/
 - `workflow-views/<workflow-scope>.md` — 특정 workflow 하나의 workflow view. Artifact node는 숨기고 stream에서 파생한 task spine만 표시
 - `artifact-stream-views/<workflow-scope>.md` — 특정 workflow 하나의 artifact stream view. `upstream`/`downstream` supply chain만 표시
 - `artifact-stream-report.md` — workflow별 produced-but-unconsumed artifact와 external input checklist. 산출물 과잉, missing consumer, cross-workflow boundary 후보를 점검
-- `resource-stream-views/<workflow-scope>.md`, `resource-stream-report.md`, `data-stream-views/<workflow-scope>.md`, `data-stream-report.md` — v0.4.0 호환 deprecated alias
 - `workflow-ssot-report.md` — legacy workflow YAML 대비 sibling `*.abox.ttl` 누락 여부. YAML-only workflow는 관측에서 제외됨을 경고
 - `class-layer-map.md` — workflow ontology class hierarchy
 - `property-map.md` — workflow ontology property domain/range map

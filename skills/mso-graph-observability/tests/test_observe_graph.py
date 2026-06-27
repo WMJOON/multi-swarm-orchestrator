@@ -418,16 +418,10 @@ def test_exporter_writes_resource_stream_and_deprecated_alias_outputs(tmp_path):
     output_dir = tmp_path / "agent-context" / "observability" / "graph"
     assert (output_dir / "artifact-stream-report.md").exists()
     assert (output_dir / "artifact-stream-views" / "demo.md").exists()
-    assert (output_dir / "resource-stream-report.md").exists()
-    assert (output_dir / "resource-stream-views" / "demo.md").exists()
-    assert (output_dir / "data-stream-report.md").exists()
-    assert (output_dir / "data-stream-views" / "demo.md").exists()
-    assert "Deprecated v0.4.0 compatibility alias" in (output_dir / "resource-stream-report.md").read_text(
-        encoding="utf-8"
-    )
-    assert "Deprecated v0.4.0 compatibility alias" in (output_dir / "data-stream-report.md").read_text(
-        encoding="utf-8"
-    )
+    assert not (output_dir / "resource-stream-report.md").exists()
+    assert not (output_dir / "resource-stream-views").exists()
+    assert not (output_dir / "data-stream-report.md").exists()
+    assert not (output_dir / "data-stream-views").exists()
 
 
 def test_workflow_subgraph_renders_oracle_shape():
