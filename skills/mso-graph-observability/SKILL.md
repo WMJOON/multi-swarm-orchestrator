@@ -91,6 +91,10 @@ agent-context/observability/graph/
 python skills/mso-graph-observability/scripts/observe_graph.py --root .
 ```
 
+> **자동 실행**: 프로젝트의 PostToolUse hook(`workflow-check.sh`)이 `*.abox.ttl` 저장 시
+> `validate_abox.py` 검증 후 자동으로 위 CLI를 실행한다. 수동 실행은 ABox 없이 스크립트를 직접
+> 테스트하거나 YAML만 수정했을 때만 필요하다.
+
 예제 TTL만 대상으로 테스트할 때:
 
 ```bash
