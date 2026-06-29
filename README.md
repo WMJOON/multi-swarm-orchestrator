@@ -1,14 +1,24 @@
-# Multi-Swarm Orchestrator (MSO) v0.5.1
+# Multi-Swarm Orchestrator (MSO) v0.6.0
 
 MSO는 **Repository Execution System**이다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 repository 구조, workflow topology, artifact supply chain, work-memory를 선언하고 관측해 에이전트가 같은 작업을 이어갈 수 있는 실행 환경을 만든다.
 
-변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다. README에는 minor update(v0.X) 이상의 운영 의미만 요약하고, patch release(v0.X.Y) 상세는 CHANGELOG에만 기록한다.
+변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다. README에는 현재 버전에서 사용자가 바로 알아야 할 업데이트만 요약한다.
 
 ## Current Version Update
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
+
+### v0.6.0 (2026-06-30) — Oracle Graph (self-improvement stratification)
+
+workflow self-improvement loop의 **자기참조**를 차단하는 oracle graph 레이어를 추가했다. skill = sub-workflow이므로 self-improvement를 base workflow에 직접 넣으면 "workflow를 개선하는 행위(`evolves`)"가 자기 자신으로 되돌아오는 순환이 생긴다. 이를 **edge 종류로 base/oracle을 가르고** oracle 행위의 비순환을 SHACL로 강제해 푼다.
+
+- **모델**: 레이어는 노드 type이 아니라 edge로 구분한다. `delegatesTo`(base 수단) ↔ `exercises`(평가 실행, 대상 불변)·`evolves`(개선) (oracle 대상), 경계는 `measures`. 계층은 `workflow --has_subWorkflow--> workflow`(대칭: oracle-workflow = sub-workflow의 meta). `evolves`/`exercises`/`has_subWorkflow` 모두 workflow→workflow.
+- **invariant (SHACL)**: ① **stratification** — `C evolves W`인데 C·W가 `has_subWorkflow*`로 연결(자기/조상/자손)되면 위반 (C∩W=∅). ② **partition** — 한 workflow의 부모는 최대 1개 (형제·oracle disjoint). 실 yaml→TTL emission 데이터로 검출된다.
+- **관측**: `mso-graph-observability`가 `oracle-graph.md`(`evolves`/`exercises`/`has_subWorkflow`/`target` edge-필터 view)를 자동 생성한다.
+
+상세 설계는 [planning/mso-v0.6.0-SPEC-oracle-graph.md](../planning/mso-v0.6.0-SPEC-oracle-graph.md).
 
 ### v0.5.0 (2026-06-29) — Repository Agent-Context Graph Environment
 

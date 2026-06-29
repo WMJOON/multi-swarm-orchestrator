@@ -970,6 +970,30 @@ def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
     return filter_scope(sorted(node_terms, key=str), scope)
 
 
+def build_oracle_view(graph: Graph) -> str:
+    """Oracle layer view (v0.6.0 SPEC §3.3 축 A): evolves/exercises/has_subWorkflow/
+    target edge-필터 subgraph. base(delegatesTo/produces/check/next)와 분리된 관점."""
+    lines = ["```mermaid", "flowchart TD"]
+    seen: set[str] = set()
+
+    def emit(s: URIRef, label: str, o: URIRef) -> None:
+        sid, oid = mermaid_id("o", s), mermaid_id("o", o)
+        for term, nid in ((s, sid), (o, oid)):
+            if nid not in seen:
+                seen.add(nid)
+                lines.append(f'    {nid}["{mermaid_label(preferred_label(graph, term))}"]')
+        lines.append(f"    {sid} -->|{label}| {oid}")
+
+    for pred, label in ((WF.has_subWorkflow, "has_subWorkflow"), (WF.evolves, "evolves"),
+                        (WF.exercises, "exercises"), (WF.target, "target")):
+        for s, o in graph.subject_objects(pred):
+            emit(s, label, o)
+    if not seen:
+        lines.append("    %% (no oracle edges)")
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def data_id(key: str) -> str:
     digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
     cleaned = re.sub(r"[^A-Za-z0-9_]", "_", key)[:40].strip("_")
@@ -2735,6 +2759,9 @@ def main() -> int:
     write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
     artifact_report = build_artifact_stream_report(graph, data_registry=data_registry)
     write_markdown(output_dir / "artifact-stream-report.md", "MSO Artifact Stream Report", artifact_report)
+    # v0.6.0 oracle layer view (SPEC §3.3 축 A): evolves/exercises/has_subWorkflow/target
+    # edge-필터. workflow 간 self-improvement 관계라 scope 무관(전체 graph).
+    write_markdown(output_dir / "oracle-graph.md", "MSO Oracle Graph (self-improvement layer)", build_oracle_view(graph))
     for scope in workflow_scopes(graph):
         flow_dir = output_dir / scope_dir_name(scope)
         write_markdown(

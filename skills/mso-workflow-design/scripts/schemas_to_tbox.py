@@ -147,6 +147,44 @@ wf:hasWorkflowRef a owl:ObjectProperty ; rdfs:label "hasWorkflowRef"@ko ;
     rdfs:domain wf:Phase ; rdfs:range wf:WorkflowRef ;
     rdfs:comment "phase.workflows[] 중 module 보유 항목 → WorkflowRef 노드(구조화). module 없는 doc-ref 는 wf:refersTo Literal 로 유지(dual-rep)."@ko .
 
+# ─── Oracle graph layer (v0.6.0) — workflow 통일 + self-improvement edge ──────
+# [[system]] = wf:Workflow. 레이어(base/oracle)는 edge 종류로 파생(노드 type 없음).
+wf:Workflow a owl:Class ; rdfs:label "Workflow"@ko ;
+    rdfs:comment "graph/sub-graph 단위. sub-workflow(object)·oracle-workflow(meta)=대칭 sub-graph, 역할은 edge 로 파생. tool=leaf executedBy 바인딩. v0.6.0 oracle graph 의 evolve/exercise/target 레인지."@ko .
+wf:has_subWorkflow a owl:ObjectProperty ; rdfs:label "has_subWorkflow"@ko ;
+    rdfs:domain wf:Workflow ; rdfs:range wf:Workflow ;
+    rdfs:comment "workflow 계층 (v0.6.0): 부모 workflow → sub-workflow. 형제는 disjoint(파티션 — SubWorkflowPartitionShape: 노드당 부모 ≤1). evolves stratification 의 조상 체인. hasWorkflowRef(ref file#anchor string) 를 resolve 한 직접 edge."@ko .
+wf:delegatesTo a owl:ObjectProperty ; rdfs:label "delegatesTo"@ko ;
+    rdfs:domain wf:Task ; rdfs:range wf:Workflow ;
+    rdfs:comment "base(수단화): task 가 workflow 에 업무 위임·실행."@ko .
+wf:exercises a owl:ObjectProperty ; rdfs:label "exercises"@ko ;
+    rdfs:range wf:Workflow ;
+    rdfs:comment "oracle(대상): 평가 목적 실행. 대상 불변이라 self-ref 무관."@ko .
+wf:evolves a owl:ObjectProperty ; rdfs:label "evolves"@ko ;
+    rdfs:domain wf:Workflow ; rdfs:range wf:Workflow ;
+    rdfs:comment "oracle-workflow → 대상 workflow 개선/변경. C·W disjoint 강제(EvolvesStratificationShape: 자기/조상/자손 evolve 금지)."@ko .
+wf:target a owl:ObjectProperty ; rdfs:label "target"@ko ;
+    rdfs:domain wf:Eval ; rdfs:range wf:Workflow ;
+    rdfs:comment "oracle: eval 이 가리키는 평가 대상 workflow(참조)."@ko .
+
+# ─── Artifact stream (v0.6.0 SPEC §4①) — supply chain 노드화 ──────────────────
+# artifact 를 노드로 승격(기존 targetArtifact string 과 병존) — orphan artifact 탐지·
+# supply-chain view 용. workflow 가 produces/consumes 하고, eval 이 measures 한다.
+wf:Artifact a owl:Class ; rdfs:label "Artifact"@ko ;
+    rdfs:comment "공급망 산출물 노드. produces/consumes/check/measures 의 대상. 기존 targetArtifact(string)와 병존 — 노드 식별이 필요한 supply-chain/orphan 분석용."@ko .
+wf:produces a owl:ObjectProperty ; rdfs:label "produces"@ko ;
+    rdfs:domain wf:Workflow ; rdfs:range wf:Artifact ;
+    rdfs:comment "base(공급망): workflow 가 artifact 생산."@ko .
+wf:consumes a owl:ObjectProperty ; rdfs:label "consumes"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range wf:Workflow ;
+    rdfs:comment "base(공급망): artifact 가 workflow 입력으로 소비됨."@ko .
+wf:check a owl:ObjectProperty ; rdfs:label "check"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range wf:Task ;
+    rdfs:comment "base(spine): artifact 가 task 입력으로 진입."@ko .
+wf:measures a owl:ObjectProperty ; rdfs:label "measures"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range wf:Eval ;
+    rdfs:comment "경계 전환: artifact/result 가 eval 로 측정됨(base→oracle 진입)."@ko .
+
 # ─── narrative/meta 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────
 wf:Project a owl:Class ; rdfs:label "Project"@ko ;
     rdfs:comment "root-workflow 메타(project:). name/version/description/owner/created. (schema 없음)"@ko .
@@ -392,6 +430,48 @@ wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
                 ?eval a wf:Eval .
                 ?eval (wf:next|wf:hasBranch/wf:gotoNode)* $this .
               }
+            }
+        \"\"\" ;
+    ] .
+
+# ─── Oracle self-improvement constraint (v0.6.0 oracle graph invariant I) ─────
+# evolves 는 system 을 변경하므로 self-reference 위험이 있다(exercises/delegatesTo 는
+# system 불변이라 무관). 행위 주체가 자기 소속 workflow 를 직접 evolves 하면 위반.
+# TODO(v0.6.0): workflowRef 조상 체인까지 확장 — 현재 wf:ref 는 file#anchor 문자열이라
+#   그래프 edge resolve(wf_to_ttl 의 cross-skill 단계)가 선행돼야 transitive 검사가 된다.
+# I-stratification: oracle-workflow C 와 대상 W 는 disjoint 여야 한다.
+# C 가 자기(zero-length)·조상·자손 workflow 를 evolve 하면 위반. has_subWorkflow* 가
+# 양방향(C→W, W→C)으로 연결되면 disjoint 가 아니다. (직접 self-ref 는 zero-length 로 포함.)
+wf:EvolvesStratificationShape a sh:NodeShape ; sh:targetSubjectsOf wf:evolves ;
+    sh:sparql [
+        sh:message "evolves stratification 위반: oracle-workflow 와 evolve 대상은 disjoint 여야 함(자기/조상/자손 evolve 금지)" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this ?w WHERE {
+              $this wf:evolves ?w .
+              { $this wf:has_subWorkflow+ ?w } UNION { ?w wf:has_subWorkflow+ $this }
+            }
+        \"\"\" ;
+    ] .
+wf:EvolvesSelfShape a sh:NodeShape ; sh:targetSubjectsOf wf:evolves ;
+    sh:sparql [
+        sh:message "self-evolve 위반: workflow 가 자기 자신을 evolve 함 (C∩W=∅ 위배, 직접 케이스)" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { $this wf:evolves $this }
+        \"\"\" ;
+    ] .
+# I-partition: has_subWorkflow 형제는 disjoint — 한 workflow 는 부모가 최대 1개.
+# (이로써 W_i/W_j 및 그 oracle C_i/C_j 노드 disjoint 가 강제된다.)
+wf:SubWorkflowPartitionShape a sh:NodeShape ; sh:targetObjectsOf wf:has_subWorkflow ;
+    sh:sparql [
+        sh:message "has_subWorkflow 파티션 위반: 한 workflow 가 둘 이상의 부모에 속함(형제 disjoint 위배)" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this ?p1 ?p2 WHERE {
+              ?p1 wf:has_subWorkflow $this .
+              ?p2 wf:has_subWorkflow $this .
+              FILTER(?p1 != ?p2)
             }
         \"\"\" ;
     ] .

@@ -220,3 +220,45 @@ wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
             }
         """ ;
     ] .
+
+# ─── Oracle self-improvement constraint (v0.6.0 oracle graph invariant I) ─────
+# evolves 는 system 을 변경하므로 self-reference 위험이 있다(exercises/delegatesTo 는
+# system 불변이라 무관). 행위 주체가 자기 소속 workflow 를 직접 evolves 하면 위반.
+# TODO(v0.6.0): workflowRef 조상 체인까지 확장 — 현재 wf:ref 는 file#anchor 문자열이라
+#   그래프 edge resolve(wf_to_ttl 의 cross-skill 단계)가 선행돼야 transitive 검사가 된다.
+# I-stratification: oracle-workflow C 와 대상 W 는 disjoint 여야 한다.
+# C 가 자기(zero-length)·조상·자손 workflow 를 evolve 하면 위반. has_subWorkflow* 가
+# 양방향(C→W, W→C)으로 연결되면 disjoint 가 아니다. (직접 self-ref 는 zero-length 로 포함.)
+wf:EvolvesStratificationShape a sh:NodeShape ; sh:targetSubjectsOf wf:evolves ;
+    sh:sparql [
+        sh:message "evolves stratification 위반: oracle-workflow 와 evolve 대상은 disjoint 여야 함(자기/조상/자손 evolve 금지)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this ?w WHERE {
+              $this wf:evolves ?w .
+              { $this wf:has_subWorkflow+ ?w } UNION { ?w wf:has_subWorkflow+ $this }
+            }
+        """ ;
+    ] .
+wf:EvolvesSelfShape a sh:NodeShape ; sh:targetSubjectsOf wf:evolves ;
+    sh:sparql [
+        sh:message "self-evolve 위반: workflow 가 자기 자신을 evolve 함 (C∩W=∅ 위배, 직접 케이스)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { $this wf:evolves $this }
+        """ ;
+    ] .
+# I-partition: has_subWorkflow 형제는 disjoint — 한 workflow 는 부모가 최대 1개.
+# (이로써 W_i/W_j 및 그 oracle C_i/C_j 노드 disjoint 가 강제된다.)
+wf:SubWorkflowPartitionShape a sh:NodeShape ; sh:targetObjectsOf wf:has_subWorkflow ;
+    sh:sparql [
+        sh:message "has_subWorkflow 파티션 위반: 한 workflow 가 둘 이상의 부모에 속함(형제 disjoint 위배)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this ?p1 ?p2 WHERE {
+              ?p1 wf:has_subWorkflow $this .
+              ?p2 wf:has_subWorkflow $this .
+              FILTER(?p1 != ?p2)
+            }
+        """ ;
+    ] .

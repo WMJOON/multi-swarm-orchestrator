@@ -189,9 +189,10 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
         g.add((current, WF.next, nxt))
 
 
-def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
+def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict, parent_wf: URIRef = None) -> None:
     """phase.workflows[] 투영. module 보유 → 구조화 wf:WorkflowRef 노드,
-    module 없는 doc-ref → wf:refersTo Literal(dual-rep, legacy 템플릿 호환)."""
+    module 없는 doc-ref → wf:refersTo Literal(dual-rep, legacy 템플릿 호환).
+    v0.6.0: module 보유 ref 를 parent workflow → sub-workflow has_subWorkflow 로 resolve."""
     for ref in (phase.get("workflows") or []):
         if not isinstance(ref, dict) or not ref.get("ref"):
             continue
@@ -201,6 +202,12 @@ def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
             g.add((wr, RDF.type, WF.WorkflowRef))
             g.add((wr, WF.ref, Literal(str(ref["ref"]))))
             g.add((wr, WF.module, Literal(str(ref["module"]))))
+            # has_subWorkflow resolve: sub URI = wf:workflow/<module> (sub doc 의
+            # _document_scope=module.id 와 동일 → cross-file merge 시 같은 노드로 결합).
+            if parent_wf is not None:
+                sub_wf = WF["workflow/" + _safe(str(ref["module"]))]
+                g.add((sub_wf, RDF.type, WF.Workflow))
+                g.add((parent_wf, WF.has_subWorkflow, sub_wf))
             if "harness_propagate" in ref:
                 g.add((wr, WF.harnessPropagate, Literal(bool(ref["harness_propagate"]))))
         else:
@@ -298,6 +305,18 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
         # module.id → workflow.id → project.id 순으로 scope를 잡아 URI 병합을 막는다.
         # 메타가 없는 레거시/테스트 문서는 평면 URI를 유지한다.
         scope = _document_scope(doc)
+        # workflow 노드 (v0.6.0 oracle graph): evolves/exercises/has_subWorkflow 의 주체·대상.
+        # 계층은 has_subWorkflow(부모→sub, _project_workflows 에서 resolve) — phase 경유 불필요.
+        wfu = WF["workflow/" + _safe(scope)] if scope else None
+        if wfu is not None:
+            g.add((wfu, RDF.type, WF.Workflow))
+            # oracle-workflow: workflow.evolves/exercises (target workflow id → wf:workflow/<id> URI)
+            _wfmeta = doc.get("workflow") if isinstance(doc.get("workflow"), dict) else {}
+            for _pred, _key in ((WF.evolves, "evolves"), (WF.exercises, "exercises")):
+                _v = _wfmeta.get(_key)
+                for _tgt in ([_v] if isinstance(_v, str) else (_v or [])):
+                    if _tgt:
+                        g.add((wfu, _pred, WF["workflow/" + _safe(str(_tgt))]))
         # ── root 스타일: 최상위 phases: 리스트 ──
         phases = doc.get("phases")
         # name→label / dependencies→dependsOn / workflows→refersTo 는 특수, 나머지 generic.
@@ -311,7 +330,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 g.add((pu, WF.label, Literal(str(ph.get("label") or ph.get("name") or ph["id"]))))
                 for dep in (ph.get("dependencies") or []):
                     g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
-                _project_workflows(g, pu, ph)
+                _project_workflows(g, pu, ph, wfu)
                 _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultDecisionSubject/showWrapper/artifacts/successCriteria
                 _project_nodes(g, ph.get("steps", []), pu, scope)
         # ── module 스타일: 이름붙은 phase 키(discovery/development/...) ──
@@ -323,7 +342,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
                 for dep in (phase.get("dependencies") or []):  # module 스타일도 phase dependsOn 지원
                     g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
-                _project_workflows(g, pu, phase)
+                _project_workflows(g, pu, phase, wfu)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
                 _project_nodes(g, phase.get("steps", []), pu, scope)
 
