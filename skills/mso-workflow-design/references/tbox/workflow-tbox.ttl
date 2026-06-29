@@ -13,7 +13,7 @@
 wf: a owl:Ontology ;
     rdfs:label "MSO Workflow Ontology"@ko ;
     rdfs:comment "schemas/*.yaml 에서 생성된 TBox. ABox 는 이 타입에 정합해야 한다."@ko ;
-    owl:versionInfo "0.3.0" .
+    owl:versionInfo "0.5.0" .
 
 
 # ─── 클래스 (schema type) ──────────────────────────────────────────────────────
@@ -21,13 +21,11 @@ wf:Node a owl:Class ; rdfs:label "Node"@ko ; rdfs:comment "실행 노드 상위.
 wf:Branch a owl:Class ; rdfs:label "Branch"@ko ;
     rdfs:comment "decision 노드의 조건별 분기. decision.branches[] 의 각 항목. on(조건) → goto(이동 node id) 매핑. 생략 시 sequential next. | invariants: on 비어있지 않음 on 은 부모 decision 의 judge_branch_conditions[judge] 에 속해야 함 (SHACL core 불가 → SPARQL/prose)"@ko .
 wf:Decision a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Decision"@ko ;
-    rdfs:comment "분기/판단 노드. workflow graph 는 task/decision 노드와 process edge 로 구성된다. user decision 은 HITL/HITLFE/HOTL/HOOTL judge 로 표현하고, agent decision 은 AGENT judge 로 표현한다. 산출물 품질평가/판단 주체는 별도의 oracle gate로 표현한다. | invariants: id 는 워크플로우 내 unique judge ∈ {HITL, HITLFE, HOTL, HOOTL, AGENT} Decision gate와 Oracle gate는 분리한다 branches[].on 은 judge_branch_conditions[judge] 에 속해야 함 HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"@ko .
+    rdfs:comment "분기/판단 노드. workflow graph 는 task/decision 노드와 process edge 로 구성된다. user decision 은 HITL/HITLFE/HOTL/HOOTL judge 로 표현하고, agent decision 은 AGENT judge 로 표현한다. 산출물 품질평가/판단 주체는 별도의 eval gate로 표현한다. | invariants: id 는 워크플로우 내 unique judge ∈ {HITL, HITLFE, HOTL, HOOTL, AGENT} Decision gate와 Eval gate는 분리한다 branches[].on 은 judge_branch_conditions[judge] 에 속해야 함 HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"@ko .
+wf:Eval a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Eval"@ko ;
+    rdfs:comment "산출물 평가 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의 품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다. feedback loop 안에 Eval gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Eval gate는 분리한다 legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"@ko .
 wf:Group a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Group"@ko ;
     rdfs:comment "여러 노드를 Mermaid subgraph로 묶는 컨테이너. | invariants: id 는 워크플로우 내 unique steps 비어있지 않음"@ko .
-wf:Oracle a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Oracle"@ko ;
-    rdfs:comment "산출물 판단 주체 또는 품질평가자 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Oracle gate는 산출물의 품질·정합·수용 가능성을 평가한다. hasSlot 이 선언된 Oracle은 entity slot을 누적 충족하는 slot-filling 방식으로 동작하며, ALL hasSlot[*].slotFilled==true 조건에서 orderArtifact를 생성하고 orderTarget step에 order를 발행한다. feedback loop 안에 Oracle gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Oracle gate는 분리한다"@ko .
-wf:EntitySlot a owl:Class ; rdfs:label "EntitySlot"@ko ;
-    rdfs:comment "Oracle의 개별 슬롯 정의. hasSlot 이 선언된 Oracle이 슬롯을 하나씩 채워가며 누적 평가한다. | invariants: slotName 비어있지 않음 slotConstraint 비어있지 않음 slotFilled: null(미평가) → false(미충족) → true(충족) 전이"@ko .
 wf:Phase a owl:Class ; rdfs:label "Phase"@ko ;
     rdfs:comment "워크플로우의 단계(phase) 컨테이너. | invariants: id 비어있지 않음 status ∈ {completed, active, pending} steps 또는 workflows 둘 중 하나는 존재해야 함 (둘 다 비면 ERROR) workflows[] 각 항목은 workflow_ref.schema.yaml 의 invariant 를 따름"@ko .
 wf:Step a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Step"@ko ;
@@ -39,51 +37,35 @@ wf:WorkflowRef a owl:Class ; rdfs:label "WorkflowRef"@ko ;
 
 # ─── Property (schema fields) ──────────────────────────────────────────────────
 wf:artifacts a owl:DatatypeProperty ; rdfs:label "artifacts"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
-wf:criteria a owl:DatatypeProperty ; rdfs:label "criteria"@ko ; rdfs:domain wf:Oracle ; rdfs:range xsd:string .
+wf:criteria a owl:DatatypeProperty ; rdfs:label "criteria"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:defaultJudge a owl:DatatypeProperty ; rdfs:label "defaultJudge"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:deliverables a owl:DatatypeProperty ; rdfs:label "deliverables"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Step, Validation"@ko .
-wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Oracle, Phase"@ko .
-wf:evaluator a owl:DatatypeProperty ; rdfs:label "evaluator"@ko ; rdfs:domain wf:Oracle ; rdfs:range xsd:string .
+wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Phase"@ko .
+wf:evaluator a owl:DatatypeProperty ; rdfs:label "evaluator"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:goto a owl:DatatypeProperty ; rdfs:label "goto"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:harness a owl:DatatypeProperty ; rdfs:label "harness"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
 wf:harnessPropagate a owl:DatatypeProperty ; rdfs:label "harnessPropagate"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:boolean .
 wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:judge a owl:DatatypeProperty ; rdfs:label "judge"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Group, Oracle, Phase, Step, Validation"@ko .
+wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Eval, Group, Phase, Step, Validation"@ko .
 wf:module a owl:DatatypeProperty ; rdfs:label "module"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
 wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
-wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Oracle, Validation"@ko .
-wf:oracleType a owl:DatatypeProperty ; rdfs:label "oracleType"@ko ; rdfs:domain wf:Oracle ; rdfs:range xsd:string .
+wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Eval, Validation"@ko .
+wf:oracle a owl:DatatypeProperty ; rdfs:label "oracle"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:oracleType a owl:DatatypeProperty ; rdfs:label "oracleType"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:orderArtifact a owl:DatatypeProperty ; rdfs:label "orderArtifact"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:orderTarget a owl:DatatypeProperty ; rdfs:label "orderTarget"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:parallel a owl:DatatypeProperty ; rdfs:label "parallel"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
 wf:passCriteria a owl:DatatypeProperty ; rdfs:label "passCriteria"@ko ; rdfs:domain wf:Validation ; rdfs:range xsd:string .
 wf:ref a owl:DatatypeProperty ; rdfs:label "ref"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
 wf:showWrapper a owl:DatatypeProperty ; rdfs:label "showWrapper"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
 wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Group, Oracle, Phase, Step, Validation"@ko .
+wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval, Group, Phase, Step, Validation"@ko .
 wf:subSteps a owl:DatatypeProperty ; rdfs:label "subSteps"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:successCriteria a owl:DatatypeProperty ; rdfs:label "successCriteria"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
-wf:targetArtifact a owl:DatatypeProperty ; rdfs:label "targetArtifact"@ko ; rdfs:domain wf:Oracle ; rdfs:range xsd:string .
-wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Oracle"@ko .
-# ─── Oracle slot-filling 프로퍼티 (schema 없음 — 여기서 직접 정의) ──────────────
-wf:hasSlot a owl:ObjectProperty ; rdfs:label "hasSlot"@ko ;
-    rdfs:domain wf:Oracle ; rdfs:range wf:EntitySlot ;
-    rdfs:comment "Oracle → EntitySlot 링크. hasSlot이 선언된 Oracle은 slot-filling 방식으로 동작한다."@ko .
-wf:slotName a owl:DatatypeProperty ; rdfs:label "slotName"@ko ;
-    rdfs:domain wf:EntitySlot ; rdfs:range xsd:string ;
-    rdfs:comment "슬롯 식별자 (예: cluster_terms, quality_gate)."@ko .
-wf:slotConstraint a owl:DatatypeProperty ; rdfs:label "slotConstraint"@ko ;
-    rdfs:domain wf:EntitySlot ; rdfs:range xsd:string ;
-    rdfs:comment "슬롯 충족 조건 문자열 (예: 'selected_docs >= 5', 'encoding_ok AND no_dup'). 평가자가 직접 판정."@ko .
-wf:slotFilled a owl:DatatypeProperty ; rdfs:label "slotFilled"@ko ;
-    rdfs:domain wf:EntitySlot ; rdfs:range xsd:boolean ;
-    rdfs:comment "슬롯 채움 여부. ABox 초기값 false. 평가자가 충족 확인 시 true로 갱신."@ko .
-wf:orderTarget a owl:DatatypeProperty ; rdfs:label "orderTarget"@ko ;
-    rdfs:domain wf:Oracle ; rdfs:range xsd:string ;
-    rdfs:comment "ALL hasSlot[*].slotFilled == true 조건 달성 시 order를 전달할 downstream step id."@ko .
-wf:orderArtifact a owl:DatatypeProperty ; rdfs:label "orderArtifact"@ko ;
-    rdfs:domain wf:Oracle ; rdfs:range xsd:string ;
-    rdfs:comment "slots_complete 시 생성되어 orderTarget step이 소비하는 order artifact 경로. wf:directory role:input으로 orderTarget에 연결되어야 한다."@ko .
+wf:targetArtifact a owl:DatatypeProperty ; rdfs:label "targetArtifact"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval"@ko .
 wf:validation a owl:DatatypeProperty ; rdfs:label "validation"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 
 # ─── 그래프 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────────────
@@ -96,7 +78,7 @@ wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;
 
 wf:dependsOn a owl:ObjectProperty ; rdfs:label "dependsOn"@ko ;
     rdfs:domain wf:Phase ; rdfs:range wf:Phase ;
-    rdfs:comment "root 템플릿 phases[].dependencies. 순환은 가능하나 산출물 재귀 소비 루프에는 Oracle 개입점이 필요하다. (phase.schema 엔 없음)"@ko .
+    rdfs:comment "root 템플릿 phases[].dependencies. 순환은 가능하나 산출물 재귀 소비 루프에는 Eval 개입점이 필요하다. (phase.schema 엔 없음)"@ko .
 wf:criticalDep a owl:ObjectProperty ; rdfs:label "criticalDep"@ko ;
     rdfs:domain wf:Module ; rdfs:range wf:Module ;
     rdfs:comment "critical_dependencies from→to. 구조 의존 관측 edge."@ko .
@@ -110,11 +92,29 @@ wf:next a owl:ObjectProperty ; rdfs:label "next"@ko ;
     rdfs:comment "process edge. phase.steps[] 의 기본 순차 실행 에지. decision branch goto 가 없을 때도 이 edge가 다음 실행 노드를 나타낸다."@ko .
 wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
     rdfs:domain wf:Node ;
-    rdfs:comment "step.directories[] 항목(blank node: dirRole+dirPath). 라운드트립 가능."@ko .
+    rdfs:comment "step.directories[] 항목. dirRole + dirPath 필수. wf:dirNote 선택. validate_abox.py 검증 대상."@ko .
 wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:string ;
-    rdfs:comment "directory.role (input/output/reference/instruction 등)."@ko .
+    rdfs:comment "directory.role. 필수. 유효값: input | output | input_output | reference | instruction."@ko .
 wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
-    rdfs:comment "directory.path. 교차-스킬(scaffold) 멤버십 대상."@ko .
+    rdfs:comment "directory.path. 필수. 교차-스킬(scaffold) 멤버십 대상."@ko .
+wf:dirNote a owl:DatatypeProperty ; rdfs:label "dirNote"@ko ; rdfs:range xsd:string ;
+    rdfs:comment "directory 설명 주석. cross-workflow 의존·보안·TTL 힌트 등. 선택."@ko .
+
+# ─── Eval slot-filling 프로퍼티 (schema 없음 — 여기서 직접 정의) ──────────────
+wf:EntitySlot a owl:Class ; rdfs:label "EntitySlot"@ko ;
+    rdfs:comment "Eval의 개별 슬롯 정의. hasSlot 이 선언된 Eval이 슬롯을 하나씩 채워가며 누적 평가한다. slotFilled 는 null(미평가) → false(미충족) → true(충족) 전이를 갖는다."@ko .
+wf:hasSlot a owl:ObjectProperty ; rdfs:label "hasSlot"@ko ;
+    rdfs:domain wf:Eval ; rdfs:range wf:EntitySlot ;
+    rdfs:comment "Eval → EntitySlot 링크. hasSlot이 선언된 Eval은 slot-filling 방식으로 동작한다."@ko .
+wf:slotName a owl:DatatypeProperty ; rdfs:label "slotName"@ko ;
+    rdfs:domain wf:EntitySlot ; rdfs:range xsd:string ;
+    rdfs:comment "슬롯 식별자 (예: cluster_terms, quality_gate)."@ko .
+wf:slotConstraint a owl:DatatypeProperty ; rdfs:label "slotConstraint"@ko ;
+    rdfs:domain wf:EntitySlot ; rdfs:range xsd:string ;
+    rdfs:comment "슬롯 충족 조건."@ko .
+wf:slotFilled a owl:DatatypeProperty ; rdfs:label "slotFilled"@ko ;
+    rdfs:domain wf:EntitySlot ; rdfs:range xsd:boolean ;
+    rdfs:comment "슬롯 채움 여부. ABox 초기값 false. 평가자가 충족 확인 시 true로 갱신."@ko .
 
 # ─── 구조화 링크 (컨테이너 관계 — schema 필드 아님) ──────────────────────────────
 wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;

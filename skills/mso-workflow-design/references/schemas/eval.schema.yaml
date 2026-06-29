@@ -1,21 +1,22 @@
-type: oracle
+type: eval
 description: |
-  산출물 판단 주체 또는 품질평가자 게이트. Decision gate와 분리한다.
-  Decision gate는 process branch/진행 판단을 담당하고, Oracle gate는 산출물의
-  품질·정합·수용 가능성을 평가한다. feedback loop 안에 Oracle gate가 없으면
+  산출물 평가 게이트. Decision gate와 분리한다.
+  Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의
+  품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다.
+  feedback loop 안에 Eval gate가 없으면
   산출물이 재귀적으로 소비되며 drift가 누적될 수 있다.
 
 fields:
   type:
     required: true
     type: literal
-    value: oracle
+    value: eval
 
   id:
     required: true
     type: string
     immutable: true
-    description: "Oracle gate 노드 고유 식별자."
+    description: "Eval gate 노드 고유 식별자."
 
   label:
     required: true
@@ -40,10 +41,25 @@ fields:
     type: string
     description: "평가자 식별자. 예: wmjoon, qa-agent, layout-fit-metric"
 
+  oracle:
+    required: false
+    type: string
+    description: "평가 주체 또는 권위 레이블. 예: Quality Gate, Review Oracle"
+
   target_artifact:
     required: false
     type: string
     description: "평가 대상 산출물 또는 artifact id/path."
+
+  order_target:
+    required: false
+    type: string
+    description: "평가 결과로 실행 지시(eval:order)를 받을 downstream step id."
+
+  order_artifact:
+    required: false
+    type: string
+    description: "평가 결과 리포트 또는 manifest artifact 경로(eval:report 대상)."
 
   criteria:
     required: true
@@ -83,4 +99,5 @@ structural_invariants:
   - "id 는 워크플로우 내 unique"
   - "oracle_type ∈ {user, agent, metric}"
   - "criteria 최소 1개 이상"
-  - "Decision gate와 Oracle gate는 분리한다"
+  - "Decision gate와 Eval gate는 분리한다"
+  - "legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"

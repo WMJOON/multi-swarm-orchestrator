@@ -1,11 +1,11 @@
 ---
 name: mso-scaffold-design
-version: "0.4.0"
+version: "0.5.0"
 description: >
   Repository Scaffolding(directory/reference/data source/convention)을 규정한다.
   프로젝트 루트의 `index.yaml` 을 정본(SSOT)으로 두고, 모듈·서브디렉토리·
   키 파일·모듈 간 참조를 선언적으로 관리한다. mso-workflow-design가
-  workflow를 규정할 때 `directories.path` 로 참조하는 ground truth이며,
+  workflow를 규정할 때 `wf:dirPath`로 참조하는 ground truth이며,
   graph observability가 Artifact node location을 `index:<id>`로 표시할 수 있도록
   local_file/API/MCP/database artifact source registry를 제공한다.
   노드 단위 스키마(references/schemas/)와 sf_node.py 툴로 validate·scaffold를 지원한다.
@@ -14,7 +14,8 @@ description: >
   (2) 모듈 추가·rename·삭제,
   (3) 서브디렉토리/key_files 변경,
   (4) 모듈 간 references(consumes/provides_to) 갱신,
-  (5) workflow YAML 의 `directories.path` 가 참조하는 경로 등록.
+  (5) workflow TTL 의 `wf:dirPath` 가 참조하는 경로 등록,
+  (6) artifact stream TTL을 확인한 뒤 index/sub_index/data_registry 연결 점검.
 ---
 
 # MSO Scaffold Design v2
@@ -44,13 +45,14 @@ description: >
 | 스킬 | 책임 | 산출물 |
 |------|------|--------|
 | **mso-scaffold-design** | Repository 구조(directory/reference/artifact source/convention) 규정 | `index.yaml` (정본) |
-| **mso-workflow-design** | scaffold 위 동작 시퀀스 규정 | `workflow/*-workflow-00.yaml` |
+| **mso-workflow-design** | scaffold 위 workflow/artifact/eval graph 규정 | `workflow/*.abox.ttl` |
 
 ### 의존 규칙
 
-1. **scaffold가 먼저** — workflow YAML 의 `directories.path` 는 `index.yaml` 에 등록된 경로만 참조한다.
-2. **scaffold 수정 시** — 디렉토리 rename·삭제·이동이 발생하면 workflow YAML 의 영향 받은 `directories.path` 를 일괄 검토한다.
-3. **workflow 수정 시** — 새 경로가 필요하면 **scaffold(index.yaml)에 먼저 등록**한 다음 workflow YAML 에서 참조한다.
+1. **scaffold가 먼저** — workflow TTL 의 `wf:dirPath` 는 `index.yaml` 에 등록된 경로만 참조한다.
+2. **artifact stream 확인** — TTL의 `wf:directory`/`wf:targetArtifact`/`wf:orderArtifact` 경로가 index 또는 `data_registry`에 연결되는지 확인한다.
+3. **scaffold 수정 시** — 디렉토리 rename·삭제·이동이 발생하면 workflow TTL 의 영향 받은 `wf:dirPath`/artifact locator 를 일괄 검토한다.
+4. **workflow 수정 시** — 새 경로가 필요하면 **scaffold(index.yaml 또는 sub_index)에 먼저 등록**한 다음 TTL에서 참조한다.
 
 > 한쪽 수정이 일어나면 다른 쪽 검토가 필수다.
 
@@ -224,8 +226,9 @@ modules:
 ## 검증 체크리스트
 
 **Workflow 정합성 (먼저 확인)**
-- [ ] 디렉토리를 삭제·rename한 경우 workflow YAML 의 `directories.path` 를 검색했는가
-- [ ] 새 디렉토리를 workflow 가 참조할 예정이면 index.yaml 에 먼저 등록했는가
+- [ ] 디렉토리를 삭제·rename한 경우 workflow TTL 의 `wf:dirPath`/artifact locator 를 검색했는가
+- [ ] 새 디렉토리를 workflow 가 참조할 예정이면 index.yaml 또는 sub_index 에 먼저 등록했는가
+- [ ] artifact stream의 `targetArtifact`/`orderArtifact`가 index/data_registry로 식별 가능한가
 - [ ] 디렉토리 정리 후 `sf_node.py validate <index.yaml>` 를 통과했는가
 - [ ] 디렉토리 정리 후 `sf_node.py inventory <index.yaml>` 에서 선언과 실제 트리가 일치하는가
 

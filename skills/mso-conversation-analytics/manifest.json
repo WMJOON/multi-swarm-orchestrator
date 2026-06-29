@@ -1,6 +1,6 @@
 {
   "name": "mso-conversation-analytics",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "lifecycle_state": "local",
   "owner_workspace": "03_AgentsTools/00_multi-swarm-orchestrator/repository",
   "role": "observability",

@@ -1,5 +1,22 @@
 # 변경 이력
 
+## v0.5.0 (2026-06-29) — Workflow/Artifact/Eval graph observability
+
+> **workflow, artifact stream, eval node/edge를 분리해 관측 가능하게 정리.** repository workflow design을 agentic workflow, artifact supply-chain, eval gate 세 관점으로 보고, 각 관점의 graph shape requirements를 slot으로 다룬다. 대화는 비어 있는 slot을 채우기 위한 slot-filling 과정이며, 최종 정본은 TTL ABox다. `wf:Oracle` 노드 타입을 `wf:Eval`로 전환하고, `oracle`은 eval 수행 주체/권위 필드로 남긴다. legacy YAML의 `type: oracle`은 import 시 `wf:Eval`로 투영하고, TTL migration 검증 후 legacy YAML은 제거한다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| v0.5.0 design lens | agentic workflow / artifact supply-chain / eval gate 3관점을 graph shape slot group으로 보고, 대화를 통해 slot-filling 후 안정적인 workflow topology로 기록하는 원칙 추가 |
+| `mso-workflow-design` | TTL ABox에서 workflow, artifact stream, eval의 node/edge shape 생성과 검증 책임을 명시. `wf:Eval`, `wf:targetArtifact`, `wf:orderTarget`, `wf:orderArtifact`, `wf:dirNote` 반영 |
+| `mso-scaffold-design` / `mso-repository-setup` | artifact stream TTL 확인 뒤 index/sub_index/data_registry를 스캔·연결하는 책임 경계 정리. setup은 부트스트랩/후속 진입점, scaffold는 index 연결 규칙 소유 |
+| `mso-graph-observability` | TTL 가시화와 개선 리포트 생성 책임으로 정리. workflow view, artifact-stream view, eval edge, runtime analysis를 읽기 전용 산출물로 생성 |
+| TTL-only migration policy | workflow YAML은 migration input으로만 허용. sibling TTL이 있으면 제거 후보, 없으면 migration blocker로 보고하며 topology 입력은 항상 TTL ABox만 사용 |
+| `mso-conversation-analytics` | de-routed 잔존 상태를 재확인. 전환행렬·funnel·reprompt율·많이 사용하는 workflow 후보 등 user/turn 패턴 분석은 UUG `uug-pattern-analytics` 흡수 대상 |
+| `mso-intent-analytics` | MSO runtime tier-escalation 신호와 intent-level dispatch analytics의 귀속지로 명시 |
+| 전체 버전 | README, install script, SKILL.md version field, manifest version을 v0.5.0으로 정렬 |
+
 ## v0.4.0 (2026-06-27) — Artifact stream observability
 
 > **Task-only topology에서 artifact stream topology로 확장.** workflow sub-graph에서 `wf:directory`와 `wf:deliverables`를 Artifact node로 파생해 `artifact --upstream--> task --downstream--> artifact` supply chain을 볼 수 있게 했다. MSO는 Data Pipeline이 아니라 Repository Artifact Supply Chain을 관측한다. `data_type`은 접근 매체(local_file/api/mcp/database 등), `artifact_type`은 Knowledge Store/Event Store/Local Database/Document/Media 같은 소비·운영 의미를 표현한다.
@@ -53,7 +70,7 @@
 | 변경 | 내용 |
 |------|------|
 | `mso-graph-observability` | repository 전체 `workflow-topology.md`와 workflow별 `workflow-subgraphs/<scope>.md`를 함께 생성. topology 입력은 TTL ABox만 사용 |
-| `observe_graph.py` | `workflow-ssot-report.md`와 `--strict-ssot`로 legacy YAML 중 sibling `.abox.ttl` 누락을 drift로 감지 |
+| `observe_graph.py` | `workflow-ssot-report.md`와 `--strict-ssot`로 legacy YAML 잔존을 drift로 감지. sibling `.abox.ttl`이 있으면 제거 후보, 없으면 migration blocker로 분리 |
 | `wf_to_ttl.py` | YAML authoring compiler가 아니라 legacy migration backend로 문서화. workflow/module/project scope 기반 phase/node URI로 multi-workflow 충돌 방지 |
 | `ttl_to_wf.py` | TTL→YAML 역생성 경로 제거. YAML을 되살리지 않도록 SSOT 경계 고정 |
 | `mso-workflow-design` | YAML edit layer/양방향 무손실 표현 제거. 신규 workflow는 TTL ABox로 작성하고, legacy YAML은 `migrate_workflows_to_ttl.py`로만 흡수 |

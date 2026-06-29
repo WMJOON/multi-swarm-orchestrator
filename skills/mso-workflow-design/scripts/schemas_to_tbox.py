@@ -5,7 +5,7 @@
   노드 구조의 단일 진실원은 references/schemas/*.yaml 이다. TBox(workflow-tbox.ttl)와
   SHACL(workflow-shapes.ttl)은 그로부터 *생성*된 파생물 — 손으로 동기화하지 않는다(drift 0).
   schemas 의 기계가독 부분만 변환한다:
-    type            → owl:Class (step/decision/validation/group/oracle ⊂ Node; phase/workflow_ref 독립)
+    type            → owl:Class (step/decision/validation/group/eval ⊂ Node; phase/workflow_ref 독립)
     required:true   → sh:minCount 1
     type:enum       → sh:in (values)
     type:string|bool→ sh:datatype xsd:string|boolean
@@ -15,7 +15,7 @@
 생성 불가 → 별도 유지:
   - 산문 structural_invariants(예: "id unique", "steps 또는 workflows 필수")
   - judge_branch_conditions 의 branch.on 유효성(judge 값 의존 중첩) — TODO 주석만
-  - feedback loop 통제(Oracle 개입점)·교차-스킬(scaffold)·anchor 정합 → wf_to_ttl.py/SHACL-SPARQL
+  - feedback loop 통제(Eval 개입점)·교차-스킬(scaffold)·anchor 정합 → wf_to_ttl.py/SHACL-SPARQL
 
 schema 없는 root-그래프 층(root-workflow 템플릿 개념: phases[].dependencies, critical_dependencies,
 milestones)은 _GRAPH_OVERLAY 에 명시한다 — 정직하게 "스키마 없음" 표기.
@@ -38,10 +38,10 @@ NS = "https://mso.dev/ontology/workflow#"
 
 # type → 클래스명. Node 하위 = 실행 노드. phase/workflow_ref/branch 는 독립.
 _CLASS = {"step": "Step", "decision": "Decision", "validation": "Validation",
-          "oracle": "Oracle",
+          "eval": "Eval",
           "group": "Group", "phase": "Phase", "workflow_ref": "WorkflowRef",
           "branch": "Branch"}
-_NODE_SUB = {"Step", "Decision", "Validation", "Group", "Oracle"}
+_NODE_SUB = {"Step", "Decision", "Validation", "Group", "Eval"}
 
 # 직접 property 로 만들지 않는 필드(클래스 타입·식별자·컨테이너·복합).
 #   type → rdf:type / id → URI 자체 / steps·workflows → 그래프 층(hasNode/refersTo)
@@ -83,7 +83,7 @@ _TBOX_HEADER = f"""@prefix wf:   <{NS}> .
 wf: a owl:Ontology ;
     rdfs:label "MSO Workflow Ontology"@ko ;
     rdfs:comment "schemas/*.yaml 에서 생성된 TBox. ABox 는 이 타입에 정합해야 한다."@ko ;
-    owl:versionInfo "0.2.0" .
+    owl:versionInfo "0.5.0" .
 """
 
 # schema 없는 root-그래프 층(root-workflow 템플릿). 정직하게 분리 표기.
@@ -98,7 +98,7 @@ wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;
 
 wf:dependsOn a owl:ObjectProperty ; rdfs:label "dependsOn"@ko ;
     rdfs:domain wf:Phase ; rdfs:range wf:Phase ;
-    rdfs:comment "root 템플릿 phases[].dependencies. 순환은 가능하나 산출물 재귀 소비 루프에는 Oracle 개입점이 필요하다. (phase.schema 엔 없음)"@ko .
+    rdfs:comment "root 템플릿 phases[].dependencies. 순환은 가능하나 산출물 재귀 소비 루프에는 Eval 개입점이 필요하다. (phase.schema 엔 없음)"@ko .
 wf:criticalDep a owl:ObjectProperty ; rdfs:label "criticalDep"@ko ;
     rdfs:domain wf:Module ; rdfs:range wf:Module ;
     rdfs:comment "critical_dependencies from→to. 구조 의존 관측 edge."@ko .
@@ -112,11 +112,29 @@ wf:next a owl:ObjectProperty ; rdfs:label "next"@ko ;
     rdfs:comment "process edge. phase.steps[] 의 기본 순차 실행 에지. decision branch goto 가 없을 때도 이 edge가 다음 실행 노드를 나타낸다."@ko .
 wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
     rdfs:domain wf:Node ;
-    rdfs:comment "step.directories[] 항목(blank node: dirRole+dirPath). 라운드트립 가능."@ko .
+    rdfs:comment "step.directories[] 항목. dirRole + dirPath 필수. wf:dirNote 선택. validate_abox.py 검증 대상."@ko .
 wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:string ;
-    rdfs:comment "directory.role (input/output/reference/instruction 등)."@ko .
+    rdfs:comment "directory.role. 필수. 유효값: input | output | input_output | reference | instruction."@ko .
 wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
-    rdfs:comment "directory.path. 교차-스킬(scaffold) 멤버십 대상."@ko .
+    rdfs:comment "directory.path. 필수. 교차-스킬(scaffold) 멤버십 대상."@ko .
+wf:dirNote a owl:DatatypeProperty ; rdfs:label "dirNote"@ko ; rdfs:range xsd:string ;
+    rdfs:comment "directory 설명 주석. cross-workflow 의존·보안·TTL 힌트 등. 선택."@ko .
+
+# ─── Eval slot-filling 프로퍼티 (schema 없음 — 여기서 직접 정의) ──────────────
+wf:EntitySlot a owl:Class ; rdfs:label "EntitySlot"@ko ;
+    rdfs:comment "Eval의 개별 슬롯 정의. hasSlot 이 선언된 Eval이 슬롯을 하나씩 채워가며 누적 평가한다. slotFilled 는 null(미평가) → false(미충족) → true(충족) 전이를 갖는다."@ko .
+wf:hasSlot a owl:ObjectProperty ; rdfs:label "hasSlot"@ko ;
+    rdfs:domain wf:Eval ; rdfs:range wf:EntitySlot ;
+    rdfs:comment "Eval → EntitySlot 링크. hasSlot이 선언된 Eval은 slot-filling 방식으로 동작한다."@ko .
+wf:slotName a owl:DatatypeProperty ; rdfs:label "slotName"@ko ;
+    rdfs:domain wf:EntitySlot ; rdfs:range xsd:string ;
+    rdfs:comment "슬롯 식별자 (예: cluster_terms, quality_gate)."@ko .
+wf:slotConstraint a owl:DatatypeProperty ; rdfs:label "slotConstraint"@ko ;
+    rdfs:domain wf:EntitySlot ; rdfs:range xsd:string ;
+    rdfs:comment "슬롯 충족 조건."@ko .
+wf:slotFilled a owl:DatatypeProperty ; rdfs:label "slotFilled"@ko ;
+    rdfs:domain wf:EntitySlot ; rdfs:range xsd:boolean ;
+    rdfs:comment "슬롯 채움 여부. ABox 초기값 false. 평가자가 충족 확인 시 true로 갱신."@ko .
 
 # ─── 구조화 링크 (컨테이너 관계 — schema 필드 아님) ──────────────────────────────
 wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
@@ -253,15 +271,15 @@ wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
 # ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
 wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:sparql [
-        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Oracle gate in the loop" ;
+        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Eval gate in the loop" ;
         sh:select \"\"\"
             PREFIX wf: <https://mso.dev/ontology/workflow#>
             SELECT $this WHERE {
               $this wf:dependsOn+ $this .
               FILTER NOT EXISTS {
                 $this wf:dependsOn* ?phase .
-                ?phase wf:hasNode ?oracle .
-                ?oracle a wf:Oracle .
+                ?phase wf:hasNode ?eval .
+                ?eval a wf:Eval .
                 ?phase wf:dependsOn* $this .
               }
             }
@@ -269,15 +287,15 @@ wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     ] .
 wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:sparql [
-        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Oracle gate in the loop" ;
+        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval gate in the loop" ;
         sh:select \"\"\"
             PREFIX wf: <https://mso.dev/ontology/workflow#>
             SELECT $this WHERE {
               $this (wf:next|wf:hasBranch/wf:gotoNode)+ $this .
               FILTER NOT EXISTS {
-                $this (wf:next|wf:hasBranch/wf:gotoNode)* ?oracle .
-                ?oracle a wf:Oracle .
-                ?oracle (wf:next|wf:hasBranch/wf:gotoNode)* $this .
+                $this (wf:next|wf:hasBranch/wf:gotoNode)* ?eval .
+                ?eval a wf:Eval .
+                ?eval (wf:next|wf:hasBranch/wf:gotoNode)* $this .
               }
             }
         \"\"\" ;

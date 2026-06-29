@@ -39,9 +39,11 @@ def _iter_yaml(root: Path, patterns: tuple[str, ...]) -> list[Path]:
 
 
 def _ttl_path(yaml_path: Path) -> Path:
-    suffixes = "".join(yaml_path.suffixes)
-    if suffixes.endswith(".yaml") or suffixes.endswith(".yml"):
-        return yaml_path.with_suffix("").with_suffix(".abox.ttl")
+    name = yaml_path.name
+    if name.endswith(".yaml"):
+        return yaml_path.with_name(name.removesuffix(".yaml") + ".abox.ttl")
+    if name.endswith(".yml"):
+        return yaml_path.with_name(name.removesuffix(".yml") + ".abox.ttl")
     return yaml_path.with_suffix(".abox.ttl")
 
 

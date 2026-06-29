@@ -1,7 +1,7 @@
 ---
 name: mso-orchestration
-version: "0.4.0"
-description: "MSO 스킬 팩 라우터. §11 NLU 재편: utterance→intent 는 UUG(uug-grounding) 위임, MSO 는 intent→action(mso-intent-analytics 뒷단 dispatch). name-only 라우팅."
+version: "0.5.0"
+description: "MSO 스킬 팩 라우터. v0.5.0: workflow/artifact/eval graph 역할을 분리하고, §11 NLU 재편에 따라 utterance→intent 는 UUG, MSO 는 intent→action 및 MSO runtime 신호만 담당한다."
 triggers:
   - "mso 시작"
   - "MSO init"
@@ -43,7 +43,7 @@ triggers:
   - "reprompt 분석"
 ---
 
-# MSO Orchestration (v0.4.0)
+# MSO Orchestration (v0.5.0)
 
 MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 적절한 sub-skill 로 안내한다.
 
@@ -58,8 +58,8 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
         ▼                                                                
 [설계]                                                                   
   mso-scaffold-design         ←── index.yaml SSOT (모듈·subdir·sub_index) 
-  mso-workflow-design         ←── workflow TTL ABox SSOT (step/decision/validation)
-  mso-graph-observability     ←── workflow/memory/audit/worklog graph 관측
+  mso-workflow-design         ←── workflow/artifact/eval TTL ABox node-edge shape
+  mso-graph-observability     ←── TTL view + artifact stream 개선 리포트 + runtime graph 관측
   mso-workflow-optimizer      ←── workflow TTL → LangGraph generated artifact
         ↕ 협업 (multi-turn discussion, v1.0.0+ 예정)                       
   mso-discussion-coworker     ←── 옵션 비교·결정 근거 추적·UD/AD 자동 작성
@@ -89,8 +89,8 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
         ▼                                                                
 [분석 — Conversation Analytics] ⚠ de-routed (§11.1)                      
   mso-conversation-analytics (잔존, 라우팅 제외 — 직접 호출만)          
-    └ 분석 메서드 → UUG(uug-pattern-analytics) 흡수 예정,               
-      tier-escalation 신호 → mso-intent-analytics 귀속 예정             
+    └ 분석 메서드 → UUG(uug-pattern-analytics) 흡수 대상,               
+      MSO runtime tier-escalation 신호 → mso-intent-analytics 귀속     
         │                                                                
         ▼                                                                
 [운영 — decision 기록]                                                  
@@ -119,15 +119,15 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 
 | Skill | 책임 | 주요 트리거 |
 |---|---|---|
-| **mso-repository-setup** | agent-context/ 부트스트랩 (init/check/migrate) | "mso init", "agent-context 부트스트랩", "워크플로우 디렉토리 생성" |
-| **mso-scaffold-design** | index.yaml SSOT, 계층 sub_index | "스캐폴드 설계", "index.yaml", "모듈 추가", "디렉토리 등록" |
-| **mso-workflow-design** | workflow TTL ABox SSOT, legacy YAML migration/edit layer, 노드 스키마, harness manifest | "워크플로우 설계", "workflow TTL", "workflow YAML", "judge", "decision 노드", "validation 노드" |
-| **mso-graph-observability** | MSO의 여러 운영 그래프를 관측. workflow TTL/ABox는 Mermaid topology/class/property view로 시각화하고, work-memory/auditlog/worklog/intent turn graph는 실패 흐름·반복 실행·이상 행동·병목 패턴 분석으로 확장 | "그래프 관측", "워크플로우 관측", "work-memory 분석", "auditlog 분석", "이상행동 관측", "실패 흐름 분석" |
+| **mso-repository-setup** | agent-context/ 부트스트랩 (init/check/migrate). artifact stream TTL이 있으면 scaffold/observability 후속 점검으로 연결 | "mso init", "agent-context 부트스트랩", "워크플로우 디렉토리 생성" |
+| **mso-scaffold-design** | index.yaml SSOT, 계층 sub_index, data_registry. artifact stream TTL 경로를 index/sub-module에 연결 | "스캐폴드 설계", "index.yaml", "모듈 추가", "디렉토리 등록", "artifact registry" |
+| **mso-workflow-design** | workflow/artifact/eval TTL ABox node-edge 생성 및 shape 점검. legacy YAML은 import input | "워크플로우 설계", "workflow TTL", "artifact stream", "eval 노드", "decision 노드", "validation 노드" |
+| **mso-graph-observability** | TTL 가시화와 개선 리포트 생성. workflow view, artifact-stream view, eval edge, runtime analysis를 읽기 전용 산출물로 생성 | "그래프 관측", "워크플로우 관측", "artifact stream report", "work-memory 분석", "auditlog 분석", "이상행동 관측", "실패 흐름 분석" |
 | **mso-workflow-optimizer** | workflow TTL ABox를 LangGraph generated artifact로 컴파일. TTL은 SSOT로 유지하고 provider routing은 정책 파일로 분리 | "workflow optimizer", "LangGraph", "langgraph 변환", "workflow TTL 실행", "Ollama 비용 최적화" |
 | **mso-work-memory** | jsonl entry CRUD, zvec 검색, relations 그래프 | "decision 기록", "trouble-shooting 작성", "episode 회고", "비슷한 사고 검색" |
-| **mso-intent-analytics** *(§11 재편)* | registry SoT (Intent/SlotSpec/IntentMatrix, RDF+LinkML, Lookup API) **+ 뒷단 dispatch** (`pipeline.ground(utterance, intent_id)`: slot_filler→resolver→SHACL validator→turn_writer→GroundedCommand). 앞단(utterance→intent)은 UUG. | "ticket-NNN 재실행", "run-NNN 상태", "audit 조회", "dispatch", "intent 목록", "슬롯 스키마" |
+| **mso-intent-analytics** *(§11 재편)* | registry SoT (Intent/SlotSpec/IntentMatrix, RDF+LinkML, Lookup API) **+ 뒷단 dispatch** (`pipeline.ground(utterance, intent_id)`: slot_filler→resolver→SHACL validator→turn_writer→GroundedCommand). 앞단(utterance→intent)은 UUG. MSO runtime tier-escalation 신호의 귀속지 | "ticket-NNN 재실행", "run-NNN 상태", "audit 조회", "dispatch", "intent 목록", "슬롯 스키마" |
 | ~~구 utterance-grounding~~ | **해체(§11)**: 앞단(utterance→intent)→UUG(uug-grounding), 뒷단→mso-intent-analytics 흡수. 스킬 제거됨 | — |
-| ~~conversation-analytics~~ | **de-route(§11.1)**: 잔존하나 라우팅 제외. 분석 메서드 UUG 흡수 대기, 직접 호출만 | — |
+| ~~conversation-analytics~~ | **de-route(§11.1)**: 잔존하나 라우팅 제외. 전환행렬·funnel·reprompt율 등 사용자/turn 패턴 메서드는 UUG(`uug-pattern-analytics`) 흡수 대상. 직접 호출만 | — |
 | **mso-discussion-coworker** *(v1.0.0+ 예정)* | workflow 설계·정책 결정 시 multi-turn discussion 협업. 사용자 의도 정교화·옵션 비교·결정 근거 기록 (→ work-memory UD/AD 자동 작성) | "워크플로우 같이 만들자", "옵션 비교해줘", "이거 어떻게 할지 논의", "discussion-coworker" |
 
 ## 라우팅 규칙
@@ -142,7 +142,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 5. **workflow 실행 최적화 의도** (예: "workflow TTL을 LangGraph로 변환", "Ollama 비용 최적화 실행 그래프", "Codex/API provider routing") → `mso-workflow-optimizer`
 6. **discussion 의도** (예: "같이 결정하자", "옵션 비교", "이렇게 vs 저렇게") → `mso-discussion-coworker` *(v1.0.0+)*
 7. **기록·검색·회고 의도** (예: "이 결정 기록해", "비슷한 사고 검색", "패턴 추출") → `mso-work-memory`
-8. **분석·환류 의도** (예: "전환 행렬 보여줘", "reprompt율 분석", "unresolved 발화") → ⚠ de-routed(§11.1). 자동 라우팅 안 함 — `conversation-analytics` 직접 호출(`python src/analytics.py`)만. 분석 메서드 UUG 흡수 후 제거 예정
+8. **발화·turn 패턴 분석 의도** (예: "전환 행렬 보여줘", "reprompt율 분석", "unresolved 발화") → UUG `uug-pattern-analytics` 우선. MSO `conversation-analytics`는 de-routed 잔존 스킬이므로 자동 라우팅하지 않고 직접 호출만 허용
 
 ## Non-Goals
 
@@ -201,16 +201,16 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
   → 회고 시점: `wm_node.py new episode --related TS-NNNN:analyzed-in`
 ```
 
-### Conversation Analytics (v0.4.0)
+### Pattern Analytics 경계 (v0.5.0)
 ```
 사용자: "이번 주 전환 패턴 분석해줘"
-  → mso-orchestration: mso-conversation-analytics 안내
-  → python src/analytics.py --query transition_matrix --days 7
-  → 또는 python src/analytics.py --feedback --days 7
+  → UUG: uug-pattern-analytics 안내 (사용자/turn 패턴, 자주 쓰는 workflow 후보)
+  → MSO: mso-conversation-analytics 는 de-routed legacy capability. 필요할 때만 직접 python src/analytics.py 호출
+  → MSO runtime tier-escalation 신호는 mso-intent-analytics 귀속
 ```
 
 ## 참고 자료
 
 - 각 sub-skill 의 SKILL.md (실제 사용법은 거기로)
 - [docs/contracts/GroundedCommand.md](../../docs/contracts/GroundedCommand.md) — Grounded Command 계약 (governance)
-- [references/routing-rules.md](references/routing-rules.md) — 트리거 매칭 상세 (v0.4.0+ 추가 예정)
+- [references/routing-rules.md](references/routing-rules.md) — 트리거 매칭 상세 (v0.5.0+ 추가 예정)

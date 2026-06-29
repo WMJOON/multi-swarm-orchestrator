@@ -35,17 +35,20 @@ wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
         [ sh:property [ sh:path wf:threshold ; sh:minCount 1 ] ]
     ) .
 
-wf:GroupShape a sh:NodeShape ; sh:targetClass wf:Group ;
-    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] .
-
-wf:OracleShape a sh:NodeShape ; sh:targetClass wf:Oracle ;
+wf:EvalShape a sh:NodeShape ; sh:targetClass wf:Eval ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:oracleType ; sh:minCount 1 ; sh:in ( "user" "agent" "metric" ) ; sh:message "oracleType: schema 제약 위반" ] ;
     sh:property [ sh:path wf:evaluator ; sh:datatype xsd:string ; sh:message "evaluator: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:oracle ; sh:datatype xsd:string ; sh:message "oracle: schema 제약 위반" ] ;
     sh:property [ sh:path wf:targetArtifact ; sh:datatype xsd:string ; sh:message "targetArtifact: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:orderTarget ; sh:datatype xsd:string ; sh:message "orderTarget: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:orderArtifact ; sh:datatype xsd:string ; sh:message "orderArtifact: schema 제약 위반" ] ;
     sh:property [ sh:path wf:criteria ; sh:minCount 1 ; sh:message "criteria: schema 제약 위반" ] ;
     sh:property [ sh:path wf:threshold ; sh:datatype xsd:string ; sh:message "threshold: schema 제약 위반" ] ;
     sh:property [ sh:path wf:onFail ; sh:in ( "block" "retry" "manual_review" ) ; sh:message "onFail: schema 제약 위반" ] .
+
+wf:GroupShape a sh:NodeShape ; sh:targetClass wf:Group ;
+    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] .
 
 wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
@@ -96,15 +99,15 @@ wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
 # ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
 wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:sparql [
-        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Oracle gate in the loop" ;
+        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Eval gate in the loop" ;
         sh:select """
             PREFIX wf: <https://mso.dev/ontology/workflow#>
             SELECT $this WHERE {
               $this wf:dependsOn+ $this .
               FILTER NOT EXISTS {
                 $this wf:dependsOn* ?phase .
-                ?phase wf:hasNode ?oracle .
-                ?oracle a wf:Oracle .
+                ?phase wf:hasNode ?eval .
+                ?eval a wf:Eval .
                 ?phase wf:dependsOn* $this .
               }
             }
@@ -112,15 +115,15 @@ wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     ] .
 wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:sparql [
-        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Oracle gate in the loop" ;
+        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval gate in the loop" ;
         sh:select """
             PREFIX wf: <https://mso.dev/ontology/workflow#>
             SELECT $this WHERE {
               $this (wf:next|wf:hasBranch/wf:gotoNode)+ $this .
               FILTER NOT EXISTS {
-                $this (wf:next|wf:hasBranch/wf:gotoNode)* ?oracle .
-                ?oracle a wf:Oracle .
-                ?oracle (wf:next|wf:hasBranch/wf:gotoNode)* $this .
+                $this (wf:next|wf:hasBranch/wf:gotoNode)* ?eval .
+                ?eval a wf:Eval .
+                ?eval (wf:next|wf:hasBranch/wf:gotoNode)* $this .
               }
             }
         """ ;

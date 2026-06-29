@@ -17,6 +17,7 @@ import datetime as dt
 import hashlib
 import json
 import re
+import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -155,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strict-ssot",
         action="store_true",
-        help="Exit non-zero when workflow YAML files do not have sibling *.abox.ttl files.",
+        help="Exit non-zero when legacy workflow YAML files remain after TTL migration.",
     )
     return parser.parse_args()
 
@@ -211,6 +212,20 @@ def is_workflow_abox(path: Path) -> bool:
     return path.name.endswith(".abox.ttl")
 
 
+def is_legacy_workflow_yaml(path: Path, workflow_dir: Path) -> bool:
+    if not path.is_file() or path.suffix != ".yaml":
+        return False
+    if path.name.endswith(".schema.yaml"):
+        return False
+    try:
+        rel = path.relative_to(workflow_dir)
+    except ValueError:
+        return False
+    if len(rel.parts) != 1:
+        return False
+    return path.name.startswith("workflow-")
+
+
 def default_output_dir(root: Path, workflow_dir: Path) -> Path:
     agent_context = root / "agent-context"
     if agent_context.exists():
@@ -222,7 +237,7 @@ def workflow_ssot_state(workflow_dir: Path) -> dict[str, list[Path]]:
     yaml_paths = sorted(
         p
         for p in workflow_dir.rglob("*.yaml")
-        if p.is_file() and "observability" not in p.parts
+        if is_legacy_workflow_yaml(p, workflow_dir)
     )
     abox_paths = sorted(p for p in workflow_dir.rglob("*.abox.ttl") if p.is_file())
     abox_by_stem = {p.name.removesuffix(".abox.ttl"): p for p in abox_paths}
@@ -247,6 +262,18 @@ def workflow_ssot_state(workflow_dir: Path) -> dict[str, list[Path]]:
         "yaml_without_abox": yaml_without_abox,
         "abox_without_yaml": abox_without_yaml,
     }
+
+
+def legacy_yaml_refs_in_graph(graph: Graph) -> list[str]:
+    refs: set[str] = set()
+    for value in graph.objects(None, WF.ref):
+        if not isinstance(value, Literal):
+            continue
+        text = literal_text(value).strip()
+        path_part = text.split("#", 1)[0]
+        if path_part.endswith((".yaml", ".yml")):
+            refs.add(text)
+    return sorted(refs)
 
 
 def local_name(term: URIRef | Literal | str) -> str:
@@ -605,45 +632,64 @@ def rel_path(path: Path, base: Path) -> str:
         return str(path)
 
 
-def build_workflow_ssot_report(workflow_dir: Path) -> tuple[str, int]:
+def build_workflow_ssot_report(workflow_dir: Path, graph: Graph | None = None) -> tuple[str, int]:
     state = workflow_ssot_state(workflow_dir)
-    missing = state["yaml_without_abox"]
+    removal_candidates = state["yaml_with_abox"]
+    migration_blockers = state["yaml_without_abox"]
+    legacy_refs = legacy_yaml_refs_in_graph(graph) if graph is not None else []
 
     def list_paths(paths: list[Path]) -> str:
         if not paths:
             return "- _None._"
         return "\n".join(f"- `{rel_path(path, workflow_dir)}`" for path in paths)
 
+    def list_refs(refs: list[str]) -> str:
+        if not refs:
+            return "- _None._"
+        return "\n".join(f"- `{ref}`" for ref in refs)
+
     body = "\n".join(
         [
-            "> Workflow observability uses TTL ABox files only. YAML files are legacy migration inputs and are not topology inputs.",
+            "> Workflow observability uses TTL ABox files only. Legacy workflow YAML is a one-time migration input, not a topology source. After migration, remove the YAML.",
             "",
             "## Summary",
             "",
-            f"- YAML workflow files: {len(state['yaml'])}",
+            f"- Legacy workflow YAML files remaining: {len(state['yaml'])}",
             f"- TTL ABox workflow files: {len(state['abox'])}",
-            f"- YAML files with sibling TTL ABox: {len(state['yaml_with_abox'])}",
-            f"- YAML-only files excluded from topology: {len(missing)}",
+            f"- Legacy YAML ready to remove (sibling TTL exists): {len(removal_candidates)}",
+            f"- Migration blockers (legacy YAML without sibling TTL): {len(migration_blockers)}",
+            f"- Legacy YAML references inside TTL: {len(legacy_refs)}",
             f"- TTL ABox files without legacy YAML source: {len(state['abox_without_yaml'])}",
             "",
-            "## YAML-Only Workflows Excluded From Topology",
+            "## Legacy Workflow YAML Ready To Remove",
             "",
-            list_paths(missing),
+            list_paths(removal_candidates),
+            "",
+            "## Migration Blockers: Legacy YAML Without TTL",
+            "",
+            list_paths(migration_blockers),
+            "",
+            "## Legacy YAML References Inside TTL",
+            "",
+            list_refs(legacy_refs),
             "",
             "## TTL ABox Inputs Used For Workflow Topology",
             "",
             list_paths(state["abox"]),
             "",
-            "## Migration",
+            "## TTL-Only Policy",
             "",
-            "Import legacy YAML into sibling `.abox.ttl` files before relying on workflow topology views:",
+            "1. Import any remaining legacy workflow YAML into sibling `.abox.ttl` files.",
+            "2. Verify the generated TTL with the workflow validator.",
+            "3. Update `wf:ref` links so TTL points to TTL or stable graph identifiers, not YAML files.",
+            "4. Remove the migrated legacy YAML. Do not edit YAML or regenerate YAML from TTL.",
             "",
             "```bash",
             "python skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-context/workflow",
             "```",
         ]
     )
-    return body, len(missing)
+    return body, len(state["yaml"]) + len(legacy_refs)
 
 
 def iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
@@ -860,7 +906,7 @@ def build_runtime_analysis(root: Path) -> str:
 def workflow_scopes(graph: Graph) -> list[str]:
     scopes = {
         scope
-        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group, WF.WorkflowRef)
+        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group, WF.WorkflowRef)
         for subject in subjects_of_type(graph, cls)
         for scope in [workflow_scope(subject)]
         if scope
@@ -872,6 +918,11 @@ def scope_label(scope: str) -> str:
     return scope.replace("_", "-")
 
 
+def scope_dir_name(scope: str) -> str:
+    label = scope_label(scope).strip()
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-") or "workflow"
+
+
 def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
     if scope is None:
         return list(terms)
@@ -881,7 +932,7 @@ def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
 def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
     node_terms = {
         node
-        for cls in (WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group, WF.WorkflowRef)
+        for cls in (WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group, WF.WorkflowRef)
         for node in subjects_of_type(graph, cls)
     }
     return filter_scope(sorted(node_terms, key=str), scope)
@@ -1067,6 +1118,18 @@ def deliverable_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str
             if text:
                 data_items.append((text, f"deliverable:{text}"))
     return data_items
+
+
+def has_supply_chain(graph: Graph, node: URIRef) -> bool:
+    """artifact-stream 뷰에 표시할 공급망 연결이 있는지 확인.
+    wf:directory 또는 wf:deliverables 또는 eval targetArtifact 중 하나라도 있으면 True."""
+    if list(graph.objects(node, WF.directory)):
+        return True
+    if list(graph.objects(node, WF.deliverables)):
+        return True
+    if graph.value(node, WF.targetArtifact) is not None:
+        return True
+    return False
 
 
 def data_edge_labels(role: str) -> tuple[bool, bool, str | None]:
@@ -1348,7 +1411,7 @@ def build_process_map(
         phase_node_ids[pstr] = mermaid_id("proc", phase)
 
     # --- Collect artifact refs per phase (aggregate from all nodes in that phase) ---
-    node_types = (WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group)
+    node_types = (WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group)
     all_nodes = [n for cls in node_types for n in subjects_of_type(graph, cls)]
 
     all_refs: dict[str, dict[str, str]] = {}
@@ -1444,9 +1507,9 @@ def build_process_map(
             if not a_nid:
                 continue
             if produces:
-                lines.append(f"  {p_nid} -->|produces| {a_nid}")
+                lines.append(f"  {p_nid} -.->|produces| {a_nid}")
             if consumes:
-                lines.append(f"  {a_nid} -->|consumes| {p_nid}")
+                lines.append(f"  {a_nid} -.->|consumes| {p_nid}")
 
     if not artifact_nids and not phase_node_ids:
         return "_No displayable process nodes or shared artifacts found._"
@@ -1526,7 +1589,7 @@ def build_process_flow(
     # --- Artifact collection (machine-native only) ---
     phase_arts: dict[str, dict[str, tuple[dict[str, str], bool, bool]]] = {}
     all_refs: dict[str, dict[str, str]] = {}
-    node_types = (WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group)
+    node_types = (WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group)
     all_scope_nodes = [n for cls in node_types for n in subjects_of_type(graph, cls) if workflow_scope(n) == scope]
     for node in all_scope_nodes:
         pstr = step_to_phase.get(str(node))
@@ -1575,7 +1638,7 @@ def build_process_flow(
                 shape = "rect"
                 if (step, RDF.type, WF.Decision) in graph:
                     shape = "hexagon"
-                elif (step, RDF.type, WF.Oracle) in graph or (step, RDF.type, WF.Validation) in graph:
+                elif (step, RDF.type, WF.Eval) in graph or (step, RDF.type, WF.Validation) in graph:
                     shape = "trapezoid"
                 lines.append(f'    {mermaid_shape(s_nid, mermaid_label(slabel, 44), shape)}')
             for i in range(len(steps) - 1):
@@ -1610,9 +1673,9 @@ def build_process_flow(
             if not a_nid:
                 continue
             if produces and produce_src:
-                lines.append(f"  {produce_src} -->|produces| {a_nid}")
+                lines.append(f"  {produce_src} -.->|produces| {a_nid}")
             if consumes and consume_dst:
-                lines.append(f"  {a_nid} -->|consumes| {consume_dst}")
+                lines.append(f"  {a_nid} -.->|consumes| {consume_dst}")
 
     body = "\n".join(lines)
     return (
@@ -1705,7 +1768,7 @@ def build_workflow_topology(
         for rdf_type, css_class in (
             (WF.Step, "step"),
             (WF.Decision, "decision"),
-            (WF.Oracle, "oracle"),
+            (WF.Eval, "eval"),
             (WF.Validation, "validation"),
             (WF.Group, "group"),
             (WF.WorkflowRef, "workflowRef"),
@@ -1717,8 +1780,14 @@ def build_workflow_topology(
                     suffix = f"{suffix} / {status}"
                 if rdf_type == WF.Decision:
                     shape = "hexagon"
-                elif rdf_type == WF.Oracle:
+                elif rdf_type == WF.Eval:
                     shape = "trapezoid"
+                    oracle_subj = (
+                        first_literal(graph, term, WF.oracle)
+                        or first_literal(graph, term, WF.oracleType)
+                    )
+                    if oracle_subj:
+                        suffix = f"{suffix}<br>oracle: {oracle_subj}"
                 else:
                     shape = "rect"
                 return local_name(rdf_type).lower(), css_class, suffix, shape
@@ -1758,6 +1827,8 @@ def build_workflow_topology(
                 declared.add(phase_id)
                 for node in sorted(graph.objects(phase, WF.hasNode), key=str):
                     if isinstance(node, URIRef) and in_scope(node):
+                        if view in stream_view_names and not has_supply_chain(graph, node):
+                            continue  # 공급망 연결 없는 노드는 artifact-stream 뷰에서 제외
                         node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
                         if view in stream_view_names:
                             node_suffix = ""  # artifact-stream: label + id only, no type/status
@@ -1777,7 +1848,7 @@ def build_workflow_topology(
         node_classes = [
             (WF.Step, "step"),
             (WF.Decision, "decision"),
-            (WF.Oracle, "oracle"),
+            (WF.Eval, "eval"),
             (WF.Validation, "validation"),
             (WF.Group, "group"),
             (WF.WorkflowRef, "workflowRef"),
@@ -1788,12 +1859,14 @@ def build_workflow_topology(
                     continue
                 status = first_literal(graph, node, WF.status)
                 if view in stream_view_names:
+                    if not has_supply_chain(graph, node):
+                        continue  # 공급망 연결 없는 노드는 artifact-stream 뷰에서 제외
                     # artifact-stream: label only — no type/status suffix noise
                     node_id = mermaid_id(local_name(cls).lower(), node)
                     if node_id not in declared:
                         _lbl = preferred_label(graph, node) or display_id(node)
                         _lbl_short = f"{mermaid_label(_lbl, 52)}<br>id: {display_id(node)}"
-                        shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Oracle else "rect"
+                        shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Eval else "rect"
                         lines.append(f"  {mermaid_shape(node_id, _lbl_short, shape)}")
                         lines.append(f"  class {node_id} {css_class}")
                         declared.add(node_id)
@@ -1801,7 +1874,7 @@ def build_workflow_topology(
                     suffix = local_name(cls)
                     if status:
                         suffix = f"{suffix} / {status}"
-                    shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Oracle else "rect"
+                    shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Eval else "rect"
                     declare(node, local_name(cls).lower(), css_class, suffix, shape)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
@@ -1860,21 +1933,14 @@ def build_workflow_topology(
                             control_incoming.add(target)
                             control_outgoing.add(decision)
 
-        for oracle in [n for n in subjects_of_type(graph, WF.Oracle) if scope is None or in_scope(n)]:
-                on_fail_id = first_literal(graph, oracle, WF.onFail)
+        for eval_node in [n for n in subjects_of_type(graph, WF.Eval) if scope is None or in_scope(n)]:
+                on_fail_id = first_literal(graph, eval_node, WF.onFail)
                 if on_fail_id:
                     target = WF[f"node/{on_fail_id}"]
                     if in_scope(target):
-                        control_edges.append((oracle, "-.->", "on: fail", target))
+                        control_edges.append((eval_node, "-.->", "on: fail", target))
                         control_incoming.add(target)
-                        control_outgoing.add(oracle)
-                order_target_id = first_literal(graph, oracle, WF.orderTarget)
-                if order_target_id:
-                    target = WF[f"node/{order_target_id}"]
-                    if in_scope(target):
-                        control_edges.append((oracle, "==>", "order", target))
-                        control_incoming.add(target)
-                        control_outgoing.add(oracle)
+                        control_outgoing.add(eval_node)
 
         for node in process_nodes:
             for target in sorted(graph.objects(node, WF.next), key=str):
@@ -1885,7 +1951,7 @@ def build_workflow_topology(
 
         if show_workflow_spine:
             for source, arrow, label, target in control_edges:
-                if arrow not in ("-.->", "==>"):  # decision branch + oracle order/fail
+                if arrow not in ("-.->",) and label not in ("next",):  # decision branch / workflow next
                     continue
                 source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
                 target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
@@ -1894,6 +1960,8 @@ def build_workflow_topology(
                 edge(source_id, arrow, label, target_id)
 
         for node in process_nodes:
+            if view in stream_view_names and not has_supply_chain(graph, node):
+                continue  # artifact-stream: 공급망 없는 노드 선언 제외
             source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
             source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
             for role, path, _ in directory_data_for_node(graph, node):
@@ -1920,12 +1988,12 @@ def build_workflow_topology(
                     produced_data_node_ids.add(data_node_id)
                     data_producers.setdefault(data_node_id, set()).add(node)
                     if show_data_stream:
-                        edge(source_id, "-->", f"produces{label_suffix}", data_node_id)
+                        edge(source_id, "-.->", f"produces{label_suffix}", data_node_id)
                 if consumes:
                     consumed_data_node_ids.add(data_node_id)
                     data_consumers.setdefault(data_node_id, set()).add(node)
                     if show_data_stream:
-                        edge(data_node_id, "-->", f"consumes{label_suffix}", source_id)
+                        edge(data_node_id, "-.->", f"consumes{label_suffix}", source_id)
 
             for deliverable, _ in deliverable_data_for_node(graph, node):
                 ref = deliverable_data_ref(deliverable)
@@ -1950,7 +2018,7 @@ def build_workflow_topology(
                 produced_data_node_ids.add(data_node_id)
                 data_producers.setdefault(data_node_id, set()).add(node)
                 if show_data_stream:
-                    edge(source_id, "-->", "produces", data_node_id)
+                    edge(source_id, "-.->", "produces", data_node_id)
 
         stream_task_edges: set[tuple[URIRef, URIRef]] = set()
         for data_node_id in sorted(data_node_ids):
@@ -2005,40 +2073,71 @@ def build_workflow_topology(
                 if node not in control_outgoing:
                     edge(node_id, "-->", "", end_id)
 
-        # artifact-stream: oracle check → order chain
-        if view in stream_view_names and show_data_stream:
-            for oracle in [n for n in subjects_of_type(graph, WF.Oracle) if scope is None or in_scope(n)]:
-                oracle_nid = mermaid_id("oracle", oracle)
-                if oracle_nid not in declared:
-                    continue
-                art_str = first_literal(graph, oracle, WF.targetArtifact)
+        # eval edges: eval:check / eval:order / eval:report — shown in ALL scoped views
+        if include_internal:
+            for eval_node in [n for n in subjects_of_type(graph, WF.Eval) if scope is None or in_scope(n)]:
+                e_prefix, e_cls, e_suffix, e_shape = visual_kind(eval_node)
+                eval_nid = mermaid_id("eval", eval_node)
+                if eval_nid not in declared:
+                    declare(eval_node, e_prefix, e_cls, e_suffix, e_shape)
+
+                # eval:check — targetArtifact -.-> eval
+                art_str = first_literal(graph, eval_node, WF.targetArtifact)
                 if art_str:
-                    art_nid = data_id(art_str)
-                    if art_nid in data_node_ids:
-                        edge(art_nid, "-->", "check", oracle_nid)
-                order_str = first_literal(graph, oracle, WF.orderTarget)
+                    ref = data_ref_for_locator(data_registry, data_type="local_file", locator=art_str)
+                    art_ref = ref if ref else {
+                        "id": f"local_file:{art_str}", "data_type": "local_file",
+                        "location": art_str, "locator": art_str, "artifact_type": "document",
+                    }
+                    art_nid = data_id(art_ref["id"])
+                    if art_nid not in declared:
+                        art_label_str = data_label(
+                            art_ref["data_type"], art_ref.get("location", art_str),
+                            locator=art_ref.get("locator", art_str),
+                            node_id=art_ref["id"],
+                            artifact_type=art_ref.get("artifact_type", "document"),
+                        )
+                        declare_data(art_ref["id"], art_label_str, art_ref.get("artifact_type", "document"))
+                        data_node_ids.add(art_nid)
+                    edge(art_nid, "-.->", "eval:check", eval_nid)
+
+                # eval:order — eval --> orderTarget step
+                order_str = first_literal(graph, eval_node, WF.orderTarget)
                 if order_str:
-                    for cand in (WF[f"node/{scope}/{order_str}"], WF[f"node/{order_str}"]):
-                        if in_scope(cand):
+                    for cand in (WF[f"node/{order_str}"], WF[f"node/{scope}/{order_str}"]):
+                        if isinstance(cand, URIRef) and in_scope(cand):
                             t_prefix, t_cls, t_suffix, t_shape = visual_kind(cand)
                             t_nid = declare(cand, t_prefix, t_cls, t_suffix, t_shape)
-                            edge(oracle_nid, "==>", "order", t_nid)
-                            if t_cls == "decision":
-                                for src, arr, lbl, tgt in control_edges:
-                                    if arr == "-.>" or arr == "-.->":
-                                        src_nid = mermaid_id(visual_kind(src)[0], src)
-                                        if src_nid == t_nid and in_scope(tgt):
-                                            tgt_p, tgt_c, tgt_s, tgt_sh = visual_kind(tgt)
-                                            tgt_nid = declare(tgt, tgt_p, tgt_c, tgt_s, tgt_sh)
-                                            edge(t_nid, arr, lbl, tgt_nid)
-                                            for src2, arr2, lbl2, tgt2 in control_edges:
-                                                if arr2 == "-->" and lbl2 == "next":
-                                                    src2_nid = mermaid_id(visual_kind(src2)[0], src2)
-                                                    if src2_nid == tgt_nid and in_scope(tgt2):
-                                                        tgt2_p, tgt2_c, tgt2_s, tgt2_sh = visual_kind(tgt2)
-                                                        tgt2_nid = declare(tgt2, tgt2_p, tgt2_c, tgt2_s, tgt2_sh)
-                                                        edge(tgt_nid, arr2, lbl2, tgt2_nid)
+                            edge(eval_nid, "-->", "eval:order", t_nid)
                             break
+
+                # eval:report — eval -.-> orderArtifact
+                report_str = first_literal(graph, eval_node, WF.orderArtifact)
+                if report_str:
+                    d_ref = deliverable_data_ref(report_str)
+                    r_nid = data_id(d_ref["id"])
+                    if r_nid not in declared:
+                        r_label_str = data_label(
+                            d_ref["data_type"], d_ref["location"],
+                            detail=d_ref.get("detail"),
+                            node_id=d_ref["id"],
+                            artifact_type=d_ref.get("artifact_type", "document"),
+                        )
+                        declare_data(d_ref["id"], r_label_str, d_ref.get("artifact_type", "document"))
+                        data_node_ids.add(r_nid)
+                    edge(eval_nid, "-.->", "eval:report", r_nid)
+
+        # artifact-stream: TTL에 선언된 control edge만 렌더링 (-.-> 브랜치, --> 오라클/next)
+        if view in stream_view_names:
+            for src, arr, lbl, tgt in control_edges:
+                if arr not in ("-.->", "-.>", "-->"):
+                    continue
+                src_nid = mermaid_id(visual_kind(src)[0], src)
+                if src_nid not in declared or not in_scope(tgt):
+                    continue
+                tgt_p, tgt_c, tgt_s, tgt_sh = visual_kind(tgt)
+                tgt_nid = declare(tgt, tgt_p, tgt_c, tgt_s, tgt_sh)
+                edge(src_nid, arr, lbl, tgt_nid)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
@@ -2062,7 +2161,7 @@ def build_workflow_topology(
             "  classDef status_pending fill:#f3f4f6,stroke:#6b7280,color:#111827",
             "  classDef step fill:#ecfeff,stroke:#0891b2,color:#111827",
             "  classDef decision fill:#fae8ff,stroke:#c026d3,color:#111827",
-            "  classDef oracle fill:#ffedd5,stroke:#ea580c,color:#111827",
+            "  classDef eval fill:#ffedd5,stroke:#ea580c,color:#111827",
             "  classDef validation fill:#fee2e2,stroke:#dc2626,color:#111827",
             "  classDef group fill:#f5f5f4,stroke:#78716c,color:#111827",
             "  classDef workflowRef fill:#e0f2fe,stroke:#0284c7,color:#111827",
@@ -2116,18 +2215,18 @@ def build_workflow_subgraph_index(
         return "_No scoped workflow sub-graphs found. Regenerate TTL ABoxes with scoped workflow URIs._"
 
     lines = [
-        "> Workflow-specific views generated from the same TTL ABox inputs as the repository topology.",
+        "> Workflow-specific graph views generated from TTL ABox inputs. Each workflow has its own output directory.",
         "",
-        "| Workflow Scope | Integrated | Workflow | Artifact Stream | Phases | Nodes | Artifact Nodes |",
+        "| Workflow Scope | Repository Graph | Workflow Graph | Artifact Stream Graph | Phases | Nodes | Artifact Nodes |",
         "|---|---|---|---|---:|---:|---:|",
     ]
     for scope in scopes:
         phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
         node_terms = workflow_node_terms(graph, scope)
         data_count = len(data_keys(graph, scope, data_registry))
-        file_name = f"{scope}.md"
+        folder = scope_dir_name(scope)
         lines.append(
-            f"| `{scope_label(scope)}` | [`{file_name}`](workflow-subgraphs/{file_name}) | [`{file_name}`](workflow-views/{file_name}) | [`{file_name}`](artifact-stream-views/{file_name}) | {phase_count} | {len(node_terms)} | {data_count} |"
+            f"| `{scope_label(scope)}` | [`repository-graph.md`]({folder}/repository-graph.md) | [`workflow-graph.md`]({folder}/workflow-graph.md) | [`artifact-stream-graph.md`]({folder}/artifact-stream-graph.md) | {phase_count} | {len(node_terms)} | {data_count} |"
         )
     return "\n".join(lines)
 
@@ -2267,11 +2366,10 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "",
             "## Views",
             "",
-            "- [workflow-topology.md](workflow-topology.md) — repository-level workflow graph",
             "- [workflow-subgraph-index.md](workflow-subgraph-index.md) — workflow-specific sub-graph index",
-            "- [workflow-subgraphs/](workflow-subgraphs/) — integrated workflow + artifact stream view per scoped workflow",
-            "- [workflow-views/](workflow-views/) — task workflow spine view per scoped workflow",
-            "- [artifact-stream-views/](artifact-stream-views/) — artifact supply-chain view per scoped workflow",
+            "- `<workflow>/repository-graph.md` — integrated repository graph for one workflow scope",
+            "- `<workflow>/workflow-graph.md` — task workflow spine for one workflow scope",
+            "- `<workflow>/artifact-stream-graph.md` — artifact supply-chain graph for one workflow scope",
             "- [artifact-stream-report.md](artifact-stream-report.md) — produced/unconsumed artifacts and external input checklist",
             "- [workflow-ssot-report.md](workflow-ssot-report.md)",
             "- [class-layer-map.md](class-layer-map.md)",
@@ -2295,6 +2393,36 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
     )
 
 
+def clean_generated_graph_views(output_dir: Path) -> None:
+    """Remove old generated graph files/directories before writing the current layout."""
+    legacy_files = {
+        "workflow-topology.md",
+        "process-map.md",
+        "resource-stream-report.md",
+        "data-stream-report.md",
+    }
+    legacy_dirs = {
+        "workflow-subgraphs",
+        "workflow-views",
+        "artifact-stream-views",
+        "process-views",
+        "resource-stream-views",
+        "data-stream-views",
+    }
+    if not output_dir.exists():
+        return
+    for child in output_dir.iterdir():
+        if child.is_dir():
+            if child.name in legacy_dirs or (
+                (child / "repository-graph.md").exists()
+                or (child / "workflow-graph.md").exists()
+                or (child / "artifact-stream-graph.md").exists()
+            ):
+                shutil.rmtree(child)
+        elif child.name in legacy_files:
+            child.unlink()
+
+
 def main() -> int:
     args = parse_args()
     workflow_dir, output_dir, ttl_paths = resolve_paths(args)
@@ -2306,21 +2434,22 @@ def main() -> int:
     graph = parse_graph(ttl_paths)
     data_registry = load_data_registry(args.root.resolve())
     output_dir.mkdir(parents=True, exist_ok=True)
-    ssot_report, missing_ttl_count = build_workflow_ssot_report(workflow_dir)
+    clean_generated_graph_views(output_dir)
+    ssot_report, legacy_yaml_count = build_workflow_ssot_report(workflow_dir, graph)
 
-    write_markdown(output_dir / "workflow-topology.md", "MSO Repository Workflow Topology", build_workflow_topology(graph, data_registry=data_registry))
     write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
     artifact_report = build_artifact_stream_report(graph, data_registry=data_registry)
     write_markdown(output_dir / "artifact-stream-report.md", "MSO Artifact Stream Report", artifact_report)
     for scope in workflow_scopes(graph):
+        flow_dir = output_dir / scope_dir_name(scope)
         write_markdown(
-            output_dir / "workflow-subgraphs" / f"{scope}.md",
-            f"MSO Integrated Workflow View — {scope_label(scope)}",
+            flow_dir / "repository-graph.md",
+            f"MSO Repository Graph — {scope_label(scope)}",
             build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="integrated"),
         )
         write_markdown(
-            output_dir / "workflow-views" / f"{scope}.md",
-            f"MSO Workflow View — {scope_label(scope)}",
+            flow_dir / "workflow-graph.md",
+            f"MSO Workflow Graph — {scope_label(scope)}",
             build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="workflow"),
         )
         artifact_stream_view = build_workflow_topology(
@@ -2330,18 +2459,9 @@ def main() -> int:
             view="artifact-stream",
         )
         write_markdown(
-            output_dir / "artifact-stream-views" / f"{scope}.md",
-            f"MSO Artifact Stream View — {scope_label(scope)}",
+            flow_dir / "artifact-stream-graph.md",
+            f"MSO Artifact Stream Graph — {scope_label(scope)}",
             artifact_stream_view,
-        )
-    process_map_content = build_process_map(graph, data_registry=data_registry)
-    write_markdown(output_dir / "process-map.md", "MSO Process Map", process_map_content)
-    write_markdown(output_dir / "artifact-stream-views" / "process-map.md", "MSO Process Map", process_map_content)
-    for scope in workflow_scopes(graph):
-        write_markdown(
-            output_dir / "process-views" / f"{scope}.md",
-            f"MSO Process Flow — {scope_label(scope)}",
-            build_process_flow(graph, scope=scope, data_registry=data_registry),
         )
     write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
@@ -2350,9 +2470,9 @@ def main() -> int:
     write_markdown(output_dir / "README.md", "MSO Graph Observability Views", build_readme(workflow_dir, ttl_paths, output_dir))
 
     print(f"Wrote graph observability views to {output_dir}")
-    if missing_ttl_count:
+    if legacy_yaml_count:
         print(
-            f"WARNING: {missing_ttl_count} workflow YAML file(s) have no sibling *.abox.ttl and were excluded from topology. See workflow-ssot-report.md.",
+            f"WARNING: {legacy_yaml_count} legacy workflow YAML file/reference item(s) remain after TTL migration. Remove files after verifying sibling *.abox.ttl and replace YAML refs inside TTL. See workflow-ssot-report.md.",
             file=sys.stderr,
         )
         if args.strict_ssot:

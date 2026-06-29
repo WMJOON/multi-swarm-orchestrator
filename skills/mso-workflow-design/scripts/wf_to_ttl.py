@@ -13,8 +13,8 @@
 
     2) feedback loop control (SHACL-SPARQL + rdflib SPARQL)
        순환 자체는 허용한다. 다만 산출물이 재귀적으로 소비되는 loop 안에
-       별도 Oracle gate가 없으면 uncontrolled feedback loop로 본다. Decision gate는
-       process branch 제어점이며, Oracle gate는 산출물 품질/정합 평가점이다.
+       별도 Eval gate가 없으면 uncontrolled feedback loop로 본다. Decision gate는
+       process branch 제어점이며, Eval gate는 산출물 품질/정합 평가점이다.
 
 사용:
   python wf_to_ttl.py serialize <workflow.yaml>          # legacy YAML import: TTL stdout
@@ -47,7 +47,8 @@ _TYPE_CLASS = {
     "step": WF.Step,
     "decision": WF.Decision,
     "validation": WF.Validation,
-    "oracle": WF.Oracle,
+    "eval": WF.Eval,
+    "oracle": WF.Eval,  # legacy YAML alias
     "group": WF.Group,
 }
 
@@ -163,6 +164,10 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
                 g.add((dn, WF.dirPath, Literal(str(d["path"]))))
                 if d.get("role"):
                     g.add((dn, WF.dirRole, Literal(str(d["role"]))))
+                if d.get("note"):
+                    g.add((dn, WF.dirNote, Literal(str(d["note"]))))
+                if d.get("dir_note"):
+                    g.add((dn, WF.dirNote, Literal(str(d["dir_note"]))))
         for b in (n.get("branches") or []):  # 특수: decision.branches[] → wf:Branch 노드(안정 URI)
             if not isinstance(b, dict):
                 continue
@@ -205,7 +210,7 @@ def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict) -> None:
 # top-level non-phase 메타 블록(wf_node 의 phase-제외 키 + 소비자 x_* 확장).
 # 임의 중첩 구조(scalar/list/dict)를 가질 수 있어 canonical JSON literal 로 무손실 보존.
 # feedback_loops(phase 간 의도적 역방향 loop: testing→development 등)도 여기 포함 —
-# 별도 산문 블록은 rawJson 으로 보존하고, 실행/의존 edge의 loop 통제는 Oracle 개입점으로 검증한다.
+# 별도 산문 블록은 rawJson 으로 보존하고, 실행/의존 edge의 loop 통제는 Eval 개입점으로 검증한다.
 _META_BLOCK_KEYS = ("workflow", "module", "meta", "metadata", "feedback_loops")
 
 
@@ -364,8 +369,8 @@ SELECT ?x WHERE {
     ?x wf:dependsOn+ ?x .
     FILTER NOT EXISTS {
       ?x wf:dependsOn* ?phase .
-      ?phase wf:hasNode ?oracle .
-      ?oracle a wf:Oracle .
+      ?phase wf:hasNode ?eval .
+      ?eval a wf:Eval .
       ?phase wf:dependsOn* ?x .
     }
   }
@@ -373,9 +378,9 @@ SELECT ?x WHERE {
   {
     ?x (wf:next|wf:hasBranch/wf:gotoNode)+ ?x .
     FILTER NOT EXISTS {
-      ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?oracle .
-      ?oracle a wf:Oracle .
-      ?oracle (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
+      ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?eval .
+      ?eval a wf:Eval .
+      ?eval (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
     }
   }
 }
@@ -383,7 +388,7 @@ SELECT ?x WHERE {
 
 
 def find_uncontrolled_loops(g: Graph) -> list[str]:
-    """Oracle 개입점 없이 닫힌 feedback loop 목록."""
+    """Eval 개입점 없이 닫힌 feedback loop 목록."""
     seen = []
     for row in g.query(_UNCONTROLLED_LOOP_QUERY):
         uri = str(row[0])
@@ -520,7 +525,7 @@ def main(argv=None) -> int:
                 for i in res["tree_issues"]:
                     print(f"  - {i}")
             if res["uncontrolled_loops"]:
-                print("✗ uncontrolled feedback loop (Oracle 개입점 없음):")
+                print("✗ uncontrolled feedback loop (Eval 개입점 없음):")
                 for c in res["uncontrolled_loops"]:
                     print(f"  - {c}")
             if not res["shacl_conforms"]:

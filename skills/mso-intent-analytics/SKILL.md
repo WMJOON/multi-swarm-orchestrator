@@ -1,12 +1,13 @@
 ---
 name: mso-intent-analytics
-version: "0.4.0"
+version: "0.5.0"
 description: >
   MSO 도메인 NLU 어휘의 단일 정본(registry) + intent-레벨 analytics 의 집.
   LinkML schema(nlu_intent.yaml) · TTL instances · SKOS taxonomy · intent matrix를 소유.
   registry SoT 는 UUG(uug-grounding)가 멀티-레지스트리 브리지로 소비.
-  (구 mso-intent-registry 개명 — §11.) ⚠ analytics(intent 사용·매칭 측정, tier-escalation
-  신호 흡수)는 §11.1 상 이 스킬 귀속이나 미구현 — registry 부분만 가동.
+  (구 mso-intent-registry 개명 — §11.) intent 사용·매칭 측정과 MSO runtime
+  tier-escalation 신호는 §11.1 상 이 스킬 귀속이다. 사용자/turn 패턴 분석은
+  UUG(uug-pattern-analytics) 영역이다.
 schema_owner: true
 schema_path: references/schemas/nlu_intent.yaml
 role: data
@@ -14,11 +15,11 @@ triggers: []
 depends_on: []
 ---
 
-# MSO Intent Analytics (v0.4.0, 구 mso-intent-registry)
+# MSO Intent Analytics (v0.5.0, 구 mso-intent-registry)
 
-MSO NLU 레이어. 현재 **registry(데이터 skill)** — 정본 데이터 + lookup API. 런타임 로직 없음.
+MSO NLU 레이어. 현재 **registry + 뒷단 dispatch** — 정본 데이터, lookup API, `pipeline.ground()`를 제공한다.
 
-> **개명·역할 (§11/§11.1)**: `mso-intent-registry` → `mso-intent-analytics`. registry(Intent/SlotSpec/IntentMatrix SoT)는 그대로 유지하고 UUG 가 소비. 그 위에 얹힐 intent-레벨 analytics(사용·매칭 측정, 최적화) + mso-conversation-analytics 의 **tier-escalation 폐루프 신호**는 이 스킬이 받기로 결정(§11.1)됐으나 **아직 미구현**.
+> **개명·역할 (§11/§11.1)**: `mso-intent-registry` → `mso-intent-analytics`. registry(Intent/SlotSpec/IntentMatrix SoT)는 그대로 유지하고 UUG 가 소비. intent-레벨 analytics(사용·매칭 측정, 최적화)와 mso-conversation-analytics 의 **MSO runtime tier-escalation 폐루프 신호**는 이 스킬 귀속이다. 전환행렬·funnel·reprompt율 같은 사용자/turn 패턴 분석은 UUG `uug-pattern-analytics` 흡수 대상이다.
 
 ## 파일 구조
 

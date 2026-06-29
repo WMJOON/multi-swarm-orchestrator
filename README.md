@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.4.0
+# Multi-Swarm Orchestrator (MSO) v0.5.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -42,11 +42,11 @@ Markdown document에 소비자가 없으면 생략한다. 장기 조회, 추론,
 
 상세 모델은 [docs/artifact-model.md](docs/artifact-model.md)를 본다.
 
-### Decision And Oracle Separation
+### Decision And Eval Separation
 
-Decision gate와 Oracle gate는 다르다.
+Decision gate와 Eval gate는 다르다.
 
-Decision은 workflow의 진행과 분기를 제어한다. Oracle은 산출물의 품질, 정합성, 수용 가능성을 평가한다. 순환 workflow 자체는 허용하지만, 산출물이 재귀적으로 소비되는 feedback loop에는 별도 Oracle gate가 있어야 한다.
+Decision은 workflow의 진행과 분기를 제어한다. Eval은 산출물의 품질, 정합성, 수용 가능성을 평가한다. `oracle`은 Eval을 수행하는 주체 또는 권위 필드다. 순환 workflow 자체는 허용하지만, 산출물이 재귀적으로 소비되는 feedback loop에는 별도 Eval gate가 있어야 한다.
 
 ### TTL As Workflow SSOT
 
@@ -61,6 +61,16 @@ MSO는 실행 기록을 단순 로그로만 보지 않는다. auditlog와 worklo
 작업 기억은 다음 세션의 context가 되고, 반복 실패와 구조적 drift를 발견하는 관측 입력이 된다.
 
 ## Repository Topology
+
+MSO repository workflow를 설계할 때는 세 관점을 동시에 본다.
+
+| Design Lens | 질문 | Shape Slot |
+|---|---|---|
+| Agentic Workflow | 어떤 agentic task가 어떤 순서와 조건으로 실행되는가? | step, decision, validation, next/branch edge |
+| Artifact Supply Chain | 어떤 artifact가 생산되고, 누가 소비하며, 어디에 저장되는가? | directory, deliverable, artifact type, consumes/produces edge |
+| Eval Gate | 어떤 산출물을 누가 어떤 기준으로 평가하고, 결과가 어떤 step과 report로 이어지는가? | eval, targetArtifact, orderTarget, orderArtifact, criteria |
+
+이 세 관점은 graph shape requirements이며, workflow-design 대화에서는 이를 slot으로 본다. 비어 있는 slot이 있으면 에이전트는 바로 TTL을 채우기보다 필요한 질문을 던져 slot-filling을 유도하고, 충분히 채워진 뒤 안정적인 repository workflow topology로 기록한다.
 
 MSO repository에는 세 그래프가 함께 존재한다.
 
@@ -89,24 +99,24 @@ MSO repository에는 세 그래프가 함께 존재한다.
 | 구조 없음 | repository index와 artifact registry | `index.yaml`, `agent-context/index/index.yaml` |
 | 절차 없음 | TTL workflow topology | `agent-context/workflow/*.abox.ttl` |
 | 소비 관계 불명확 | artifact stream observability | `agent-context/observability/graph/` |
-| 결정/품질 판단 혼재 | decision/oracle gate 분리 | workflow TTL, SHACL |
+| 결정/품질 판단 혼재 | decision/eval gate 분리 | workflow TTL, SHACL |
 | 기억 없음 | work-memory JSONL + graph projection | `agent-context/work-memory/` |
 
 ## Skills
 
-v0.4.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
+v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 
 | Skill | 역할 |
 |---|---|
 | `mso-orchestration` | 사용자 요청을 MSO 하위 스킬로 라우팅한다. |
 | `mso-repository-setup` | 새 repository에 `agent-context/` 구조와 hook을 부트스트랩한다. |
 | `mso-scaffold-design` | repository index와 artifact registry를 관리한다. |
-| `mso-workflow-design` | TTL workflow topology, decision/oracle gate, migration tooling을 관리한다. |
+| `mso-workflow-design` | TTL workflow/artifact/eval node-edge shape와 migration tooling을 관리한다. |
 | `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. |
-| `mso-graph-observability` | workflow, artifact stream, runtime graph를 관측한다. |
+| `mso-graph-observability` | workflow, artifact stream, eval edge, runtime graph를 관측하고 개선 리포트를 만든다. |
 | `mso-workflow-optimizer` | TTL workflow를 실행 가능한 graph artifact로 컴파일하는 방향을 담당한다. |
 | `mso-intent-analytics` | UUG가 제공한 intent를 MSO action으로 dispatch하고 분석한다. |
-| `mso-conversation-analytics` | 대화/turn 패턴 분석 레거시 기능을 보유한다. |
+| `mso-conversation-analytics` | de-routed 레거시 기능이다. 사용자/turn 패턴 분석은 UUG `uug-pattern-analytics` 흡수 대상이고, MSO runtime tier 신호는 `mso-intent-analytics`가 받는다. |
 
 ## Generated Structure
 
@@ -164,10 +174,10 @@ python3 skills/mso-scaffold-design/scripts/sf_node.py validate .
 python3 skills/mso-graph-observability/scripts/observe_graph.py --root .
 ```
 
-legacy YAML workflow가 남아 있는 repository에서만 TTL migration을 실행한다.
+legacy workflow YAML이 남아 있는 repository에서만 TTL migration을 실행한다. TTL 검증이 끝난 뒤 legacy YAML은 제거한다.
 
 ```bash
-python3 skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py --root .
+python3 skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-context/workflow
 ```
 
 ### Record Work Memory

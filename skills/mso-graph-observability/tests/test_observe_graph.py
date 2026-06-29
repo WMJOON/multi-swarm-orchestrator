@@ -66,8 +66,8 @@ def test_workflow_topology_renders_execution_edges():
     assert "Branch" not in markdown
     assert "((start))" in markdown
     assert "((end))" in markdown
-    assert '["A\\nid: a\\nStep"]' in markdown
-    assert '{{"Gate\\nid: d\\nDecision"}}' in markdown
+    assert '["A<br>id: a<br>Step"]' in markdown
+    assert '{{"Gate<br>id: d<br>Decision"}}' in markdown
 
 
 def test_repository_topology_hides_internal_node_flow():
@@ -120,12 +120,12 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '@{ shape: doc, label: "DOCUMENT\\nid: local_file:generated/results/" }' in markdown
+    assert '@{ shape: doc, label: "generated/results/<br>DOCUMENT" }' in markdown
     assert "## Artifact Node Index" in markdown
     assert "| Artifact Type | Primary Consumer | Id | Medium | Location | Locator | Detail |" in markdown
     assert "`generated/results/`" in markdown
-    assert "-->|downstream|" in markdown
-    assert "-->|upstream|" in markdown
+    assert "-.->|produces|" in markdown
+    assert "-.->|consumes|" in markdown
     assert "boundary_start_demo_start_" in markdown
     assert "boundary_end_demo_end_" in markdown
     assert "-->|next|" in markdown
@@ -141,7 +141,7 @@ def test_workflow_subgraph_renders_dataflow_nodes():
         "step_node_demo_consumer_" in line and "-->|next|" in line and "boundary_end_demo_end_" in line
         for line in markdown.splitlines()
     )
-    assert "DOCUMENT\\nid: deliverable:" in markdown
+    assert "report.md<br>DOCUMENT" in markdown
     assert "report.md" in markdown
     assert "classDef document" in markdown
     assert "classDef knowledge_store" in markdown
@@ -180,13 +180,13 @@ def test_workflow_and_artifact_stream_views_are_separated():
     assert "-->|next|" in workflow
     assert "KNOWLEDGE STORE\\nid:" not in workflow
     assert "DOCUMENT\\nid:" not in workflow
-    assert "-->|upstream|" not in workflow
-    assert "-->|downstream|" not in workflow
+    assert "-.->|consumes|" not in workflow
+    assert "-.->|produces|" not in workflow
 
     assert "`artifact-stream` view" in artifact_stream
-    assert "DOCUMENT\\nid: local_file:generated/results/" in artifact_stream
-    assert "-->|upstream|" in artifact_stream
-    assert "-->|downstream|" in artifact_stream
+    assert "generated/results/<br>DOCUMENT" in artifact_stream
+    assert "-.->|consumes|" in artifact_stream
+    assert "-.->|produces|" in artifact_stream
     assert "((start))" not in artifact_stream
     assert "-->|next|" not in artifact_stream
 
@@ -270,12 +270,12 @@ def test_workflow_subgraph_uses_index_data_ids_for_locations():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", data_registry=data_registry)
 
-    assert "id: content.draft" in markdown
-    assert markdown.count('@{ shape: doc, label: "DOCUMENT\\nid: content.draft" }') == 1
+    assert "`content.draft`" in markdown
+    assert markdown.count('@{ shape: doc, label: "content/draft/<br>DOCUMENT" }') == 1
     assert "`index:content.draft`" in markdown
     assert "`content/draft/`" in markdown
-    assert "-->|downstream|" in markdown
-    assert markdown.count("-->|downstream|") == 1
+    assert "-.->|produces|" in markdown
+    assert markdown.count("-.->|produces|") == 1
 
 
 def test_data_registry_uses_longest_locator_prefix():
@@ -380,13 +380,13 @@ def test_artifact_nodes_render_document_and_knowledge_store_shapes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '[("KNOWLEDGE STORE\\nid: local_file:ontology/")]' in markdown
-    assert '@{ shape: doc, label: "DOCUMENT\\nid: deliverable:' in markdown
+    assert '[("ontology/<br>KNOWLEDGE STORE")]' in markdown
+    assert '@{ shape: doc, label: "brief.md<br>DOCUMENT" }' in markdown
     assert "| knowledge_store | Agent | `local_file:ontology/`" in markdown
     assert "| document | Human + Agent | `deliverable:" in markdown
 
 
-def test_exporter_writes_resource_stream_and_deprecated_alias_outputs(tmp_path):
+def test_exporter_writes_per_workflow_graph_outputs_and_deprecated_aliases_absent(tmp_path):
     workflow_dir = tmp_path / "agent-context" / "workflow"
     workflow_dir.mkdir(parents=True)
     (tmp_path / "agent-context" / "index").mkdir(parents=True)
@@ -417,32 +417,76 @@ def test_exporter_writes_resource_stream_and_deprecated_alias_outputs(tmp_path):
 
     output_dir = tmp_path / "agent-context" / "observability" / "graph"
     assert (output_dir / "artifact-stream-report.md").exists()
-    assert (output_dir / "artifact-stream-views" / "demo.md").exists()
+    assert (output_dir / "demo" / "repository-graph.md").exists()
+    assert (output_dir / "demo" / "workflow-graph.md").exists()
+    assert (output_dir / "demo" / "artifact-stream-graph.md").exists()
+    assert not (output_dir / "workflow-topology.md").exists()
+    assert not (output_dir / "workflow-subgraphs").exists()
+    assert not (output_dir / "workflow-views").exists()
+    assert not (output_dir / "artifact-stream-views").exists()
     assert not (output_dir / "resource-stream-report.md").exists()
     assert not (output_dir / "resource-stream-views").exists()
     assert not (output_dir / "data-stream-report.md").exists()
     assert not (output_dir / "data-stream-views").exists()
 
 
-def test_workflow_subgraph_renders_oracle_shape():
+def test_workflow_ssot_report_treats_yaml_as_legacy_migration_input(tmp_path):
+    workflow_dir = tmp_path / "agent-context" / "workflow"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "workflow-ready.yaml").write_text("id: ready\n", encoding="utf-8")
+    (workflow_dir / "workflow-ready.abox.ttl").write_text("", encoding="utf-8")
+    (workflow_dir / "workflow-blocked.yaml").write_text("id: blocked\n", encoding="utf-8")
+    (workflow_dir / "workflow-ttl-only.abox.ttl").write_text("", encoding="utf-8")
+    references = workflow_dir / "references" / "schemas"
+    references.mkdir(parents=True)
+    (references / "step.schema.yaml").write_text("name: step\n", encoding="utf-8")
+
+    state = observe_graph.workflow_ssot_state(workflow_dir)
+    graph = Graph()
+    wf = observe_graph.WF
+    ref = wf["phase/demo_wref_module"]
+    graph.add((ref, RDF.type, wf.WorkflowRef))
+    graph.add((ref, wf.ref, Literal("../module/workflow/module-workflow-00.yaml#testing")))
+
+    report, legacy_count = observe_graph.build_workflow_ssot_report(workflow_dir, graph)
+
+    assert legacy_count == 3
+    assert state["yaml"] == [
+        workflow_dir / "workflow-blocked.yaml",
+        workflow_dir / "workflow-ready.yaml",
+    ]
+    assert state["yaml_with_abox"] == [workflow_dir / "workflow-ready.yaml"]
+    assert state["yaml_without_abox"] == [workflow_dir / "workflow-blocked.yaml"]
+    assert "Legacy workflow YAML files remaining: 2" in report
+    assert "Legacy YAML ready to remove (sibling TTL exists): 1" in report
+    assert "Migration blockers (legacy YAML without sibling TTL): 1" in report
+    assert "Legacy YAML references inside TTL: 1" in report
+    assert "`workflow-ready.yaml`" in report
+    assert "`workflow-blocked.yaml`" in report
+    assert "`../module/workflow/module-workflow-00.yaml#testing`" in report
+    assert "step.schema.yaml" not in report
+    assert "After migration, remove the YAML" in report
+
+
+def test_workflow_subgraph_renders_eval_shape():
     graph = Graph()
     wf = observe_graph.WF
     task = wf["node/demo/task"]
-    oracle = wf["node/demo/oracle"]
+    eval_node = wf["node/demo/eval"]
     phase = wf["phase/demo/p"]
 
     graph.add((phase, RDF.type, wf.Phase))
     graph.add((phase, RDFS.label, Literal("Phase")))
-    for node, cls, label in ((task, wf.Step, "Task"), (oracle, wf.Oracle, "Quality Gate")):
+    for node, cls, label in ((task, wf.Step, "Task"), (eval_node, wf.Eval, "Quality Gate")):
         graph.add((node, RDF.type, cls))
         graph.add((node, RDF.type, wf.Node))
         graph.add((node, RDFS.label, Literal(label)))
         graph.add((phase, wf.hasNode, node))
-    graph.add((task, wf.next, oracle))
+    graph.add((task, wf.next, eval_node))
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '["Task\\nid: task\\nStep"]' in markdown
-    assert '[/"Quality Gate\\nid: oracle\\nOracle"\\]' in markdown
+    assert '["Task<br>id: task<br>Step"]' in markdown
+    assert '[/"Quality Gate<br>id: eval<br>Eval"/]' in markdown
     assert "-->|next|" in markdown
-    assert "classDef oracle" in markdown
+    assert "classDef eval" in markdown

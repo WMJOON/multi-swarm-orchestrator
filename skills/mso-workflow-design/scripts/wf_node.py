@@ -10,7 +10,7 @@ wf_node.py — Workflow node schema tool
   python wf_node.py harness-manifest <root_workflow.yaml>
                             [--out <path>] [--format json|yaml]   # harness 집계
 
-type: step | decision | validation | group | phase
+type: step | decision | validation | eval | group | phase
 
 네이밍 컨벤션(id 패턴, module 약어 등)은 프로젝트에서 정의한다.
 이 스킬은 구조적 invariant 만 강제한다.
@@ -53,6 +53,8 @@ RESERVED_TOP_KEYS = {
 # ─── Schema loading ────────────────────────────────────────────────────────────
 
 def load_schema(node_type: str) -> dict:
+    if node_type == "oracle":
+        node_type = "eval"
     path = SCHEMAS_DIR / f"{node_type}.schema.yaml"
     if not path.exists():
         sys.exit(f"[ERROR] 스키마 파일 없음: {path}")
@@ -116,8 +118,8 @@ def cmd_scaffold(node_type: str, node_id: str | None, judge: str | None):
         node = _scaffold_decision(nid, judge or "HITL")
     elif node_type == "validation":
         node = _scaffold_validation(nid)
-    elif node_type == "oracle":
-        node = _scaffold_oracle(nid)
+    elif node_type in ("eval", "oracle"):
+        node = _scaffold_eval(nid)
     elif node_type == "group":
         node = _scaffold_group(nid)
     elif node_type == "phase":
@@ -175,9 +177,9 @@ def _scaffold_validation(node_id: str) -> dict:
     }
 
 
-def _scaffold_oracle(node_id: str) -> dict:
+def _scaffold_eval(node_id: str) -> dict:
     return {
-        "type": "oracle",
+        "type": "eval",
         "id": node_id,
         "label": "TODO: 품질 평가",
         "status": "pending",
@@ -563,8 +565,8 @@ def _validate_nodes(nodes: list, target_id: str | None) -> list[ValidationError]
             errors.extend(_validate_decision(node_id, node))
         elif node_type == "validation":
             errors.extend(_validate_validation(node_id, node))
-        elif node_type == "oracle":
-            errors.extend(_validate_oracle(node_id, node))
+        elif node_type in ("eval", "oracle"):
+            errors.extend(_validate_eval(node_id, node))
         elif node_type == "group":
             errors.extend(_validate_group(node_id, node))
             errors.extend(_validate_nodes(node.get("steps", []) or [], target_id))
@@ -663,7 +665,7 @@ def _validate_validation(node_id: str, node: dict) -> list[ValidationError]:
     return errors
 
 
-def _validate_oracle(node_id: str, node: dict) -> list[ValidationError]:
+def _validate_eval(node_id: str, node: dict) -> list[ValidationError]:
     errors: list[ValidationError] = []
     for fname in ["id", "label", "status", "oracle_type", "criteria"]:
         if not node.get(fname):
@@ -934,10 +936,10 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="노드 유형 스키마 출력")
-    p_show.add_argument("type", choices=["step", "decision", "validation", "oracle", "group", "phase"])
+    p_show.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group", "phase"])
 
     p_sc = sub.add_parser("scaffold", help="노드 스캐폴드 YAML 생성")
-    p_sc.add_argument("type", choices=["step", "decision", "validation", "oracle", "group", "phase"])
+    p_sc.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group", "phase"])
     p_sc.add_argument("--id", dest="node_id", default=None,
                       help="노드 id (생략 시 placeholder). 네이밍 패턴은 프로젝트 컨벤션.")
     p_sc.add_argument("--judge", choices=["HITL", "HITLFE", "HOTL", "HOOTL", "AGENT"],

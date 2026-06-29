@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-design
-version: "0.4.0"
+version: "0.5.0"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
@@ -20,8 +20,8 @@ description: >
 
 # MSO Workflow Design v2
 
-**Primary**: Repository Scaffolding 위에 워크플로우(step·decision·group)를 규정한다. **정본(SSOT-of-record)은 TTL ABox** 이다. YAML 은 legacy migration input 으로만 허용하며, TTL→YAML 역생성 경로는 제공하지 않는다.
-**Secondary**: 규정된 워크플로우를 Mermaid로 시각화한다 (관측성, 후순위).
+**Primary**: Repository Scaffolding 위에 workflow, artifact stream, eval의 **node/edge shape**를 TTL ABox로 규정한다. **정본(SSOT-of-record)은 TTL ABox** 이다. YAML 은 legacy migration input 으로만 허용하며, TTL→YAML 역생성 경로는 제공하지 않는다.
+**Secondary**: `mso-graph-observability`가 읽을 수 있도록 `wf:Step`/`wf:Decision`/`wf:Validation`/`wf:Eval`, `wf:directory`, `wf:targetArtifact`, `wf:orderTarget`, `wf:orderArtifact`의 구조 정합성을 점검한다.
 
 > **워크플로 층위 어휘 (3층)**: `global`(전 프로젝트/엄브렐라 루트) = **UUG 영역**. MSO 는 한
 > 프로젝트 안에서 **root-workflow**(프로젝트 루트, 모듈 조율) + **sub-workflow**(모듈 단위, `workflow_ref`)
@@ -38,7 +38,7 @@ description: >
 
 | 스킬이 강제하는 것 | 프로젝트가 정의하는 것 |
 |----------------|------------------|
-| `type ∈ {step, decision, validation, oracle, group, phase}` | `id` 네이밍 패턴 (예: `{abbr}-s-{NNN}`) |
+| `type ∈ {step, decision, validation, eval, group, phase}` | `id` 네이밍 패턴 (예: `{abbr}-s-{NNN}`) |
 | 노드 id unique, label 존재 | 모듈 약어 매핑 (acp/sdm/…) |
 | `judge ∈ {HITL, HITLFE, HOTL, HOOTL, AGENT}` | label 동사 어휘 (분석/생성/검증 …) |
 | `branches.on ∈ judge_branch_conditions[judge]` | `phase.id` 어휘 (discovery/development/testing …) |
@@ -47,6 +47,23 @@ description: >
 | `directories[].path` 존재 | `owner` 형식 (이메일/팀명/…) |
 
 > 프로젝트별 컨벤션은 [assets/conventions-example.md](assets/conventions-example.md) 를 복사·수정해 `docs/` 또는 `CLAUDE.md` 에 둔다.
+
+## v0.5.0 Design Lenses: Slot-Filling Conversation
+
+Repository workflow를 design 할 때 이 스킬은 세 관점을 동시에 본다. 각 관점은 TTL graph shape requirements의 slot group이다. slot이 비어 있으면 에이전트는 임의로 채우지 않고, 필요한 질문을 던져 conversation으로 slot-filling을 유도한다.
+
+| Lens | Shape requirement slots | Slot-filling 질문 |
+|------|-------------------------|------------------|
+| **Agentic Workflow** | `wf:Step`, `wf:Decision`, `wf:Validation`, `wf:next`, `wf:hasBranch` | 어떤 agentic task가 실행되고, 어떤 순서·분기·검증으로 진행되는가? |
+| **Artifact Supply Chain** | `wf:directory`, `wf:dirPath`, `wf:dirRole`, `wf:deliverables`, artifact type/index locator | 각 task가 어떤 artifact를 소비·생산하며, 그 artifact의 consumer와 repository 위치는 무엇인가? |
+| **Eval Gate** | `wf:Eval`, `wf:targetArtifact`, `wf:criteria`, `wf:oracle`, `wf:oracleType`, `wf:orderTarget`, `wf:orderArtifact` | 어떤 산출물을 누가 어떤 기준으로 평가하고, 평가 결과가 어떤 step/report로 이어지는가? |
+
+운영 원칙:
+
+1. 세 lens 중 하나라도 핵심 slot이 비어 있으면 topology가 안정적이라고 보지 않는다.
+2. 질문은 slot 단위로 한다. 예: “이 artifact의 consumer는 누구인가?”, “eval 실패 시 어느 step으로 돌아가는가?”
+3. 사용자가 답한 내용은 TTL ABox의 node/edge로 기록하고, 관측 결과는 `mso-graph-observability`로 재생성한다.
+4. 대화는 설계 보조 수단이고, 최종 정본은 TTL ABox다.
 
 ## Cross-Reference: mso-scaffold-design ↔ mso-workflow-design
 
@@ -62,7 +79,7 @@ description: >
 1. **workflow TTL ABox의 `wf:dirPath`** 는 scaffold(`index.yaml`)에 등록된 디렉토리만 참조한다.
    - workflow 작성 시 새 경로가 필요하면 **scaffold(index.yaml)에 먼저 등록**.
 2. **scaffold(index.yaml) 수정** 시 — 디렉토리 rename·삭제·이동이 발생하면 workflow TTL의 `wf:dirPath`를 영향 분석한다.
-3. legacy YAML을 import할 때만 `migrate_workflows_to_ttl.py`를 사용한다. import가 끝난 뒤 신규 변경은 TTL에서 한다.
+3. legacy YAML을 import할 때만 `migrate_workflows_to_ttl.py`를 사용한다. import와 검증이 끝난 legacy YAML은 제거하고, 이후 신규 변경은 TTL에서 한다.
 
 > 한쪽 수정이 일어나면 다른 쪽 검토가 필수다.
 
@@ -73,7 +90,7 @@ description: >
 > 3층 위상: **TTL ABox**(정본·커밋 대상) → **md/mermaid**(시각화·읽기 전용). YAML은 이 흐름 바깥의 일회성 import 입력이다.
 >
 > - **편집**: 신규 workflow 변경은 TTL ABox에서 한다.
-> - **마이그레이션 (YAML → TTL)**: 기존 YAML이 남아 있을 때만 `migrate_workflows_to_ttl.py`로 sibling `.abox.ttl`을 생성한다.
+> - **마이그레이션 (YAML → TTL)**: 기존 YAML이 남아 있을 때만 `migrate_workflows_to_ttl.py`로 sibling `.abox.ttl`을 생성한다. 생성된 TTL 검증이 끝나면 legacy YAML은 제거한다.
 > - **역생성 금지**: TTL → YAML 생성기는 제공하지 않는다. YAML을 되살리면 SSOT 경계가 다시 흔들린다.
 > - **관측 재생성**: `mso-graph-observability`로 repository topology와 workflow별 sub-graph를 재생성한다.
 >
@@ -89,7 +106,7 @@ description: >
 mkdir -p agent-context/workflow
 ```
 
-신규 workflow는 `agent-context/workflow/workflow-<slug>.abox.ttl`로 작성한다. 기존 YAML이 남아 있는 repository만 migration script로 TTL ABox를 만든다.
+신규 workflow는 `agent-context/workflow/workflow-<slug>.abox.ttl`로 작성한다. 기존 YAML이 남아 있는 repository만 migration script로 TTL ABox를 만들고, 검증 후 YAML을 제거한다.
 
 ### Step 2. Define (MOTIF 패턴 적용)
 
@@ -101,39 +118,41 @@ mkdir -p agent-context/workflow
 | Step Definition | `type: step` — `id`, `label`, `status`, `directories` (optional), `deliverables` |
 | **Decision Gate** | **`type: decision` — process branch/진행 판단. `judge` ∈ {HITL/HITLFE/HOTL/HOOTL/AGENT}, HITL/HITLFE는 `owner` 필수** |
 | **Validation Harness** | **`type: validation` — 자동 검증 게이트. `harness` (runner 식별자), `pass_criteria` 필수** |
-| **Oracle Gate** | **`type: oracle` — 산출물 판단/품질평가 게이트. `oracle_type` ∈ {user/agent/metric}, `criteria` 필수. feedback loop의 drift 개입점** |
+| **Eval Gate** | **`type: eval` — 산출물 평가 게이트. `oracle_type` ∈ {user/agent/metric}, `criteria` 필수. feedback loop의 drift 개입점. legacy YAML의 `type: oracle`은 import 시 `wf:Eval`로 투영** |
 | Deliverable Taxonomy | `type`, `location`, `status` |
 | Dependencies | `requires` (입력), `provides` (출력) |
 | Success Criteria | 측정 가능한 기준 (강제 개수는 프로젝트 컨벤션) |
 | Key Decisions | `decision`, `rationale`, `status` |
 
-#### Decision vs Validation vs Oracle
+#### Decision vs Validation vs Eval
 
-| 항목 | `decision` | `validation` | `oracle` |
+| 항목 | `decision` | `validation` | `eval` |
 |------|----------|------------|----------|
 | 의미 | process branch/진행 판단 | 자동 검증 하네스 | 산출물 판단/품질평가 권위 |
 | 필수 필드 | `judge`, `branches[].on` | `harness`, `pass_criteria` | `oracle_type`, `criteria` |
-| 역할 | user/agent decision gate | script/test runner | user/agent/metric oracle gate |
+| 역할 | user/agent decision gate | script/test runner | user/agent/metric eval gate |
 | loop 통제 | 단독으로 drift loop를 끊지 않음 | 검증 실행 근거 | feedback loop의 개입점 |
 
-#### Oracle 필수 패턴: `artifact --check--> oracle --order--> agentTask`
+#### Eval 필수 패턴: `artifact -.-> eval --> step`
 
-Oracle 노드는 반드시 다음 두 관계를 선언해야 한다.
+Eval 노드는 반드시 평가 대상과 downstream order 대상을 선언해야 한다. 결과 report artifact가 있으면 `wf:orderArtifact`로 별도 선언한다.
 
 | 방향 | TTL 프로퍼티 | 의미 |
 |------|------------|------|
-| **check (입력)** | `wf:directory dirRole=input` 또는 `wf:targetArtifact` | 평가 대상 artifact |
-| **order (출력)** | `wf:orderTarget` | 평가 통과 시 order를 받을 downstream step id |
+| **eval:check** | `wf:targetArtifact` | 평가 대상 artifact |
+| **eval:order** | `wf:orderTarget` | 평가 결과로 실행 지시를 받을 downstream step id |
+| **eval:report** | `wf:orderArtifact` | 평가 결과 report/manifest artifact |
 
 `validate_abox.py` 가 이 두 조건을 강제한다 (`.abox.ttl` 저장 시 PostToolUse hook 자동 실행).
 `observe_graph.py --root .` 도 동일 hook에서 자동 실행되어 subgraph/artifact-stream-views 등 observability 산출물을 재생성한다.
 
-**Slot-filling Oracle**: `wf:hasSlot` + `wf:EntitySlot` 을 선언하면 slot-filling 방식으로 동작한다. 모든 슬롯(`slotFilled=true`)이 충족될 때 `wf:orderArtifact`를 생성하고 `orderTarget` step에 전달한다. 이 경우 `orderArtifact`도 필수다.
+**Slot-filling Eval**: `wf:hasSlot` + `wf:EntitySlot` 을 선언하면 slot-filling 방식으로 동작한다. 모든 슬롯(`slotFilled=true`)이 충족될 때 `wf:orderArtifact`를 생성하고 `orderTarget` step에 전달한다. 이 경우 `orderArtifact`도 필수다.
 
 ```ttl
-# 예시 — slot-filling oracle
-<wf:node/my-d-001> a wf:Oracle, wf:Node ;
+# 예시 — slot-filling eval
+<wf:node/my-d-001> a wf:Eval, wf:Node ;
     wf:label "문서 선별 게이트" ;
+    wf:oracle "human reviewer" ;
     wf:oracleType "user" ;
     wf:evaluator "owner@example.com" ;
     wf:targetArtifact "01.raw-data/" ;          # check 대상
@@ -150,9 +169,51 @@ Oracle 노드는 반드시 다음 두 관계를 선언해야 한다.
     wf:slotFilled false .
 ```
 
-**공급망 주의**: `orderTarget` step이 oracle의 `orderArtifact`를 소비하려면 해당 step의 `wf:directory` 에 `dirRole=input` 으로 선언해야 공급망 뷰에서 연결이 보인다. oracle의 `wf:orderTarget`만 선언하면 제어 흐름은 맞지만 artifact stream이 끊겨 보인다.
+**공급망 주의**: `orderTarget` step이 eval의 `orderArtifact`를 소비하려면 해당 step의 `wf:directory` 에 `dirRole=input` 으로 선언해야 공급망 뷰에서 연결이 보인다. eval의 `wf:orderTarget`만 선언하면 제어 흐름은 맞지만 artifact stream이 끊겨 보인다.
 
-**bypass 방지**: oracle 하위 step(corpus 정리, QA 생성 등)이 oracle 이전 artifact(`raw-data/`)를 직접 소비하면 oracle을 우회하는 `next` 엣지가 공급망에서 자동 추론된다. oracle 이후에만 실행돼야 하는 step은 oracle의 `orderArtifact`를 input으로 추가해 의존 관계를 명시한다.
+**bypass 방지**: eval 하위 step(corpus 정리, QA 생성 등)이 eval 이전 artifact(`raw-data/`)를 직접 소비하면 eval을 우회하는 `next` 엣지가 공급망에서 자동 추론된다. eval 이후에만 실행돼야 하는 step은 eval의 `orderArtifact`를 input으로 추가해 의존 관계를 명시한다.
+
+#### Artifact Directory Node 필수 구조
+
+`wf:directory` 노드는 `wf:dirPath`와 `wf:dirRole`이 반드시 있어야 한다. `validate_abox.py`가 강제한다.
+
+| 프로퍼티 | 필수 | 유효값 |
+|---------|------|--------|
+| `wf:dirPath` | ✅ | 상대 경로 또는 파일 경로 |
+| `wf:dirRole` | ✅ | `input` \| `output` \| `input_output` \| `reference` \| `instruction` |
+| `wf:dirNote` | 선택 | cross-workflow 의존·보안·TTL 힌트 등 자유 텍스트 |
+
+```ttl
+# 예시 — input directory
+<wf:node/my-s-001_dir_data__in> wf:dirPath "01.data/" ;
+    wf:dirRole "input" ;
+    wf:dirNote "cross-workflow input: eval-pipeline(ep-s-005) 생성물." .
+
+# 예시 — output directory
+<wf:node/my-s-002_dir_reports__out> wf:dirPath "03.reports/" ;
+    wf:dirRole "output" .
+```
+
+`artifact_type`(`document`/`media`/`knowledge_store`/`event_store`/`local_database`)은 `observe_graph.py`가 `dirPath` 확장자·경로에서 추론하며, 현재 TTL에 직접 선언하는 방식은 지원하지 않는다.
+
+#### Decision Node 필수 구조
+
+`wf:Decision` 노드는 `wf:hasBranch`를 **2개 이상** 선언해야 한다. 단일 경로라면 `step`으로 대체한다. `validate_abox.py`가 강제한다.
+
+```ttl
+<wf:node/my-d-001> a wf:Decision, wf:Node ;
+    wf:label "품질 게이트" ;
+    wf:judge "HITL" ;
+    wf:owner "owner@example.com" ;
+    wf:hasBranch <wf:node/my-d-001_branch_approved_my-s-010>,
+                 <wf:node/my-d-001_branch_rejected_my-s-005> .
+
+<wf:node/my-d-001_branch_approved_my-s-010> a wf:Branch ;
+    wf:on "approved" ; wf:goto "my-s-010" .
+
+<wf:node/my-d-001_branch_rejected_my-s-005> a wf:Branch ;
+    wf:on "rejected" ; wf:goto "my-s-005" .
+```
 
 ### 다중 Workflow 패턴 (Repo당 N개 workflow)
 
@@ -179,6 +240,7 @@ python skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-cont
 ```
 
 각 workflow TTL ABox는 독립 그래프로 관측되며, repository 전체 graph와 workflow별 sub-graph가 `mso-graph-observability`에서 생성된다.
+마이그레이션 검증이 끝난 legacy YAML은 repository workflow topology에 남기지 않는다.
 
 ### 계층 참조 (Monorepo/Subrepo 패턴)
 
@@ -239,7 +301,7 @@ python validate_workflow.py --strict   # warning까지 error로 승격
 > wf_to_ttl.py SPARQL + 수작업으로 분리 유지. schema 없는 root 개념(dependsOn/Module/
 > Milestone/directory)은 생성기 내 `_GRAPH_OVERLAY` 에 명시.
 
-> **전환 상태(2026-06-27, TTL-only 확립)**: TTL ABox = SSOT-of-record. YAML은 legacy migration input으로만 남긴다. TTL→YAML 역생성기는 제거했고, 관측/운영은 TTL graph를 직접 읽는다.
+> **전환 상태(2026-06-27, TTL-only 확립)**: TTL ABox = SSOT-of-record. YAML은 legacy migration input으로만 허용하며, migration 검증 후 제거한다. TTL→YAML 역생성기는 제거했고, 관측/운영은 TTL graph를 직접 읽는다.
 
 ```bash
 # 레거시 일괄 마이그레이션: workflow YAML → sibling *.abox.ttl
@@ -249,12 +311,12 @@ python migrate_workflows_to_ttl.py agent-context/workflow --check  # CI drift ga
 
 > **방향 (TTL-only)**: TTL ABox 가 SSOT-of-record. `wf_to_ttl.py`는 migration backend로만 남는다. 일반 운영자는 `migrate_workflows_to_ttl.py`를 사용하고, migration 이후에는 TTL만 수정한다.
 
-검증은 두 엔진으로 분담한다. 순환 자체는 금지하지 않는다. 다만 산출물이 재귀적으로 소비되는 loop 안에 별도 `oracle` gate가 없으면 uncontrolled feedback loop로 본다. `decision` gate는 진행/분기를 제어하지만, 산출물 품질·정합·수용 가능성의 권위는 `oracle` gate가 담당한다:
+검증은 두 엔진으로 분담한다. 순환 자체는 금지하지 않는다. 다만 산출물이 재귀적으로 소비되는 loop 안에 별도 `eval` gate가 없으면 uncontrolled feedback loop로 본다. `decision` gate는 진행/분기를 제어하지만, 산출물 품질·정합·수용 가능성의 평가는 `eval` gate가 담당한다:
 
 | 검사 | 엔진 | 잡는 것 |
 |------|------|--------|
 | **로컬/정합 shape** | pyshacl (추론 off) | status·judge enum, validation=harness+pass_criteria, decision=judge, label 존재, dependsOn/hasNode/next/gotoNode/criticalDep/milestoneOf **range-class**(dangling ref 포함) |
-| **Feedback loop control** | SHACL-SPARQL + rdflib SPARQL | `wf:dependsOn` 또는 `wf:next`/`wf:gotoNode` 순환 중 별도 `wf:Oracle` gate가 없는 loop를 오류로 판정. |
+| **Feedback loop control** | SHACL-SPARQL + rdflib SPARQL | `wf:dependsOn` 또는 `wf:next`/`wf:gotoNode` 순환 중 별도 `wf:Eval` gate가 없는 loop를 오류로 판정. |
 | **교차-스킬**(`--index`) | SPARQL containment join (`STRSTARTS`) | `directories[].path` 가 scaffold(index) 모듈 fs 루트의 자손인지 — 미등록 경로는 warning. scaffold 해소는 `wf_node._resolve_scaffold` **재사용**(중복 로직 안 만듦). 기존 wf_node 내장 사본은 2단계에서 제거 대상. |
 
 | 노드 속성 핵심 | 의미 |
@@ -283,7 +345,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py --root .
 - `workflow-topology.md` — repository 전체 workflow graph. phase/module/milestone 수준의 topology를 보여주며, 내부 node 실행 흐름은 workflow별 sub-graph에서만 펼친다.
 - `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
 - `workflow-subgraphs/<scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph
-- `workflow-ssot-report.md` — legacy YAML 대비 sibling TTL 누락 보고
+- `workflow-ssot-report.md` — legacy YAML 잔존 여부, 제거 후보, migration blocker 보고
 
 `workflow_to_markdown.py`와 `workflow_to_mermaid.py`는 legacy YAML compatibility tooling이다. 신규 관측 경로에서는 사용하지 않는다.
 
@@ -318,8 +380,8 @@ dependencies:
 ## 검증 체크리스트
 
 **Scaffold 정합성 (먼저 확인)**
-- [ ] `directories.path` 에 쓴 경로가 `index.yaml`(scaffold)에 등록되어 있는가
-- [ ] scaffold가 최근 변경됐다면 영향 받은 workflow YAML을 재검증했는가
+- [ ] `wf:dirPath`/`wf:targetArtifact`/`wf:orderArtifact` 에 쓴 경로가 `index.yaml` 또는 `data_registry`에 등록되어 있는가
+- [ ] scaffold가 최근 변경됐다면 영향 받은 workflow TTL을 재검증했는가
 
 **Workflow 구조 (스킬이 검증)**
 - [ ] 각 노드에 `type` ∈ {step, decision, validation, group} 명시

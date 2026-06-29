@@ -2,7 +2,7 @@ type: decision
 description: |
   분기/판단 노드. workflow graph 는 task/decision 노드와 process edge 로 구성된다.
   user decision 은 HITL/HITLFE/HOTL/HOOTL judge 로 표현하고, agent decision 은
-  AGENT judge 로 표현한다. 산출물 품질평가/판단 주체는 별도의 oracle gate로 표현한다.
+  AGENT judge 로 표현한다. 산출물 품질평가/판단 주체는 별도의 eval gate로 표현한다.
 
 fields:
   type:
@@ -91,7 +91,7 @@ fields:
 structural_invariants:
   - "id 는 워크플로우 내 unique"
   - "judge ∈ {HITL, HITLFE, HOTL, HOOTL, AGENT}"
-  - "Decision gate와 Oracle gate는 분리한다"
+  - "Decision gate와 Eval gate는 분리한다"
   - "branches[].on 은 judge_branch_conditions[judge] 에 속해야 함"
   - "HITL/HITLFE 일 때 owner 필수; HITLFE 일 때 threshold 필수"
 

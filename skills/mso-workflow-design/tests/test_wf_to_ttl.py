@@ -46,9 +46,9 @@ def test_real_root_template_feedback_control_and_shape_conform():
     assert res["shacl_conforms"]
 
 
-# ─── Feedback loop control (cycle 자체가 아니라 Oracle 개입점 유무를 검증) ───
+# ─── Feedback loop control (cycle 자체가 아니라 Eval 개입점 유무를 검증) ───
 
-def test_phase_feedback_loop_without_oracle_fails(tmp_path):
+def test_phase_feedback_loop_without_eval_fails(tmp_path):
     doc = {
         "phases": [
             {"id": "a", "name": "A", "status": "active", "dependencies": ["c"]},
@@ -62,8 +62,8 @@ def test_phase_feedback_loop_without_oracle_fails(tmp_path):
     assert any(u.endswith(("phase/a", "phase/b", "phase/c")) for u in res["uncontrolled_loops"])
 
 
-def test_phase_feedback_loop_with_oracle_gate_conforms(tmp_path):
-    """순환은 허용하되 loop 안에 별도 Oracle gate 가 있어야 한다."""
+def test_phase_feedback_loop_with_eval_gate_conforms(tmp_path):
+    """순환은 허용하되 loop 안에 별도 Eval gate 가 있어야 한다."""
     doc = {
         "phases": [
             {"id": "a", "name": "A", "status": "active", "dependencies": ["c"]},
@@ -90,7 +90,7 @@ def test_phase_feedback_loop_with_oracle_gate_conforms(tmp_path):
 
 
 def test_critical_dep_cycle_is_observed_not_rejected(tmp_path):
-    """module dependency cycle은 Oracle 모델이 없으므로 shape range만 검증하고 topology에서 관측한다."""
+    """module dependency cycle은 Eval 모델이 없으므로 shape range만 검증하고 topology에서 관측한다."""
     doc = {
         "phases": [{"id": "p", "name": "P", "status": "active"}],
         "critical_dependencies": [
@@ -205,8 +205,8 @@ def test_sequential_next_and_branch_goto_node_projected(tmp_path):
     assert (branch, wf_to_ttl.WF.gotoNode, s1) in g
 
 
-def test_task_and_oracle_roles_projected(tmp_path):
-    """workflow graph 노드는 task/decision/oracle gate 역할을 분리해서 갖는다."""
+def test_task_and_eval_roles_projected_from_legacy_oracle_alias(tmp_path):
+    """legacy YAML oracle 노드는 TTL에서 wf:Eval gate로 투영된다."""
     doc = {"phases": [{
         "id": "p",
         "name": "P",
@@ -240,17 +240,44 @@ def test_task_and_oracle_roles_projected(tmp_path):
     g, _ = wf_to_ttl.build_graph(_write(tmp_path, "roles.yaml", doc))
     task = wf_to_ttl._node_uri("s-01")
     decision = wf_to_ttl._node_uri("d-01")
-    oracle = wf_to_ttl._node_uri("o-01")
+    eval_node = wf_to_ttl._node_uri("o-01")
 
     assert (task, wf_to_ttl.RDF.type, wf_to_ttl.WF.Task) in g
     assert (decision, wf_to_ttl.RDF.type, wf_to_ttl.WF.Decision) in g
-    assert (decision, wf_to_ttl.RDF.type, wf_to_ttl.WF.Oracle) not in g
-    assert (oracle, wf_to_ttl.RDF.type, wf_to_ttl.WF.Oracle) in g
-    assert str(next(g.objects(oracle, wf_to_ttl.WF.oracleType))) == "agent"
+    assert (decision, wf_to_ttl.RDF.type, wf_to_ttl.WF.Eval) not in g
+    assert (eval_node, wf_to_ttl.RDF.type, wf_to_ttl.WF.Eval) in g
+    assert str(next(g.objects(eval_node, wf_to_ttl.WF.oracleType))) == "agent"
 
 
-def test_node_feedback_loop_without_oracle_fails(tmp_path):
-    """HOOTL decision 이 만드는 재귀 branch loop는 Oracle 개입점이 아니므로 실패한다."""
+def test_eval_node_type_projected(tmp_path):
+    """v0.5.0 현행 YAML eval 노드는 wf:Eval로 투영된다."""
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [{
+            "type": "eval",
+            "id": "e-01",
+            "label": "품질 평가",
+            "status": "active",
+            "oracle_type": "metric",
+            "criteria": ["score >= 0.8"],
+            "target_artifact": "out/",
+            "order_target": "s-02",
+            "order_artifact": "out/report.csv",
+        }],
+    }]}
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "eval.yaml", doc))
+    eval_node = wf_to_ttl._node_uri("e-01")
+
+    assert (eval_node, wf_to_ttl.RDF.type, wf_to_ttl.WF.Eval) in g
+    assert str(next(g.objects(eval_node, wf_to_ttl.WF.targetArtifact))) == "out/"
+    assert str(next(g.objects(eval_node, wf_to_ttl.WF.orderTarget))) == "s-02"
+    assert str(next(g.objects(eval_node, wf_to_ttl.WF.orderArtifact))) == "out/report.csv"
+
+
+def test_node_feedback_loop_without_eval_fails(tmp_path):
+    """HOOTL decision 이 만드는 재귀 branch loop는 Eval 개입점이 아니므로 실패한다."""
     doc = {"phases": [{
         "id": "p",
         "name": "P",
@@ -278,7 +305,7 @@ def test_node_feedback_loop_without_oracle_fails(tmp_path):
     assert any(uri.endswith("node/s-01") or uri.endswith("node/d-01") for uri in res["uncontrolled_loops"])
 
 
-def test_node_feedback_loop_with_oracle_gate_conforms(tmp_path):
+def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
     doc = {"phases": [{
         "id": "p",
         "name": "P",
