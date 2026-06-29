@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-design
-version: "0.5.1"
+version: "0.6.0"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
@@ -359,6 +359,41 @@ python skills/mso-graph-observability/scripts/observe_graph.py --root .
 - `workflow-ssot-report.md` — legacy YAML 잔존 여부, 제거 후보, migration blocker 보고
 
 `workflow_to_markdown.py`와 `workflow_to_mermaid.py`는 legacy YAML compatibility tooling이다. 신규 관측 경로에서는 사용하지 않는다.
+
+## Oracle Graph — self-improvement stratification (v0.6.0)
+
+workflow self-improvement loop 의 자기참조를 **edge 종류로 base/oracle 을 갈라** 막는다. skill = sub-workflow 이므로 workflow 를 개선하는 `evolves` 가 자기 자신으로 되돌아오면 순환이 된다 — 이를 SHACL 로 금지한다.
+
+### 모델
+
+- 레이어는 노드 type 이 아니라 **edge** 로 구분한다.
+  - **base(수단)**: `delegatesTo`(task→workflow 실행), `consumes`/`produces`(공급망), `check`(artifact→task)
+  - **oracle(대상)**: `exercises`(평가 목적 실행, 대상 불변), `evolves`(개선) — 둘 다 workflow→workflow
+  - **경계**: `measures`(artifact/result→eval)
+- 계층은 `workflow --has_subWorkflow--> workflow` (대칭: oracle-workflow = sub-workflow 의 meta-workflow). `has_subWorkflow` 형제는 disjoint(트리 파티션).
+
+### YAML 표기
+
+```yaml
+workflow:
+  id: oracle-wf
+  evolves: target-wf      # 이 workflow 가 개선하는 대상 (str 또는 list)
+  exercises: target-wf    # 평가 목적 실행 (대상 불변)
+phases:
+  - id: ph
+    workflows:            # has_subWorkflow 로 resolve (module 기준)
+      - { ref: "sub.yaml#ph", module: sub-wf }
+```
+
+`workflow.evolves`/`exercises` 는 `wf:workflow/<id>` URI 로, `phases[].workflows[].module` 은 `has_subWorkflow` edge 로 emit 된다.
+
+### SHACL Invariant (자동 검출)
+
+- **EvolvesSelfShape** — `C evolves C`(자기 evolve) 금지.
+- **EvolvesStratificationShape** — `C evolves W` 인데 C·W 가 `has_subWorkflow*` 로 연결(조상/자손)되면 위반. oracle-workflow 와 대상은 **disjoint(C∩W=∅)** 여야 한다.
+- **SubWorkflowPartitionShape** — 한 workflow 의 부모는 최대 1개(형제·oracle disjoint).
+
+run-time 에서는 `mso-workflow-optimizer` 가 `evolves` 를 control plane 으로 gate 한다(agent 는 제안만, 확정은 oracle 권위). 관측은 `mso-graph-observability` 의 `oracle-graph.md`(edge-필터 view). 상세: `planning/mso-v0.6.0-SPEC-oracle-graph.md`.
 
 ## Legacy YAML Migration 주의사항
 
