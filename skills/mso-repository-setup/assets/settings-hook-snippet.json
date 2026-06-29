@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" python3 \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/worklog.py"
+            "command": "WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/commit-work-memory.sh"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" python3 \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/worklog.py"
+            "command": "WORKMEM_DIR=\"$CLAUDE_PROJECT_DIR/agent-context/work-memory\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/commit-work-memory.sh"
           }
         ]
       }

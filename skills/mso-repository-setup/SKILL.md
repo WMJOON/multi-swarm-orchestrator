@@ -1,6 +1,6 @@
 ---
 name: mso-repository-setup
-version: "0.5.1"
+version: "0.5.2"
 description: >
   MSO 스킬 팩의 init 진입점. 새 프로젝트(또는 기존 프로젝트)에 agent-context/
   표준 디렉토리 트리를 부트스트랩하고 mso-scaffold-design + mso-workflow-design +
@@ -44,12 +44,12 @@ python scripts/init.py --target /path/to/project [--name "Project Name"]
 ├── .gitignore                        # agent-context/work-memory/.zvec/ 등록
 ├── .claude/                          # --hook --provider claude 시 (copy-form)
 │   ├── settings.json                 # Stop·PreCompact·PostToolUse hook 등록
-│   ├── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh · scaffold-check.sh · sf_node.py 사본
+│   ├── scripts/                      # auditlog.py · commit-work-memory.sh · work-memory-check.sh · scaffold-check.sh · sf_node.py 사본
 │   └── references/schemas/           # scaffold index schema 사본
 └── .codex/                           # --hook --provider codex 시 (copy-form)
     ├── config.toml                   # Stop·PreCompact·SessionStart hook 등록
     ├── hooks.json                    # empty compatibility file
-    ├── scripts/                      # auditlog.py · worklog.py · work-memory-check.sh · scaffold-check.sh · sf_node.py 사본
+    ├── scripts/                      # auditlog.py · commit-work-memory.sh · work-memory-check.sh · scaffold-check.sh · sf_node.py 사본
     └── references/schemas/           # scaffold index schema 사본
 ```
 

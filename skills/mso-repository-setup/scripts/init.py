@@ -14,9 +14,9 @@ init.py — MSO Repository Setup CLI
     ├── workflow/
     └── work-memory/
         ├── schema.yaml
-        ├── auditlog/  worklog/
-        ├── track-record/{issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting}/
-        └── insight-record/{episodes, patterns, principles}/
+        ├── auditlog/  worklog/                       # 일별/시각별 append JSONL
+        ├── track-record/                             # <type>.jsonl  예: user-decision.jsonl
+        └── insight-record/                           # <type>.jsonl  예: episode.jsonl, pattern.jsonl
 
   <target>/.gitignore  (agent-context/work-memory/.zvec/ 등록)
   <target>/.claude/settings.json  (--hook 시 Claude Code hook 등록)
@@ -33,19 +33,16 @@ from pathlib import Path
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
+# schema v1.2.0: track/insight 는 타입별 aggregate <type>.jsonl 로 저장된다.
+# 타입별 하위디렉토리를 미리 만들지 않고 부모 디렉토리만 둔다 — 파일은 첫 append
+# (wm_node.py new) 시점에 생성된다. 빈 부모 디렉토리는 .gitkeep 으로 추적한다.
 AGENT_CONTEXT_TREE = [
     "index",
     "workflow",
     "work-memory/auditlog",
     "work-memory/worklog",
-    "work-memory/track-record/issue-note",
-    "work-memory/track-record/agent-decision",
-    "work-memory/track-record/alternatives-record",
-    "work-memory/track-record/user-decision",
-    "work-memory/track-record/trouble-shooting",
-    "work-memory/insight-record/episodes",
-    "work-memory/insight-record/patterns",
-    "work-memory/insight-record/principles",
+    "work-memory/track-record",
+    "work-memory/insight-record",
 ]
 
 GITIGNORE_LINES = [
@@ -67,6 +64,9 @@ def cmd_init(target: Path, name: str, project_id: str):
         if not p.exists():
             p.mkdir(parents=True)
             created.append(rel)
+        # work-memory 하위 빈 디렉토리는 .gitkeep 으로 git 추적 (첫 entry append 전까지).
+        if rel.startswith("work-memory/") and not any(p.iterdir()):
+            (p / ".gitkeep").touch()
     if created:
         print(f"  + agent-context/ 트리 생성 ({len(created)} 디렉토리)")
     else:
@@ -255,7 +255,7 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-WORK_MEMORY_HOOK_FILES = ["auditlog.py", "worklog.py", "work-memory-check.sh"]
+WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh"]
 SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 
 
@@ -355,19 +355,21 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     worthy_env = f'WM_WORTHY_PATHS="{worthy_paths}" ' if worthy_paths else ""
 
     auditlog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/auditlog.py"
-    worklog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/worklog.py"
+    commit_cmd = f"{prefix}{workmem_env} bash {pd}/{provider_dir_name}/scripts/commit-work-memory.sh"
     check_cmd = f"{prefix}{worthy_env}{workmem_env} bash {pd}/{provider_dir_name}/scripts/work-memory-check.sh"
     scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
 
     # Claude Code supports tool-level PostToolUse audit logging. Codex hook examples
-    # available locally are lifecycle-only, so Codex keeps worklog/check hooks only.
+    # available locally are lifecycle-only, so Codex keeps commit/check hooks only.
     if provider == "claude":
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", scaffold_cmd, "scaffold-check.sh")
 
-        # Stop / PreCompact — worklog 스냅샷 (파일 기록 — stdout 전달 의미론과 무관)
+        # Stop / PreCompact — work-memory 자동 로그(auditlog 등)를 훅 안에서 커밋한다.
+        # 훅 커밋은 PostToolUse 를 재트리거하지 않아 auditlog append 무한루프를 피한다.
+        # (구 worklog.py 빈 "세션 종료" 마커는 제거됨.)
         for event, matcher in (("Stop", None), ("PreCompact", "auto")):
-            _upsert_hook(hooks_section, event, matcher, worklog_cmd, "worklog.py")
+            _upsert_hook(hooks_section, event, matcher, commit_cmd, "commit-work-memory.sh")
         # work-memory-check 넛지 — provider 간 공통으로 확인된 SessionStart 에만 둔다.
         for matcher in ("compact", "resume"):
             _upsert_hook(hooks_section, "SessionStart", matcher, check_cmd, "work-memory-check.sh")
@@ -380,15 +382,15 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     if provider == "codex":
         _upsert_codex_config_toml(
             target / provider_dir_name / "config.toml",
-            worklog_cmd=worklog_cmd,
+            commit_cmd=commit_cmd,
             check_cmd=check_cmd,
             scaffold_cmd=scaffold_cmd,
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check/scaffold-check)")
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop·PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
     else:
-        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact worklog + SessionStart[compact,resume] work-memory-check/scaffold-check)")
+        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
         print(f"  + .codex/hooks.json 갱신 (empty compatibility)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
@@ -479,7 +481,7 @@ def _ensure_codex_hooks_feature(text: str) -> str:
     return prefix + text
 
 
-def _upsert_codex_config_toml(config_path: Path, worklog_cmd: str, check_cmd: str, scaffold_cmd: str):
+def _upsert_codex_config_toml(config_path: Path, commit_cmd: str, check_cmd: str, scaffold_cmd: str):
     """Add a managed MSO hook block to .codex/config.toml."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
@@ -496,16 +498,16 @@ def _upsert_codex_config_toml(config_path: Path, worklog_cmd: str, check_cmd: st
 
 [[hooks.Stop.hooks]]
 type = "command"
-command = {_toml_literal(worklog_cmd)}
-statusMessage = "Writing MSO worklog"
+command = {_toml_literal(commit_cmd)}
+statusMessage = "Committing MSO work-memory"
 
 [[hooks.PreCompact]]
 matcher = "auto"
 
 [[hooks.PreCompact.hooks]]
 type = "command"
-command = {_toml_literal(worklog_cmd)}
-statusMessage = "Writing MSO worklog before compaction"
+command = {_toml_literal(commit_cmd)}
+statusMessage = "Committing MSO work-memory before compaction"
 
 [[hooks.SessionStart]]
 matcher = "compact"

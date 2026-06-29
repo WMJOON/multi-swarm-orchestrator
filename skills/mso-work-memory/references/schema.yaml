@@ -1,8 +1,8 @@
 # Work-Memory JSONL 공통 스키마
 # 모든 entry 는 한 줄(jsonl)로 직렬화. zvec 호환 + 그래프 표현 동시 지원.
 
-version: "1.1.0"
-updated: 2026-06-19
+version: "1.2.0"
+updated: 2026-06-29
 
 # ─── ID 규칙 ─────────────────────────────────────────────
 id_patterns:
@@ -20,22 +20,41 @@ id_patterns:
 id_rules:
   - "타입별 시퀀스, zero-pad 4자리 (예: IN-0001, IN-0042)"
   - "타입 prefix 는 변경 불가 (immutable)"
-  - "파일명 = id + '.jsonl' (예: IN-0042.jsonl)"
+  - "entry 식별자(primary key)는 record 내부의 `id` 필드다 — 파일 경로가 아니다."
   - "auditlog/worklog 는 일별·시각별 자동 생성"
+
+# ─── 저장 포맷 (v1.2.0~) ─────────────────────────────────
+# track-record / insight-record 도 auditlog/worklog 처럼 진짜 append-only JSONL 이다.
+# 타입별 aggregate 파일 1개에 entry 를 한 줄씩 append 한다 (`.jsonl` 의미론 일관화).
+#   track-record/<type>.jsonl   예: track-record/user-decision.jsonl
+#   insight-record/<type>.jsonl 예: insight-record/episode.jsonl
+# 파일명 = type 문자열(singular) — TYPE_DIR 의 디렉토리 아래 `<type>.jsonl`.
+#
+# (구버전 v1.1.x: `<dir>/<id>.jsonl` per-entry 파일 = "entry 1개 = 파일 1개".
+#  reader(validate/show/graph/stats/ttl)는 rglob+줄단위 파싱이라 old/new 를 모두 읽지만,
+#  같은 트리 안 공존은 DUP-ID 를 유발하므로 wm_migrate.py 로 일괄 전환 후 old 를 archive 한다.)
+storage_format:
+  track_insight: "타입별 aggregate append JSONL — <dir>/<type>.jsonl"
+  audit_worklog: "일별/시각별 파일 — <dir>/<id>.jsonl (기존 유지)"
+  locator: "primary key = record.id. source_path 는 entry 가 담긴 aggregate 파일(containing log)."
 
 # ─── 타입 정의 (머신리더블 SSOT) ─────────────────────────
 # wm_node.py 가 이 섹션에서 TYPE_PREFIX/TYPE_DIR 를 읽는다(없으면 work-memory 기본값).
 # 다른 스코프(예: user-memory)는 이 섹션만 교체해 같은 엔진을 재사용한다.
 # 위 id_patterns 는 사람용 설명 미러 — 변경 시 함께 맞춘다.
+#
+# `dir` = entry 가 담길 **부모 디렉토리** (v1.2.0~). 실제 저장 파일은:
+#   track/insight : <dir>/<type>.jsonl  (aggregate append — 예: track-record/user-decision.jsonl)
+#   auditlog/worklog : <dir>/<id>.jsonl (일별/시각별 — 예: worklog/WL-2026-06-29.jsonl)
 types:
-  issue-note:       {prefix: IN, dir: track-record/issue-note}
-  agent-decision:   {prefix: AD, dir: track-record/agent-decision}
-  user-decision:    {prefix: UD, dir: track-record/user-decision}
-  alternatives-record: {prefix: AR, dir: track-record/alternatives-record}
-  trouble-shooting: {prefix: TS, dir: track-record/trouble-shooting}
-  episode:          {prefix: EP, dir: insight-record/episodes}
-  pattern:          {prefix: PT, dir: insight-record/patterns}
-  principle:        {prefix: PR, dir: insight-record/principles}
+  issue-note:       {prefix: IN, dir: track-record}
+  agent-decision:   {prefix: AD, dir: track-record}
+  user-decision:    {prefix: UD, dir: track-record}
+  alternatives-record: {prefix: AR, dir: track-record}
+  trouble-shooting: {prefix: TS, dir: track-record}
+  episode:          {prefix: EP, dir: insight-record}
+  pattern:          {prefix: PT, dir: insight-record}
+  principle:        {prefix: PR, dir: insight-record}
   auditlog:         {prefix: AU, dir: auditlog}
   worklog:          {prefix: WL, dir: worklog}
 
@@ -50,7 +69,7 @@ required_fields:
 
 # ─── 선택 필드 ──────────────────────────────────────────
 optional_fields:
-  source_path: "이 jsonl 파일의 경로 (zvec 호환)"
+  source_path: "이 entry 가 담긴 aggregate jsonl 파일 경로 (containing log, zvec 호환). entry 식별은 record.id 로 한다 — source_path 만으로 entry 를 특정하지 않는다."
   relations: "list[{type, target}] — 그래프 edge"
   metadata: "dict — 자유형 부가 정보 (module, severity, status 등)"
   author: "user | agent | <agent-id>"

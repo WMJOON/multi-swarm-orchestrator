@@ -36,6 +36,7 @@ _DEFAULT_TYPE_PREFIX = {
     "issue-note": "IN",
     "agent-decision": "AD",
     "user-decision": "UD",
+    "alternatives-record": "AR",
     "trouble-shooting": "TS",
     "episode": "EP",
     "pattern": "PT",
@@ -44,17 +45,24 @@ _DEFAULT_TYPE_PREFIX = {
     "worklog": "WL",
 }
 
+# dir = entry 가 담길 **부모 디렉토리** (schema v1.2.0). 실제 저장 파일은:
+#   track/insight    : <dir>/<type>.jsonl  (aggregate append — entry_file() 참조)
+#   auditlog/worklog : <dir>/<id>.jsonl    (일별/시각별 — 기존 유지)
 _DEFAULT_TYPE_DIR = {
-    "issue-note": "track-record/issue-note",
-    "agent-decision": "track-record/agent-decision",
-    "user-decision": "track-record/user-decision",
-    "trouble-shooting": "track-record/trouble-shooting",
-    "episode": "insight-record/episodes",
-    "pattern": "insight-record/patterns",
-    "principle": "insight-record/principles",
+    "issue-note": "track-record",
+    "agent-decision": "track-record",
+    "user-decision": "track-record",
+    "alternatives-record": "track-record",
+    "trouble-shooting": "track-record",
+    "episode": "insight-record",
+    "pattern": "insight-record",
+    "principle": "insight-record",
     "auditlog": "auditlog",
     "worklog": "worklog",
 }
+
+# 시각 기반 id 를 쓰는 타입(자동 로그) — 파일명 = <id>.jsonl, 그 외는 aggregate <type>.jsonl
+_TIME_SERIES_TYPES = ("auditlog", "worklog")
 
 REQUIRED_FIELDS = ["id", "type", "title", "text", "tags", "created_at"]  # 스코프 불변
 
@@ -100,23 +108,56 @@ def workmem_root() -> Path:
 
 # ─── id allocation ────────────────────────────────────────
 
+def entry_file(entry_type: str, entry_id: str) -> Path:
+    """entry 가 저장될 파일 경로.
+    track/insight  = <dir>/<type>.jsonl  (aggregate append-only),
+    auditlog/worklog = <dir>/<id>.jsonl  (일별/시각별 — 기존 유지)."""
+    parent = workmem_root() / TYPE_DIR[entry_type]
+    if entry_type in _TIME_SERIES_TYPES:
+        return parent / f"{entry_id}.jsonl"
+    return parent / f"{entry_type}.jsonl"
+
+
+def _scan_max_seq(entry_type: str) -> int:
+    """해당 prefix 의 최대 시퀀스 번호.
+    신규 aggregate 파일의 record.id 와 구버전 per-entry 파일명(<dir>/**/<PREFIX>-NNNN.jsonl)을
+    모두 스캔한다 — 마이그레이션 전/후 또는 두 포맷 공존 시 id 재사용을 막는다."""
+    prefix = TYPE_PREFIX[entry_type]
+    parent = workmem_root() / TYPE_DIR[entry_type]
+    max_n = 0
+    id_pat = re.compile(rf"^{re.escape(prefix)}-(\d{{4}})$")
+    # 1) 신규 aggregate 파일의 record id 들
+    agg = entry_file(entry_type, "")
+    if agg.is_file():
+        for line in agg.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            m = id_pat.match(obj.get("id", "") if isinstance(obj, dict) else "")
+            if m:
+                max_n = max(max_n, int(m.group(1)))
+    # 2) 구버전 per-entry 파일명 (하위호환)
+    if parent.exists():
+        f_pat = re.compile(rf"^{re.escape(prefix)}-(\d{{4}})\.jsonl$")
+        for f in parent.rglob(f"{prefix}-*.jsonl"):
+            m = f_pat.match(f.name)
+            if m:
+                max_n = max(max_n, int(m.group(1)))
+    return max_n
+
+
 def next_id(entry_type: str) -> str:
     prefix = TYPE_PREFIX[entry_type]
-    dir_path = workmem_root() / TYPE_DIR[entry_type]
-    if entry_type in ("auditlog", "worklog"):
+    if entry_type in _TIME_SERIES_TYPES:
         # 시각 기반 id
         now = dt.datetime.now(dt.timezone.utc)
         return f"{prefix}-{now.strftime('%Y%m%d-%H%M%S')}"
-    # 시퀀스 기반
-    if not dir_path.exists():
-        return f"{prefix}-0001"
-    pat = re.compile(rf"^{prefix}-(\d{{4}})\.jsonl$")
-    max_n = 0
-    for f in dir_path.glob(f"{prefix}-*.jsonl"):
-        m = pat.match(f.name)
-        if m:
-            max_n = max(max_n, int(m.group(1)))
-    return f"{prefix}-{max_n + 1:04d}"
+    # 시퀀스 기반 (aggregate + 구버전 per-entry 모두 스캔)
+    return f"{prefix}-{_scan_max_seq(entry_type) + 1:04d}"
 
 
 # ─── new ─────────────────────────────────────────────────
@@ -142,9 +183,8 @@ def cmd_new(args):
             print(f"[WARN] 알 수 없는 relation: {rel_type}", file=sys.stderr)
         relations.append({"type": rel_type, "target": target})
 
-    dir_path = workmem_root() / TYPE_DIR[t]
-    dir_path.mkdir(parents=True, exist_ok=True)
-    file_path = dir_path / f"{new_id}.jsonl"
+    file_path = entry_file(t, new_id)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     source_path = str(file_path.relative_to(workmem_root().parent.parent)) if workmem_root().parent.parent in file_path.parents else str(file_path)
 
     entry = {
@@ -162,10 +202,25 @@ def cmd_new(args):
     if args.module:
         entry["metadata"]["module"] = args.module
 
-    with open(file_path, "w", encoding="utf-8") as f:
+    # aggregate append-only JSONL (한 줄 = 한 entry). 같은 id 가 파일 끝에 이미
+    # 있으면(중복 append) skip — auditlog/worklog 의 EOF dedup 과 동일한 안전장치.
+    if file_path.exists():
+        existing = file_path.read_text(encoding="utf-8").splitlines()
+        for ln in reversed(existing):
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                if json.loads(ln).get("id") == new_id:
+                    print(f"[WARN] {new_id} 가 이미 {file_path} 끝에 있음 — append skip")
+                    return
+            except (json.JSONDecodeError, AttributeError):
+                pass
+            break
+    with open(file_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False))
         f.write("\n")
-    print(f"✓ 생성: {file_path}")
+    print(f"✓ append: {file_path}")
     print(f"  id={new_id}")
     if args.print:
         print(json.dumps(entry, ensure_ascii=False, indent=2))
@@ -196,6 +251,9 @@ def _load_entries(path: Path):
                 yield path, line_num, parsed
         return
     for jf in path.rglob("*.jsonl"):
+        # dot-디렉토리(.migration-archive, .zvec 등 메타/아카이브)는 read 대상에서 제외
+        if any(p.startswith(".") for p in jf.relative_to(path).parts[:-1]):
+            continue
         yield from _load_entries(jf)
 
 
@@ -292,6 +350,9 @@ def _build_graph():
     in_edges = {}   # id → [(source, type)]
 
     for jf in root.rglob("*.jsonl"):
+        # dot-디렉토리(.migration-archive, .zvec 등)는 그래프/검색 대상에서 제외
+        if any(p.startswith(".") for p in jf.relative_to(root).parts[:-1]):
+            continue
         for line_num, line in enumerate(jf.read_text(encoding="utf-8").splitlines(), 1):
             line = line.strip()
             if not line:
