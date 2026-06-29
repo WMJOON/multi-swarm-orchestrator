@@ -25,18 +25,18 @@ Git 없이 파일 시스템 폴더로 버전을 관리할 때.
 ### 사이클
 
 ```
-copy to draft/ → [edit — 모듈별 고유 작업] → {HITL review} → archive → promote
+copy to draft/ → [edit — 모듈별 고유 작업] → {user review} → archive → promote
 ```
 
 ### Gate 매핑
 
-| Stage | Judge | 이유 |
+| Stage | Decision Subject | 이유 |
 |-------|-------|------|
-| copy to draft | (step, HOOTL 성격) | 원본 보호용 단순 복사 |
-| **edit** | (step, HOTL 성격) | 내용은 모듈마다 다름 |
-| **review** | **HITL** + `rejected` branch | 회복 불가 영향, 거절 시 edit으로 복귀 |
-| archive | (step, HOOTL 성격) | 이전 버전 이동 |
-| promote | (step, HOOTL 성격) | draft를 production으로 이동 |
+| copy to draft | step | 원본 보호용 단순 복사 |
+| **edit** | step | 내용은 모듈마다 다름 |
+| **review** | `user` + `rejected` branch | 회복 불가 영향, 거절 시 edit으로 복귀 |
+| archive | step | 이전 버전 이동 |
+| promote | step | draft를 production으로 이동 |
 
 > copy/archive/promote는 자동 실행 step. review만 `type: decision` 으로 분리한다.
 
@@ -66,7 +66,7 @@ copy to draft/ → [edit — 모듈별 고유 작업] → {HITL review} → arch
     - type: decision
       id: [mod]-d-N
       label: "확정 검토"
-      judge: HITL
+      decision_subject: user
       owner: [책임자 이메일]
       sla: "24시간 이내"
       branches:
@@ -103,7 +103,7 @@ copy to draft/ → [edit — 모듈별 고유 작업] → {HITL review} → arch
 ### Mermaid 렌더링
 
 `type: group` 블록 → Mermaid **nested subgraph** 자동 생성.  
-HITL decision의 `rejected` branch → subgraph 외부로 **점선 엣지** 연결.
+user decision의 `rejected` branch → subgraph 외부로 **점선 엣지** 연결.
 
 ### 현재 적용
 
@@ -122,18 +122,18 @@ Git 저장소 기반. branch → PR → merge 흐름.
 ### 사이클
 
 ```
-feature branch → [commit — 저장소별 고유 변경] → {HITL: PR review} → merge → tag
+feature branch → [commit — 저장소별 고유 변경] → {user: PR review} → merge → tag
 ```
 
 ### Gate 매핑
 
-| Stage | Judge | 이유 |
+| Stage | Decision Subject | 이유 |
 |-------|-------|------|
 | feature branch 생성 | (step) | 단순 브랜치 생성 |
-| **commit & push** | (step, HOTL 성격) | CI 자동 실행 |
-| **PR/MR review** | **HITL** | Approver 지정, 거절 시 commit으로 복귀 |
+| **commit & push** | step | CI 자동 실행 |
+| **PR/MR review** | `user` | Approver 지정, 거절 시 commit으로 복귀 |
 | merge to main | (step) | squash or merge |
-| tag & release | HITLFE decision | breaking change 시 에스컬레이션 |
+| tag & release | `user` decision | breaking change 시 확인 |
 
 ### YAML 골격
 
@@ -156,7 +156,7 @@ feature branch → [commit — 저장소별 고유 변경] → {HITL: PR review}
     - type: decision
       id: [mod]-d-N
       label: "PR/MR 리뷰"
-      judge: HITL
+      decision_subject: user
       owner: [reviewer 이메일]
       branches:
         - on: rejected
@@ -172,7 +172,8 @@ feature branch → [commit — 저장소별 고유 변경] → {HITL: PR review}
     - type: decision
       id: [mod]-d-N+1
       label: "릴리즈 태그 확인"
-      judge: HITLFE
+      decision_subject: user
+      decision_criteria: "breaking change 포함 여부 확인"
       threshold: "breaking change 포함 시 수동 승인"
       branches:
         - on: escalated
@@ -190,5 +191,5 @@ feature branch → [commit — 저장소별 고유 변경] → {HITL: PR review}
 ## Related
 
 - [motif-patterns.md](motif-patterns.md) — MOTIF(구조 단위) 정의
-- [gate-levels.md](gate-levels.md) — HITL/HITLFE/HOTL/HOOTL 상세
+- [gate-levels.md](gate-levels.md) — user/agent decision subject와 파생 intervention level
 - [yaml-schema.md](yaml-schema.md) — type:step/decision/group 전체 문법

@@ -35,11 +35,11 @@ fields:
     default: true
     description: "false 이면 시각화에서 phase 래퍼 생략."
 
-  default_judge:
+  default_decision_subject:
     required: false
     type: enum
-    values: [HITL, HITLFE, HOTL, HOOTL, AGENT]
-    description: "하위 decision 노드의 기본 judge 값."
+    values: [user, agent]
+    description: "하위 decision 노드의 기본 decision_subject 값."
 
   steps:
     required: false

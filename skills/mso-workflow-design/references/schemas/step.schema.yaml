@@ -55,6 +55,14 @@ fields:
     type: list
     items: string
 
+  uses_tool:
+    required: false
+    type: string
+    description: |
+      agentTask가 실행 중 사용하는 tool/capability. 관측 그래프에서
+      agentTask --delegates_to--> [[tool]] 보조 edge로 표시한다. artifact stream에서는
+      위임 효율을 보기 위해 artifact --consumes--> tool --produces--> artifact 흐름으로 렌더링한다.
+
   validation:
     required: false
     type: list

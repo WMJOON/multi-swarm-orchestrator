@@ -4,7 +4,7 @@ wf_node.py — Workflow node schema tool
 
 사용법:
   python wf_node.py show <type>                                   # 스키마 출력
-  python wf_node.py scaffold <type> [--id <node-id>] [--judge <J>] # 노드 스캐폴드
+  python wf_node.py scaffold <type> [--id <node-id>] [--decision-subject user|agent]
   python wf_node.py validate <workflow.yaml> [--node <id>]
                             [--scaffold <root_index.yaml>]        # 검증
   python wf_node.py harness-manifest <root_workflow.yaml>
@@ -32,13 +32,7 @@ import yaml
 SCHEMAS_DIR = Path(__file__).parent.parent / "references" / "schemas"
 MAX_DEPTH = 3
 
-JUDGE_CONDITIONS = {
-    "HITL": ["approved", "rejected", "escalated"],
-    "HITLFE": ["auto-approved", "escalated", "rejected"],
-    "HOTL": ["passed", "flagged"],
-    "HOOTL": ["completed", "failed"],
-    "AGENT": ["passed", "failed", "flagged"],
-}
+DECISION_SUBJECTS = ["user", "agent"]
 
 RESERVED_TOP_KEYS = {
     "meta", "metadata", "module", "project", "workflow",
@@ -83,13 +77,8 @@ def cmd_show(node_type: str):
         desc = (spec.get("description", "") or "").split("\n")[0]
         print(f"  {name:<18} {required:<8} {ftype:<12} {desc}")
 
-    if "judge_branch_conditions" in schema:
-        print("\n## branches.on 허용 조건 (judge별)")
-        for judge, conds in schema["judge_branch_conditions"].items():
-            print(f"  {judge}: {', '.join(conds)}")
-
     if "decision_matrix" in schema:
-        print("\n## Judge 결정 흐름")
+        print("\n## Decision subject 결정 흐름")
         for i, q in enumerate(schema["decision_matrix"], 1):
             print(f"  Q{i}. {q['q']}")
             if "yes" in q:
@@ -109,13 +98,13 @@ def _required_label(spec: dict) -> str:
 
 # ─── scaffold ──────────────────────────────────────────────────────────────────
 
-def cmd_scaffold(node_type: str, node_id: str | None, judge: str | None):
+def cmd_scaffold(node_type: str, node_id: str | None, decision_subject: str | None):
     nid = node_id or f"TODO-{node_type}-id"
 
     if node_type == "step":
         node = _scaffold_step(nid)
     elif node_type == "decision":
-        node = _scaffold_decision(nid, judge or "HITL")
+        node = _scaffold_decision(nid, decision_subject or "agent")
     elif node_type == "validation":
         node = _scaffold_validation(nid)
     elif node_type in ("eval", "oracle"):
@@ -144,23 +133,21 @@ def _scaffold_step(node_id: str) -> dict:
     }
 
 
-def _scaffold_decision(node_id: str, judge: str) -> dict:
+def _scaffold_decision(node_id: str, decision_subject: str) -> dict:
     node: dict = {
         "type": "decision",
         "id": node_id,
-        "label": "TODO: 검토/평가 대상",
-        "judge": judge,
+        "label": "TODO: 분기 판단",
+        "decision_subject": decision_subject,
+        "decision_criteria": "TODO: 판단 기준",
     }
-    if judge in ("HITL", "HITLFE"):
+    if decision_subject == "user":
         node["owner"] = "TODO: owner-id"
         node["sla"] = "TODO: 응답 SLA"
         node["description"] = "TODO: 운영자가 검토할 항목 multi-line 서술"
-    if judge == "HITLFE":
-        node["threshold"] = "TODO: 조건식"
 
-    allowed = JUDGE_CONDITIONS.get(judge, [])
     node["branches"] = [
-        {"on": allowed[1] if len(allowed) > 1 else allowed[0], "goto": "TODO-node-id"}
+        {"on": "TODO-case", "goto": "TODO-node-id"}
     ]
     return node
 
@@ -539,9 +526,9 @@ def _validate_phase(phase_id: str, phase: dict, source: Path) -> list[Validation
         errors.append(ValidationError(ctx, "steps|workflows|artifacts",
                                        "steps / workflows / artifacts 중 하나는 필요"))
 
-    dj = phase.get("default_judge")
-    if dj and dj not in ["HITL", "HITLFE", "HOTL", "HOOTL", "AGENT"]:
-        errors.append(ValidationError(ctx, "default_judge", f"허용값 아님: {dj}"))
+    ds = phase.get("default_decision_subject")
+    if ds and ds not in DECISION_SUBJECTS:
+        errors.append(ValidationError(ctx, "default_decision_subject", f"허용값 아님: {ds}"))
 
     return errors
 
@@ -601,40 +588,27 @@ def _validate_step(node_id: str, node: dict) -> list[ValidationError]:
 def _validate_decision(node_id: str, node: dict) -> list[ValidationError]:
     schema = load_schema("decision")
     errors: list[ValidationError] = []
-    judge = node.get("judge")
+    decision_subject = node.get("decision_subject")
 
-    for fname in ["id", "label", "judge"]:
+    for fname in ["id", "label", "decision_subject"]:
         if not node.get(fname):
             errors.append(ValidationError(node_id, fname, "필수 필드 없음"))
 
-    if not judge:
+    if not decision_subject:
         return errors
 
-    allowed_judges = schema["fields"]["judge"]["values"]
-    if judge not in allowed_judges:
-        errors.append(ValidationError(node_id, "judge",
-                                       f"허용값 아님: {judge} (허용: {allowed_judges})"))
+    allowed_subjects = schema["fields"]["decision_subject"]["values"]
+    if decision_subject not in allowed_subjects:
+        errors.append(ValidationError(node_id, "decision_subject",
+                                       f"허용값 아님: {decision_subject} (허용: {allowed_subjects})"))
         return errors
 
-    # conditional required
-    for fname, fspec in schema["fields"].items():
-        if not isinstance(fspec, dict):
-            continue
-        rw = fspec.get("required_when")
-        if rw and judge in rw["values"] and not node.get(fname):
-            errors.append(ValidationError(node_id, fname,
-                                           f"judge={judge} 일 때 필수 필드 없음"))
-
-    # branches.on 조건값 검증 (PyYAML 1.1: unquoted `on:` → True)
+    # PyYAML 1.1: unquoted `on:` → True. 값은 routing case 이므로 비어 있으면 안 된다.
     branches = node.get("branches", [])
-    allowed_conditions = JUDGE_CONDITIONS.get(judge, [])
     for branch in branches:
         on_val = branch.get("on", branch.get(True))
-        if on_val and on_val not in allowed_conditions:
-            errors.append(ValidationError(
-                node_id, "branches.on",
-                f"judge={judge} 에서 허용되지 않는 조건: '{on_val}' (허용: {allowed_conditions})"
-            ))
+        if on_val in (None, ""):
+            errors.append(ValidationError(node_id, "branches.on", "routing case 비어있음"))
     return errors
 
 
@@ -942,8 +916,8 @@ def main():
     p_sc.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group", "phase"])
     p_sc.add_argument("--id", dest="node_id", default=None,
                       help="노드 id (생략 시 placeholder). 네이밍 패턴은 프로젝트 컨벤션.")
-    p_sc.add_argument("--judge", choices=["HITL", "HITLFE", "HOTL", "HOOTL", "AGENT"],
-                      help="decision 노드의 judge 값")
+    p_sc.add_argument("--decision-subject", choices=DECISION_SUBJECTS,
+                      help="decision 판단 주체(user|agent)")
 
     p_val = sub.add_parser("validate", help="워크플로우 YAML 검증 (계층 자동 해석)")
     p_val.add_argument("workflow", help="검증할 workflow YAML 파일 경로")
@@ -966,7 +940,7 @@ def main():
     if args.cmd == "show":
         cmd_show(args.type)
     elif args.cmd == "scaffold":
-        cmd_scaffold(args.type, args.node_id, getattr(args, "judge", None))
+        cmd_scaffold(args.type, args.node_id, getattr(args, "decision_subject", None))
     elif args.cmd == "validate":
         ok = cmd_validate(args.workflow, getattr(args, "node", None),
                           getattr(args, "scaffold", None))

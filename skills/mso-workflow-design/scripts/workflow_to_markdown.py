@@ -73,15 +73,15 @@ def workflow_to_markdown(workflow: dict) -> str:
 
                 # Output 컬럼: 노드 타입별 처리
                 # - validation: harness
-                # - decision: judge / owner / sla
+                # - decision: decision_subject / owner / sla
                 # - step/group: deliverables
                 if step_type == "validation":
                     harness = step.get("harness", "")
                     output_str = f"harness: `{harness}`" if harness else ""
                 elif step_type == "decision":
                     meta_parts = []
-                    if step.get("judge"):
-                        meta_parts.append(f"judge: {step['judge']}")
+                    if step.get("decision_subject"):
+                        meta_parts.append(f"subject: {step['decision_subject']}")
                     if step.get("owner"):
                         meta_parts.append(f"owner: {step['owner']}")
                     if step.get("sla"):

@@ -22,18 +22,11 @@ wf:BranchShape a sh:NodeShape ; sh:targetClass wf:Branch ;
 wf:DecisionShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:judge ; sh:minCount 1 ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" "AGENT" ) ; sh:message "judge: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:decisionSubject ; sh:minCount 1 ; sh:in ( "user" "agent" ) ; sh:message "decisionSubject: schema 제약 위반" ] ;
     sh:property [ sh:path wf:owner ; sh:datatype xsd:string ; sh:message "owner: schema 제약 위반" ] ;
     sh:property [ sh:path wf:sla ; sh:datatype xsd:string ; sh:message "sla: schema 제약 위반" ] ;
     sh:property [ sh:path wf:threshold ; sh:datatype xsd:string ; sh:message "threshold: schema 제약 위반" ] ;
-    sh:or (
-        [ sh:not [ sh:property [ sh:path wf:judge ; sh:in ( "HITL" "HITLFE" ) ; sh:minCount 1 ] ] ]
-        [ sh:property [ sh:path wf:owner ; sh:minCount 1 ] ]
-    ) ;
-    sh:or (
-        [ sh:not [ sh:property [ sh:path wf:judge ; sh:in ( "HITLFE" ) ; sh:minCount 1 ] ] ]
-        [ sh:property [ sh:path wf:threshold ; sh:minCount 1 ] ]
-    ) .
+    sh:property [ sh:path wf:decisionCriteria ; sh:datatype xsd:string ; sh:message "decisionCriteria: schema 제약 위반" ] .
 
 wf:EvalShape a sh:NodeShape ; sh:targetClass wf:Eval ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
@@ -55,11 +48,12 @@ wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
     sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
     sh:property [ sh:path wf:parallel ; sh:datatype xsd:boolean ; sh:message "parallel: schema 제약 위반" ] ;
     sh:property [ sh:path wf:showWrapper ; sh:datatype xsd:boolean ; sh:message "showWrapper: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:defaultJudge ; sh:in ( "HITL" "HITLFE" "HOTL" "HOOTL" "AGENT" ) ; sh:message "defaultJudge: schema 제약 위반" ] .
+    sh:property [ sh:path wf:defaultDecisionSubject ; sh:in ( "user" "agent" ) ; sh:message "defaultDecisionSubject: schema 제약 위반" ] .
 
 wf:StepShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:instruction ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "instruction: schema 제약 위반" ] .
+    sh:property [ sh:path wf:instruction ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "instruction: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:usesTool ; sh:datatype xsd:string ; sh:message "usesTool: schema 제약 위반" ] .
 
 wf:ValidationShape a sh:NodeShape ; sh:targetClass wf:Validation ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
@@ -83,6 +77,50 @@ wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
 wf:NodeGraphShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:property [ sh:path wf:next ; sh:class wf:Node ;
                   sh:message "next 타깃은 wf:Node 여야 함" ] .
+wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
+    sh:sparql [
+        sh:message "tool delegation shape: wf:usesTool step needs a consumable input/reference artifact so artifact --consumes--> tool can be rendered" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:usesTool ?tool .
+              FILTER NOT EXISTS {
+                $this wf:directory ?dir .
+                ?dir wf:dirPath ?path .
+                OPTIONAL { ?dir wf:dirRole ?role . }
+                FILTER(
+                  !BOUND(?role)
+                  || CONTAINS(LCASE(STR(?role)), "input")
+                  || CONTAINS(LCASE(STR(?role)), "reference")
+                  || CONTAINS(LCASE(STR(?role)), "instruction")
+                  || LCASE(STR(?role)) IN ("staging", "read")
+                )
+              }
+            }
+        """ ;
+    ] ;
+    sh:sparql [
+        sh:message "tool delegation shape: wf:usesTool step needs an output/deliverable artifact so tool --produces--> artifact can be rendered" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:usesTool ?tool .
+              FILTER NOT EXISTS {
+                { $this wf:deliverables ?deliverable . }
+                UNION
+                {
+                  $this wf:directory ?dir .
+                  ?dir wf:dirPath ?path .
+                  ?dir wf:dirRole ?role .
+                  FILTER(
+                    CONTAINS(LCASE(STR(?role)), "output")
+                    || LCASE(STR(?role)) IN ("staging", "generated", "write")
+                  )
+                }
+              }
+            }
+        """ ;
+    ] .
 wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
                   sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
@@ -128,4 +166,3 @@ wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
             }
         """ ;
     ] .
-

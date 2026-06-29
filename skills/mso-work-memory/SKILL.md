@@ -1,6 +1,6 @@
 ---
 name: mso-work-memory
-version: "0.5.0"
+version: "0.5.1"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 7종 entry (issue-note, agent-decision,

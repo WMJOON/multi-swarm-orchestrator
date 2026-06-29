@@ -5,7 +5,7 @@
 
 스킬이 보장하는 것:
 - 노드 type 분류 (step/decision/group/phase) 와 필수 필드
-- judge taxonomy (HITL/HITLFE/HOTL/HOOTL) 및 branches.on 정합성
+- decision_subject(user/agent) 및 branches.on routing case
 - id unique, status enum 등 구조 invariant
 
 아래 컨벤션은 **AI Chatbot 1.0 프로젝트의 예시**입니다.
@@ -62,7 +62,7 @@ acp_s_001     ✗ underscore
 | 이동 | 파일 위치 변경 |
 | 검증 | 품질 확인 |
 | 평가 | 측정·채점 |
-| 검토 | (HITL) 사람 승인 |
+| 검토 | 사람 승인 또는 사용자 판단 |
 
 decision 노드는 `검토 / 평가 / 판정` 동사를 권장.
 
@@ -118,13 +118,21 @@ MSO 표준 3-phase:
   automation_gate: HITL    # ✗ — decision 노드로 분리
 ```
 
-### ❌ judge 와 어긋난 branch 조건
+### ❌ decision_subject 없이 branch 조건만 작성
 ```yaml
 # Bad
 - type: decision
-  judge: HOTL
+  label: "자동 라우팅"
   branches:
-    - on: approved          # ✗ HOTL 허용값: passed, flagged
+    - on: passed
+
+# Good
+- type: decision
+  label: "자동 라우팅"
+  decision_subject: agent
+  decision_criteria: "confidence >= 0.85"
+  branches:
+    - on: passed
 ```
 
 ### ❌ 같은 id 재사용

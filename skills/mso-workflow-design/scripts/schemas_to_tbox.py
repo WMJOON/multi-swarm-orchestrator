@@ -14,7 +14,7 @@
 
 생성 불가 → 별도 유지:
   - 산문 structural_invariants(예: "id unique", "steps 또는 workflows 필수")
-  - judge_branch_conditions 의 branch.on 유효성(judge 값 의존 중첩) — TODO 주석만
+  - branch.on 의 domain-specific routing vocabulary — TODO 주석만
   - feedback loop 통제(Eval 개입점)·교차-스킬(scaffold)·anchor 정합 → wf_to_ttl.py/SHACL-SPARQL
 
 schema 없는 root-그래프 층(root-workflow 템플릿 개념: phases[].dependencies, critical_dependencies,
@@ -45,7 +45,7 @@ _NODE_SUB = {"Step", "Decision", "Validation", "Group", "Eval"}
 
 # 직접 property 로 만들지 않는 필드(클래스 타입·식별자·컨테이너·복합).
 #   type → rdf:type / id → URI 자체 / steps·workflows → 그래프 층(hasNode/refersTo)
-#   directories → wf:directory bnode(특수, wf_to_ttl 투영) / branches → judge 의존(생성 불가)
+#   directories → wf:directory bnode(특수, wf_to_ttl 투영) / branches → wf:Branch 특수 투영
 _SKIP_FIELDS = {"type", "id", "steps", "workflows", "directories", "branches"}
 
 XSD = {"string": "xsd:string", "bool": "xsd:boolean"}
@@ -177,11 +177,9 @@ wf:cdTo a owl:DatatypeProperty ; rdfs:label "cdTo"@ko ; rdfs:domain wf:CriticalD
 wf:milestoneDate a owl:DatatypeProperty ; rdfs:label "milestoneDate"@ko ; rdfs:domain wf:Milestone ; rdfs:range xsd:string .
 
 # 통제어휘 (skos)
-wf:JudgeScheme a skos:ConceptScheme ; skos:prefLabel "Judge Levels"@ko .
-wf:HITL a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HITL" .
-wf:HITLFE a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HITLFE" .
-wf:HOTL a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HOTL" .
-wf:HOOTL a skos:Concept ; skos:inScheme wf:JudgeScheme ; skos:notation "HOOTL" .
+wf:DecisionSubjectScheme a skos:ConceptScheme ; skos:prefLabel "Decision Subjects"@ko .
+wf:user a skos:Concept ; skos:inScheme wf:DecisionSubjectScheme ; skos:notation "user" .
+wf:agent a skos:Concept ; skos:inScheme wf:DecisionSubjectScheme ; skos:notation "agent" .
 """
 
 
@@ -226,7 +224,7 @@ def gen_tbox(schemas: dict) -> str:
         lines.append(f"wf:{pname} a {ptype} ; rdfs:label \"{pname}\"@ko{dom} ; rdfs:range {rng}{usedby} .")
 
     lines.append(_GRAPH_OVERLAY)
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip() + "\n"
 
 
 # ─── SHACL 생성 ───────────────────────────────────────────────────────────────
@@ -255,6 +253,50 @@ wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
 wf:NodeGraphShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:property [ sh:path wf:next ; sh:class wf:Node ;
                   sh:message "next 타깃은 wf:Node 여야 함" ] .
+wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
+    sh:sparql [
+        sh:message "tool delegation shape: wf:usesTool step needs a consumable input/reference artifact so artifact --consumes--> tool can be rendered" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:usesTool ?tool .
+              FILTER NOT EXISTS {
+                $this wf:directory ?dir .
+                ?dir wf:dirPath ?path .
+                OPTIONAL { ?dir wf:dirRole ?role . }
+                FILTER(
+                  !BOUND(?role)
+                  || CONTAINS(LCASE(STR(?role)), "input")
+                  || CONTAINS(LCASE(STR(?role)), "reference")
+                  || CONTAINS(LCASE(STR(?role)), "instruction")
+                  || LCASE(STR(?role)) IN ("staging", "read")
+                )
+              }
+            }
+        \"\"\" ;
+    ] ;
+    sh:sparql [
+        sh:message "tool delegation shape: wf:usesTool step needs an output/deliverable artifact so tool --produces--> artifact can be rendered" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:usesTool ?tool .
+              FILTER NOT EXISTS {
+                { $this wf:deliverables ?deliverable . }
+                UNION
+                {
+                  $this wf:directory ?dir .
+                  ?dir wf:dirPath ?path .
+                  ?dir wf:dirRole ?role .
+                  FILTER(
+                    CONTAINS(LCASE(STR(?role)), "output")
+                    || LCASE(STR(?role)) IN ("staging", "generated", "write")
+                  )
+                }
+              }
+            }
+        \"\"\" ;
+    ] .
 wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
                   sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
@@ -373,7 +415,7 @@ wf:StatusShape a sh:NodeShape ; sh:targetSubjectsOf wf:status ;
             body.append(f"    {o}")
         lines.append(" ;\n".join(body) + " .")
     lines.append(_SHAPES_OVERLAY)
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def main(argv=None) -> int:

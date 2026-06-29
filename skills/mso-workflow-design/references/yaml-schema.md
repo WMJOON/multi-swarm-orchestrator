@@ -96,26 +96,25 @@ label은 auditlog에서 사람이 읽는 행위 설명. `{동사} {목적어} [{
 - type: decision
   id: acp-d-001
   label: "hand-off 확정 검토"
-  judge: HITL | HITLFE | HOTL | HOOTL
-  # judge별 추가 필드 (아래 참조)
+  decision_subject: user | agent
+  decision_criteria: [string]  # Optional — agent decision 권장
   branches:
-    - on: [condition]          # judge별 허용 조건 (Section 5 참조)
+    - on: [condition]          # routing case 또는 user 판단 결과
       goto: [node-id]          # 생략 시 → sequential next
 ```
 
-**HITL 추가 필드:**
+**user decision 권장 필드:**
 ```yaml
-judge: HITL
-owner: [email]                 # 필수
+decision_subject: user
+owner: [email]                 # Optional
 sla: "24시간 이내"             # Optional
 ```
 
-**HITLFE 추가 필드:**
+**agent decision 권장 필드:**
 ```yaml
-judge: HITLFE
-owner: [email]                 # 필수
-threshold: "confidence < 0.85" # 필수 — 에스컬레이션 조건
-sla: [string]                  # Optional
+decision_subject: agent
+decision_criteria: "confidence >= 0.85"
+threshold: "confidence < 0.85" # Optional — branch 판단 조건
 ```
 
 ### group
@@ -152,14 +151,15 @@ step 노드의 `directories` 항목.
 
 ## 5. Decision Branch Conditions
 
-`branches.on:` 허용 값은 `judge` 타입별로 정해짐.
+`branches.on:`은 표준 enum이 아니라 해당 decision의 routing case다.
+agent decision에서는 자동 판단 결과의 stable label을, user decision에서는 사용자
+판단 결과를 적는다. 판단 기준은 `decision_criteria` 또는 `threshold`에 적고,
+관측 그래프에서는 branch edge label에 함께 표시한다.
 
-| Judge | 허용 조건 |
-|-------|---------|
-| `HITL` | `approved` · `rejected` · `escalated` |
-| `HITLFE` | `auto-approved` · `escalated` · `rejected` |
-| `HOTL` | `passed` · `flagged` |
-| `HOOTL` | `completed` · `failed` |
+| Subject | 권장 조건 예 |
+|---------|-------------|
+| `user` | `approved` · `rejected` · `needs_revision` · `target_met` |
+| `agent` | `passed` · `failed` · `flagged` · `low_confidence` |
 
 `goto` 생략 시 → sequential next node.  
 `on: approved` 등 정상 경로는 생략 가능 (암묵적 next).
@@ -174,7 +174,7 @@ step 노드의 `directories` 항목.
   label: [string]              # 표시 이름
   status: completed | active | pending
   show_wrapper: true | false   # false → Mermaid phase subgraph 생략 (기본 true)
-  default_judge: HITL | ...    # Optional — 하위 decision 기본값
+  default_decision_subject: user | agent  # Optional — 하위 decision 기본값
   steps: [list of step | decision | group]
   artifacts: [list]            # 완료 산출물 요약
   success_criteria: [list]     # testing phase 필수, 3개 이상
@@ -246,7 +246,7 @@ development:
         - type: decision
           id: acp-d-001
           label: "hand-off 확정 검토"
-          judge: HITL
+          decision_subject: user
           owner: owner@example.com
           sla: "24시간 이내"
           branches:
@@ -286,7 +286,8 @@ testing:
     - type: decision
       id: acp-d-002
       label: "품질 기준 달성 여부 평가"
-      judge: HITLFE
+      decision_subject: user
+      decision_criteria: "품질 기준 달성 여부를 확인"
       owner: owner@example.com
       threshold: "F1 < 0.87"
       branches:

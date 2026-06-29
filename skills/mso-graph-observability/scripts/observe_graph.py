@@ -57,6 +57,8 @@ ARTIFACT_TYPES = {
     "local_database",
     "document",
     "media",
+    "tool",
+    "table",
 }
 ARTIFACT_LABELS = {
     "knowledge_store": "KNOWLEDGE STORE",
@@ -64,6 +66,8 @@ ARTIFACT_LABELS = {
     "local_database": "LOCAL DATABASE",
     "document": "DOCUMENT",
     "media": "MEDIA",
+    "tool": "TOOL",
+    "table": "TABLE",
 }
 ARTIFACT_PRIMARY_CONSUMERS = {
     "knowledge_store": "Agent",
@@ -71,8 +75,10 @@ ARTIFACT_PRIMARY_CONSUMERS = {
     "local_database": "Agent",
     "document": "Human + Agent",
     "media": "Human",
+    "tool": "Agent + Eval",
+    "table": "Tool + Agent",
 }
-MACHINE_NATIVE_ARTIFACTS = {"knowledge_store", "event_store", "local_database"}
+MACHINE_NATIVE_ARTIFACTS = {"knowledge_store", "event_store", "local_database", "table"}
 KNOWLEDGE_STORE_MARKERS = {
     "ontology",
     "schema",
@@ -118,6 +124,19 @@ MEDIA_EXTENSIONS = {
     ".gif",
     ".webp",
     ".mp4",
+}
+TOOL_ARTIFACT_MARKERS = {
+    "[[process]]",
+    "[[tool]]",
+    "engine process",
+    "nlu engine process",
+    "processing artifact",
+    "tool use",
+}
+TABLE_MARKERS = {
+    "table:",
+    "sqlite_table:",
+    "db_table:",
 }
 
 
@@ -336,6 +355,13 @@ def _contains_any(text: str, markers: set[str]) -> bool:
     return any(marker in text for marker in markers)
 
 
+def is_tool_artifact_ref(text: str) -> bool:
+    haystack = text.lower()
+    return _contains_any(haystack, TOOL_ARTIFACT_MARKERS) or bool(
+        re.search(r"\[\[[^\]]*(process|tool|processing artifact)[^\]]*\]\]", haystack)
+    )
+
+
 def artifact_type_from_resource_kind(
     resource_kind: str | None,
     haystack: str,
@@ -386,6 +412,10 @@ def infer_artifact_type(
 
     if data_type_norm == "database":
         return "local_database"
+    if any(str(part or "").lower().startswith(marker) for part in (locator, artifact_id, detail) for marker in TABLE_MARKERS):
+        return "table"
+    if "#" in (locator or "") and _contains_any(haystack, LOCAL_DATABASE_MARKERS | {"sqlite", ".db"}):
+        return "table"
     if data_type_norm in {"api", "mcp", "object_store", "external_url"}:
         return "knowledge_store"
     if _contains_any(haystack, LOCAL_DATABASE_MARKERS):
@@ -394,6 +424,8 @@ def infer_artifact_type(
         return "event_store"
     if _contains_any(haystack, KNOWLEDGE_STORE_MARKERS):
         return "knowledge_store"
+    if is_tool_artifact_ref(haystack):
+        return "tool"
     if any(ext in haystack for ext in MEDIA_EXTENSIONS):
         return "media"
     return "document"
@@ -1129,6 +1161,8 @@ def has_supply_chain(graph: Graph, node: URIRef) -> bool:
         return True
     if graph.value(node, WF.targetArtifact) is not None:
         return True
+    if graph.value(node, WF.usesTool) is not None:
+        return True
     return False
 
 
@@ -1700,7 +1734,7 @@ def build_workflow_topology(
     if scope:
         intro = f"> `{display_view}` view for workflow scope `{scope}`. Generated from MSO workflow TTL."
         if view in stream_view_names:
-            notes.append("> Artifact stream view: `artifact --consumes--> task --produces--> artifact` supply chain only.")
+            notes.append("> Artifact stream view: `artifact --consumes--> actor/tool --produces--> artifact` supply chain only.")
         elif view == "workflow":
             notes.append("> Workflow view: `((start)) --next--> task --next--> task --next--> ((end))` spine derived from shared artifact ids where possible.")
         else:
@@ -1717,6 +1751,7 @@ def build_workflow_topology(
     ]
     declared: set[str] = set()
     emitted_edges: set[str] = set()
+    emitted_styles: set[str] = set()
     data_refs: dict[str, dict[str, str]] = {}
 
     def declare(
@@ -1731,6 +1766,8 @@ def build_workflow_topology(
             lines.append(f"  {mermaid_node(graph, term, prefix, suffix, shape)}")
             if cls:
                 lines.append(f"  class {node_id} {cls}")
+                if cls == "decision":
+                    style_node(node_id, decision_style(term, inferred=is_inferred_branch_step(term)))
             declared.add(node_id)
         return node_id
 
@@ -1741,6 +1778,8 @@ def build_workflow_topology(
                 shape = "database"
             elif artifact_type == "media":
                 shape = "stadium"
+            elif artifact_type == "tool":
+                shape = "subroutine"
             else:
                 shape = "document"
             css_class = artifact_type
@@ -1749,12 +1788,42 @@ def build_workflow_topology(
             declared.add(node_id)
         return node_id
 
+    def task_tool_node_id(task: URIRef) -> str | None:
+        tool_value = first_literal(graph, task, WF.usesTool)
+        if not tool_value:
+            return None
+        ref = data_ref_for_locator(data_registry, data_type="local_file", locator=tool_value)
+        if show_data_stream:
+            data_refs.setdefault(ref["id"], ref)
+            tool_node_id = declare_data(
+                ref["id"],
+                data_label(
+                    ref["data_type"],
+                    ref["location"],
+                    node_id=ref["id"],
+                    locator=ref["locator"],
+                    artifact_type=ref.get("artifact_type", "tool"),
+                ),
+                ref.get("artifact_type", "tool"),
+            )
+            data_node_ids.add(tool_node_id)
+            return tool_node_id
+        return data_id(ref["id"])
+
     def edge(source_id: str, arrow: str, label: str, target_id: str) -> None:
         label_part = f"|{label}|" if label else ""
         line = f"  {source_id} {arrow}{label_part} {target_id}"
         if line not in emitted_edges:
             lines.append(line)
             emitted_edges.add(line)
+
+    def style_node(node_id: str, style: str | None) -> None:
+        if not style:
+            return
+        line = f"  style {node_id} {style}"
+        if line not in emitted_styles:
+            lines.append(line)
+            emitted_styles.add(line)
 
     def declare_boundary(kind: str) -> str:
         node_id = mermaid_id(f"boundary_{kind}", f"{scope}:{kind}")
@@ -1763,6 +1832,69 @@ def build_workflow_topology(
             lines.append(f"  class {node_id} boundary")
             declared.add(node_id)
         return node_id
+
+    def rendered_outgoing_targets(term: URIRef) -> set[str]:
+        targets: set[str] = set()
+        for target in graph.objects(term, WF.next):
+            if isinstance(target, URIRef) and in_scope(target):
+                targets.add(f"next:{target}")
+        for branch in graph.objects(term, WF.hasBranch):
+            if isinstance(branch, URIRef):
+                for target in graph.objects(branch, WF.gotoNode):
+                    if isinstance(target, URIRef) and in_scope(target):
+                        targets.add(f"goto:{target}")
+        return targets
+
+    def is_inferred_branch_step(term: URIRef) -> bool:
+        if (term, RDF.type, WF.Step) not in graph:
+            return False
+        targets = rendered_outgoing_targets(term)
+        return len(targets) >= 2
+
+    def decision_style(term: URIRef, *, inferred: bool = False) -> str | None:
+        subject = decision_subject(term, inferred=inferred)
+        if subject == "user":
+            return "fill:#ffedd5,stroke:#ea580c,color:#111827"
+        if subject == "agent":
+            return "fill:#dbeafe,stroke:#2563eb,color:#111827"
+        return None
+
+    def decision_subject(term: URIRef, *, inferred: bool = False) -> str | None:
+        explicit = (first_literal(graph, term, WF.decisionSubject) or "").strip().lower()
+        if explicit in {"user", "agent"}:
+            return explicit
+        legacy_judge = (first_literal(graph, term, WF.judge) or "").strip().upper()
+        if legacy_judge in {"HITL", "HITLFE"}:
+            return "user"
+        if legacy_judge in {"HOTL", "HOOTL"} or inferred:
+            return "agent"
+        return "agent" if inferred else None
+
+    def first_decision_criterion(term: URIRef) -> str | None:
+        for predicate in (
+            WF.decisionCriteria,
+            WF.threshold,
+            WF.passCriteria,
+            WF.successCriteria,
+            WF.criteria,
+            WF.description,
+        ):
+            value = first_literal(graph, term, predicate)
+            if value:
+                return value
+        return None
+
+    def decision_branch_label(decision: URIRef, branch: URIRef) -> str:
+        branch_condition = first_literal(graph, branch, WF.on)
+        label = f"on: {branch_condition}" if branch_condition else "goto"
+        criterion = first_literal(graph, branch, WF.decisionCriteria) or first_literal(graph, branch, WF.criteria)
+        if not criterion and branch_condition:
+            decision_criterion = first_decision_criterion(decision)
+            if decision_criterion:
+                criterion = decision_criterion
+        if criterion:
+            label = f"{label} / {criterion}"
+        return mermaid_label(label, 56)
 
     def visual_kind(term: URIRef) -> tuple[str, str | None, str, str]:
         for rdf_type, css_class in (
@@ -1778,14 +1910,28 @@ def build_workflow_topology(
                 status = first_literal(graph, term, WF.status)
                 if status:
                     suffix = f"{suffix} / {status}"
+                if rdf_type == WF.Step and is_inferred_branch_step(term):
+                    suffix = "Decision / inferred-branch"
+                    shape = "hexagon"
+                    return "decision", "decision", suffix, shape
                 if rdf_type == WF.Decision:
                     shape = "hexagon"
+                    subject = decision_subject(term)
+                    if subject:
+                        suffix = f"{suffix}<br>subject: {subject}"
                 elif rdf_type == WF.Eval:
                     shape = "trapezoid"
+                    judge = first_literal(graph, term, WF.judge)
                     oracle_subj = (
                         first_literal(graph, term, WF.oracle)
                         or first_literal(graph, term, WF.oracleType)
                     )
+                    if not oracle_subj and judge:
+                        judge_norm = judge.strip().upper()
+                        if judge_norm in {"HITL", "HITLFE", "HOTL", "HOOTL"}:
+                            oracle_subj = "user"
+                        elif judge_norm == "METRIC":
+                            oracle_subj = "metric"
                     if oracle_subj:
                         suffix = f"{suffix}<br>oracle: {oracle_subj}"
                 else:
@@ -1830,7 +1976,7 @@ def build_workflow_topology(
                         if view in stream_view_names and not has_supply_chain(graph, node):
                             continue  # 공급망 연결 없는 노드는 artifact-stream 뷰에서 제외
                         node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
-                        if view in stream_view_names:
+                        if view in stream_view_names and node_cls not in {"decision", "eval"}:
                             node_suffix = ""  # artifact-stream: label + id only, no type/status
                         declare(node, node_prefix, node_cls, node_suffix, node_shape)
                 for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
@@ -1861,21 +2007,25 @@ def build_workflow_topology(
                 if view in stream_view_names:
                     if not has_supply_chain(graph, node):
                         continue  # 공급망 연결 없는 노드는 artifact-stream 뷰에서 제외
-                    # artifact-stream: label only — no type/status suffix noise
-                    node_id = mermaid_id(local_name(cls).lower(), node)
+                    # artifact-stream: label only for ordinary nodes; eval gates
+                    # keep oracle metadata because it is routing signal.
+                    node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                    node_id = mermaid_id(node_prefix, node)
                     if node_id not in declared:
                         _lbl = preferred_label(graph, node) or display_id(node)
-                        _lbl_short = f"{mermaid_label(_lbl, 52)}<br>id: {display_id(node)}"
-                        shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Eval else "rect"
-                        lines.append(f"  {mermaid_shape(node_id, _lbl_short, shape)}")
-                        lines.append(f"  class {node_id} {css_class}")
+                        if node_cls in {"decision", "eval"}:
+                            _lbl_short = mermaid_node_label(graph, node, node_suffix)
+                        else:
+                            _lbl_short = f"{mermaid_label(_lbl, 52)}<br>id: {display_id(node)}"
+                        lines.append(f"  {mermaid_shape(node_id, _lbl_short, node_shape)}")
+                        node_class = node_cls or css_class
+                        lines.append(f"  class {node_id} {node_class}")
+                        if node_class == "decision":
+                            style_node(node_id, decision_style(node, inferred=is_inferred_branch_step(node)))
                         declared.add(node_id)
                 else:
-                    suffix = local_name(cls)
-                    if status:
-                        suffix = f"{suffix} / {status}"
-                    shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Eval else "rect"
-                    declare(node, local_name(cls).lower(), css_class, suffix, shape)
+                    node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                    declare(node, node_prefix, node_cls or css_class, node_suffix, node_shape)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         declare(module, "module", "module", "Module")
@@ -1914,6 +2064,7 @@ def build_workflow_topology(
         # Use in_scope so flat-URI nodes inferred from wf:hasNode are included
         process_nodes = [n for n in workflow_node_terms(graph) if in_scope(n)]
         control_edges: list[tuple[URIRef, str, str, URIRef]] = []
+        terminal_branch_edges: list[tuple[URIRef, str]] = []
         control_incoming: set[URIRef] = set()
         control_outgoing: set[URIRef] = set()
         data_node_ids: set[str] = set()
@@ -1925,13 +2076,17 @@ def build_workflow_topology(
         for decision in filter_scope(subjects_of_type(graph, WF.Decision), scope):
             for branch in sorted(graph.objects(decision, WF.hasBranch), key=str):
                 if isinstance(branch, URIRef) and workflow_scope(branch) == scope:
-                    branch_condition = first_literal(graph, branch, WF.on)
-                    branch_label = f"on: {branch_condition}" if branch_condition else "goto"
+                    branch_label = decision_branch_label(decision, branch)
+                    has_target = False
                     for target in sorted(graph.objects(branch, WF.gotoNode), key=str):
                         if isinstance(target, URIRef) and workflow_scope(target) == scope:
-                            control_edges.append((decision, "-.->", mermaid_label(branch_label, 32), target))
+                            has_target = True
+                            control_edges.append((decision, "-.->", branch_label, target))
                             control_incoming.add(target)
                             control_outgoing.add(decision)
+                    if not has_target:
+                        terminal_branch_edges.append((decision, branch_label))
+                        control_outgoing.add(decision)
 
         for eval_node in [n for n in subjects_of_type(graph, WF.Eval) if scope is None or in_scope(n)]:
                 on_fail_id = first_literal(graph, eval_node, WF.onFail)
@@ -1964,6 +2119,7 @@ def build_workflow_topology(
                 continue  # artifact-stream: 공급망 없는 노드 선언 제외
             source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
             source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
+            stream_actor_id = task_tool_node_id(node) or source_id
             for role, path, _ in directory_data_for_node(graph, node):
                 ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
                 if show_data_stream:
@@ -1988,12 +2144,12 @@ def build_workflow_topology(
                     produced_data_node_ids.add(data_node_id)
                     data_producers.setdefault(data_node_id, set()).add(node)
                     if show_data_stream:
-                        edge(source_id, "-.->", f"produces{label_suffix}", data_node_id)
+                        edge(stream_actor_id, "-.->", f"produces{label_suffix}", data_node_id)
                 if consumes:
                     consumed_data_node_ids.add(data_node_id)
                     data_consumers.setdefault(data_node_id, set()).add(node)
                     if show_data_stream:
-                        edge(data_node_id, "-.->", f"consumes{label_suffix}", source_id)
+                        edge(data_node_id, "-.->", f"consumes{label_suffix}", stream_actor_id)
 
             for deliverable, _ in deliverable_data_for_node(graph, node):
                 ref = deliverable_data_ref(deliverable)
@@ -2018,7 +2174,7 @@ def build_workflow_topology(
                 produced_data_node_ids.add(data_node_id)
                 data_producers.setdefault(data_node_id, set()).add(node)
                 if show_data_stream:
-                    edge(source_id, "-.->", "produces", data_node_id)
+                    edge(stream_actor_id, "-.->", "produces", data_node_id)
 
         stream_task_edges: set[tuple[URIRef, URIRef]] = set()
         for data_node_id in sorted(data_node_ids):
@@ -2048,8 +2204,8 @@ def build_workflow_topology(
             if stream_task_edges:
                 spine_sources = {source for source, _ in stream_task_edges}
                 spine_targets = {target for _, target in stream_task_edges}
-                entry_nodes = spine_sources - spine_targets
-                exit_nodes = spine_targets - spine_sources
+                entry_nodes = {node for node in spine_sources - spine_targets if node not in control_incoming}
+                exit_nodes = {node for node in spine_targets - spine_sources if node not in control_outgoing}
             else:
                 entry_nodes = {node for node in process_nodes if node not in control_incoming}
                 exit_nodes = {node for node in process_nodes if node not in control_outgoing}
@@ -2062,6 +2218,10 @@ def build_workflow_topology(
                 node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
                 node_id = declare(node, node_prefix, node_cls, node_suffix, node_shape)
                 edge(node_id, "-->", "next", end_id)
+            for source, label in terminal_branch_edges:
+                source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
+                source_id = declare(source, source_prefix, source_cls, source_suffix, source_shape)
+                edge(source_id, "-.->", label, end_id)
         elif show_workflow_spine and process_nodes:
             start_id = declare_boundary("start")
             end_id = declare_boundary("end")
@@ -2072,18 +2232,53 @@ def build_workflow_topology(
                     edge(start_id, "-->", "", node_id)
                 if node not in control_outgoing:
                     edge(node_id, "-->", "", end_id)
+            for source, label in terminal_branch_edges:
+                source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
+                source_id = declare(source, source_prefix, source_cls, source_suffix, source_shape)
+                edge(source_id, "-.->", label, end_id)
 
-        # eval edges: eval:check / eval:order / eval:report — shown in ALL scoped views
+        # delegation/validation/revision/report edges — shown in ALL scoped views.
+        # Eval.targetArtifact means artifact --validated_by--> Eval and
+        # Eval --approves--> artifact. Eval.orderTarget requests a revision.
+        # Step.usesTool means agentTask --delegates_to--> tool.
         if include_internal:
-            for eval_node in [n for n in subjects_of_type(graph, WF.Eval) if scope is None or in_scope(n)]:
-                e_prefix, e_cls, e_suffix, e_shape = visual_kind(eval_node)
-                eval_nid = mermaid_id("eval", eval_node)
-                if eval_nid not in declared:
-                    declare(eval_node, e_prefix, e_cls, e_suffix, e_shape)
+            eval_nodes = {
+                n for n in subjects_of_type(graph, WF.Eval)
+                if scope is None or in_scope(n)
+            }
+            target_nodes = {
+                n for n in graph.subjects(WF.targetArtifact, None)
+                if isinstance(n, URIRef) and (scope is None or in_scope(n))
+            }
+            delegation_nodes = {
+                n for n in graph.subjects(WF.usesTool, None)
+                if isinstance(n, URIRef) and (scope is None or in_scope(n))
+            }
+            for target_node in sorted(eval_nodes | target_nodes | delegation_nodes, key=str):
+                node_prefix, node_cls, node_suffix, node_shape = visual_kind(target_node)
+                node_nid = declare(target_node, node_prefix, node_cls, node_suffix, node_shape)
 
-                # eval:check — targetArtifact -.-> eval
-                art_str = first_literal(graph, eval_node, WF.targetArtifact)
-                if art_str:
+                for tool_value in graph.objects(target_node, WF.usesTool):
+                    if not isinstance(tool_value, Literal):
+                        continue
+                    tool_str = literal_text(tool_value)
+                    if not tool_str:
+                        continue
+                    tool_ref = data_ref_for_locator(data_registry, data_type="local_file", locator=tool_str)
+                    tool_nid = data_id(tool_ref["id"])
+                    if tool_nid not in declared:
+                        tool_label_str = data_label(
+                            tool_ref["data_type"], tool_ref.get("location", tool_str),
+                            locator=tool_ref.get("locator", tool_str),
+                            node_id=tool_ref["id"],
+                            artifact_type=tool_ref.get("artifact_type", "document"),
+                        )
+                        declare_data(tool_ref["id"], tool_label_str, tool_ref.get("artifact_type", "document"))
+                        data_node_ids.add(tool_nid)
+                    edge(node_nid, "-->", "delegates_to", tool_nid)
+
+                art_str = first_literal(graph, target_node, WF.targetArtifact)
+                if art_str and (target_node, RDF.type, WF.Eval) in graph:
                     ref = data_ref_for_locator(data_registry, data_type="local_file", locator=art_str)
                     art_ref = ref if ref else {
                         "id": f"local_file:{art_str}", "data_type": "local_file",
@@ -2099,20 +2294,21 @@ def build_workflow_topology(
                         )
                         declare_data(art_ref["id"], art_label_str, art_ref.get("artifact_type", "document"))
                         data_node_ids.add(art_nid)
-                    edge(art_nid, "-.->", "eval:check", eval_nid)
+                    edge(art_nid, "-.->", "validated_by", node_nid)
+                    edge(node_nid, "-.->", "approves", art_nid)
 
-                # eval:order — eval --> orderTarget step
-                order_str = first_literal(graph, eval_node, WF.orderTarget)
+                # requests_revision — eval --> downstream task/decision
+                order_str = first_literal(graph, target_node, WF.orderTarget)
                 if order_str:
                     for cand in (WF[f"node/{order_str}"], WF[f"node/{scope}/{order_str}"]):
                         if isinstance(cand, URIRef) and in_scope(cand):
                             t_prefix, t_cls, t_suffix, t_shape = visual_kind(cand)
                             t_nid = declare(cand, t_prefix, t_cls, t_suffix, t_shape)
-                            edge(eval_nid, "-->", "eval:order", t_nid)
+                            edge(node_nid, "-->", "requests_revision", t_nid)
                             break
 
-                # eval:report — eval -.-> orderArtifact
-                report_str = first_literal(graph, eval_node, WF.orderArtifact)
+                # report — eval -.-> orderArtifact
+                report_str = first_literal(graph, target_node, WF.orderArtifact)
                 if report_str:
                     d_ref = deliverable_data_ref(report_str)
                     r_nid = data_id(d_ref["id"])
@@ -2125,19 +2321,26 @@ def build_workflow_topology(
                         )
                         declare_data(d_ref["id"], r_label_str, d_ref.get("artifact_type", "document"))
                         data_node_ids.add(r_nid)
-                    edge(eval_nid, "-.->", "eval:report", r_nid)
+                    edge(node_nid, "-.->", "report", r_nid)
 
-        # artifact-stream: TTL에 선언된 control edge만 렌더링 (-.-> 브랜치, --> 오라클/next)
+        # artifact-stream: preserve control edges only between nodes already
+        # present in the supply-chain view. Do not introduce control-only
+        # decisions/validations into this view.
         if view in stream_view_names:
             for src, arr, lbl, tgt in control_edges:
                 if arr not in ("-.->", "-.>", "-->"):
                     continue
                 src_nid = mermaid_id(visual_kind(src)[0], src)
-                if src_nid not in declared or not in_scope(tgt):
+                tgt_nid = mermaid_id(visual_kind(tgt)[0], tgt)
+                if src_nid not in declared or tgt_nid not in declared or not in_scope(tgt):
                     continue
-                tgt_p, tgt_c, tgt_s, tgt_sh = visual_kind(tgt)
-                tgt_nid = declare(tgt, tgt_p, tgt_c, tgt_s, tgt_sh)
                 edge(src_nid, arr, lbl, tgt_nid)
+            for src, lbl in terminal_branch_edges:
+                src_nid = mermaid_id(visual_kind(src)[0], src)
+                if src_nid not in declared:
+                    continue
+                end_id = declare_boundary("end")
+                edge(src_nid, "-.->", lbl, end_id)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
@@ -2159,10 +2362,10 @@ def build_workflow_topology(
             "  classDef status_completed fill:#dcfce7,stroke:#16a34a,color:#111827",
             "  classDef status_active fill:#fef3c7,stroke:#d97706,color:#111827",
             "  classDef status_pending fill:#f3f4f6,stroke:#6b7280,color:#111827",
-            "  classDef step fill:#ecfeff,stroke:#0891b2,color:#111827",
-            "  classDef decision fill:#fae8ff,stroke:#c026d3,color:#111827",
-            "  classDef eval fill:#ffedd5,stroke:#ea580c,color:#111827",
-            "  classDef validation fill:#fee2e2,stroke:#dc2626,color:#111827",
+            "  classDef step fill:#dbeafe,stroke:#2563eb,color:#111827",
+            "  classDef decision fill:#f3f4f6,stroke:#6b7280,color:#111827",
+            "  classDef eval fill:#fee2e2,stroke:#dc2626,color:#111827",
+            "  classDef validation fill:#e0f2fe,stroke:#0284c7,color:#111827",
             "  classDef group fill:#f5f5f4,stroke:#78716c,color:#111827",
             "  classDef workflowRef fill:#e0f2fe,stroke:#0284c7,color:#111827",
             "  classDef module fill:#f0fdf4,stroke:#15803d,color:#111827",
@@ -2172,6 +2375,8 @@ def build_workflow_topology(
             "  classDef local_database fill:#ecfdf5,stroke:#047857,stroke-dasharray: 4 3,color:#111827",
             "  classDef document fill:#fefce8,stroke:#a16207,color:#111827",
             "  classDef media fill:#fff7ed,stroke:#ea580c,color:#111827",
+            "  classDef tool fill:#eef2ff,stroke:#4f46e5,color:#111827",
+            "  classDef table fill:#ecfeff,stroke:#0891b2,stroke-dasharray: 4 3,color:#111827",
             "  classDef boundary fill:#ffffff,stroke:#111827,color:#111827",
             "```",
         ]

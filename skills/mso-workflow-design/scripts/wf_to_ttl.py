@@ -9,7 +9,7 @@
 
     1) 로컬 shape (pyshacl)   — references/shapes/workflow-shapes.ttl
        노드-단위 불변식: status enum, validation=harness+pass_criteria,
-       decision=judge, label 비어있지 않음. (스키마 structural_invariants 의 로컬분)
+       decision=decision_subject, label 비어있지 않음. (스키마 structural_invariants 의 로컬분)
 
     2) feedback loop control (SHACL-SPARQL + rdflib SPARQL)
        순환 자체는 허용한다. 다만 산출물이 재귀적으로 소비되는 loop 안에
@@ -156,7 +156,7 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
         if cls in {WF.Step, WF.Validation, WF.Group, WF.WorkflowRef}:
             g.add((nu, RDF.type, WF.Task))
         g.add((phase_uri, WF.hasNode, nu))
-        _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/judge/owner/...
+        _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/decisionSubject/owner/...
         for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI)
             if isinstance(d, dict) and d.get("path"):
                 dn = URIRef(str(nu) + "_dir_" + _safe(d["path"]))
@@ -312,7 +312,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 for dep in (ph.get("dependencies") or []):
                     g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
                 _project_workflows(g, pu, ph)
-                _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultJudge/showWrapper/artifacts/successCriteria
+                _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultDecisionSubject/showWrapper/artifacts/successCriteria
                 _project_nodes(g, ph.get("steps", []), pu, scope)
         # ── module 스타일: 이름붙은 phase 키(discovery/development/...) ──
         else:

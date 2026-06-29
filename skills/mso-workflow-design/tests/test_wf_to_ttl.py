@@ -180,7 +180,7 @@ def test_sequential_next_and_branch_goto_node_projected(tmp_path):
                     "id": "d-01",
                     "label": "승인",
                     "status": "active",
-                    "judge": "HITL",
+                    "decision_subject": "user",
                     "owner": "wmjoon",
                     "branches": [{"on": "rejected", "goto": "s-01"}],
                 },
@@ -224,7 +224,7 @@ def test_task_and_eval_roles_projected_from_legacy_oracle_alias(tmp_path):
                 "id": "d-01",
                 "label": "진행 분기",
                 "status": "active",
-                "judge": "HITL",
+                "decision_subject": "user",
                 "owner": "wmjoon",
             },
             {
@@ -277,7 +277,7 @@ def test_eval_node_type_projected(tmp_path):
 
 
 def test_node_feedback_loop_without_eval_fails(tmp_path):
-    """HOOTL decision 이 만드는 재귀 branch loop는 Eval 개입점이 아니므로 실패한다."""
+    """agent decision 이 만드는 재귀 branch loop는 Eval 개입점이 아니므로 실패한다."""
     doc = {"phases": [{
         "id": "p",
         "name": "P",
@@ -295,7 +295,7 @@ def test_node_feedback_loop_without_eval_fails(tmp_path):
                 "id": "d-01",
                 "label": "자동 재시도",
                 "status": "active",
-                "judge": "HOOTL",
+                "decision_subject": "agent",
                 "branches": [{"on": "failed", "goto": "s-01"}],
             },
         ],
@@ -391,38 +391,37 @@ def test_depends_on_undeclared_phase_fails_range(tmp_path):
     assert res["shacl_conforms"] is False
 
 
-def test_bad_judge_enum_fails(tmp_path):
-    """decision judge 가 4-level 통제어휘 밖이면 위반."""
+def test_bad_decision_subject_enum_fails(tmp_path):
+    """decision_subject 가 user|agent 밖이면 위반."""
     doc = {"phases": [{
         "id": "p", "name": "P", "status": "active",
         "steps": [{"type": "decision", "id": "p-d-01", "label": "분기",
-                   "status": "active", "judge": "MAYBE"}],
+                   "status": "active", "decision_subject": "system"}],
     }]}
-    res = wf_to_ttl.validate(_write(tmp_path, "judge.yaml", doc))
+    res = wf_to_ttl.validate(_write(tmp_path, "subject.yaml", doc))
     assert res["ok"] is False
     assert res["shacl_conforms"] is False
 
 
-def test_good_decision_judge_conforms(tmp_path):
-    # HITLFE → owner(required_when HITL/HITLFE) + threshold(required_when HITLFE) 필수
+def test_good_decision_subject_conforms(tmp_path):
     doc = {"phases": [{
         "id": "p", "name": "P", "status": "active",
         "steps": [{"type": "decision", "id": "p-d-01", "label": "분기",
-                   "status": "active", "judge": "HITLFE",
-                   "owner": "team@x", "threshold": "F1 < 0.87"}],
+                   "status": "active", "decision_subject": "agent",
+                   "decision_criteria": "F1 < 0.87"}],
     }]}
-    res = wf_to_ttl.validate(_write(tmp_path, "judge_ok.yaml", doc))
+    res = wf_to_ttl.validate(_write(tmp_path, "subject_ok.yaml", doc))
     assert res["ok"], res
 
 
-def test_decision_hitlfe_missing_owner_threshold_fails(tmp_path):
-    """required_when: HITLFE 인데 owner/threshold 없으면 위반(생성된 조건부 shape)."""
+def test_decision_missing_subject_fails(tmp_path):
+    """decision_subject 누락은 위반."""
     doc = {"phases": [{
         "id": "p", "name": "P", "status": "active",
         "steps": [{"type": "decision", "id": "p-d-01", "label": "분기",
-                   "status": "active", "judge": "HITLFE"}],
+                   "status": "active"}],
     }]}
-    res = wf_to_ttl.validate(_write(tmp_path, "judge_bad.yaml", doc))
+    res = wf_to_ttl.validate(_write(tmp_path, "subject_bad.yaml", doc))
     assert res["ok"] is False
     assert res["shacl_conforms"] is False
 
@@ -454,6 +453,37 @@ def test_step_with_instruction_conforms(tmp_path):
     instrs = [str(o) for o in g.objects(nu, wf_to_ttl.WF.instruction)]
     assert instrs and "마스킹" in instrs[0]
     res = wf_to_ttl.validate(_write(tmp_path, "instr.yaml", doc))
+    assert res["ok"], res
+
+
+def test_tool_delegation_requires_target_input_and_output(tmp_path):
+    """uses_tool step은 delegates_to edge와 consumes/produces spine을 만들 수 있어야 한다."""
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [{
+            "type": "step", "id": "p-s-01", "label": "도구 실행", "status": "active",
+            "instruction": "tool로 입력 artifact를 처리하라",
+            "uses_tool": "[[nlu engine process]]",
+        }],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "bad_tool.yaml", doc))
+    assert res["ok"] is False
+    assert res["shacl_conforms"] is False
+    assert "tool delegation shape" in res["shacl_report"]
+
+
+def test_tool_delegation_shape_conforms(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [{
+            "type": "step", "id": "p-s-01", "label": "도구 실행", "status": "active",
+            "instruction": "tool로 입력 artifact를 처리해 labels table을 생산하라",
+            "uses_tool": "[[nlu engine process]]",
+            "directories": [{"role": "input", "path": "scripts/"}],
+            "deliverables": ["table:labels"],
+        }],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "good_tool.yaml", doc))
     assert res["ok"], res
 
 
@@ -545,7 +575,7 @@ def test_unquoted_on_branch_normalized(tmp_path):
     doc = {"phases": [{
         "id": "p", "name": "P", "status": "active",
         "steps": [{"type": "decision", "id": "p-d-01", "label": "분기", "status": "active",
-                   "judge": "HOTL", "branches": [{True: "passed", "goto": "n2"}]}],
+                   "decision_subject": "agent", "branches": [{True: "passed", "goto": "n2"}]}],
     }]}
     g, _ = wf_to_ttl.build_graph(_write(tmp_path, "wf.yaml", doc))
     nu = wf_to_ttl._node_uri("p-d-01")

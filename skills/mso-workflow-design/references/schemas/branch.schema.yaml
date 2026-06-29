@@ -11,8 +11,8 @@ fields:
     required: true
     type: string
     description: |
-      분기 조건. 부모 decision 의 judge 타입별 허용 조건에 속해야 함
-      (judge_branch_conditions 참조, decision.schema.yaml).
+      분기 조건. agent decision에서는 routing case의 stable label이며,
+      user decision에서는 사용자 판단 결과를 나타낸다.
 
   goto:
     required: false
@@ -26,4 +26,4 @@ fields:
 
 structural_invariants:
   - "on 비어있지 않음"
-  - "on 은 부모 decision 의 judge_branch_conditions[judge] 에 속해야 함 (SHACL core 불가 → SPARQL/prose)"
+  - "agent decision 의 on 은 routing case 를 설명해야 함"

@@ -1,6 +1,6 @@
 ---
 name: mso-graph-observability
-version: "0.5.0"
+version: "0.5.1"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 ---
 
@@ -21,7 +21,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 같은 target Artifact id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
 - MSO는 Data Pipeline이 아니라 Artifact Supply Chain을 관측한다. Artifact는 repository가 관리하는 단위이고, Data는 Artifact 내부 표현 방식이며, Knowledge는 Data가 해석되었을 때 얻어지는 의미 계층이다.
 - Artifact node는 `artifact_type`, `data_type`, `location`을 가진 관측 노드다. `data_type`은 저장/접근 매체(local_file/api/mcp/database 등), `artifact_type`은 소비/운영 의미를 뜻한다.
-- 지원 `artifact_type`: `knowledge_store`(ontology.ttl, workflow.ttl), `event_store`(work-memory/auditlog jsonl), `local_database`(sqlite/cache), `document`(README/report/prompt), `media`(html/pdf/pptx/png/svg).
+- 지원 `artifact_type`: `knowledge_store`(ontology.ttl, workflow.ttl), `event_store`(work-memory/auditlog jsonl), `local_database`(sqlite/cache), `table`(DB table), `tool`(agentTask tool use), `document`(README/report/prompt), `media`(html/pdf/pptx/png/svg).
 - 현재 TTL에서는 `wf:directory`를 `data_type=local_file`로 해석하되, `agent-context/index/index.yaml` 또는 `index.yaml`의 `data_registry`/module/subdir registry를 통해 `location=index:<artifact-id>`로 렌더링한다. 실제 path/API endpoint/MCP resource는 `locator`로 분리한다.
 - `artifact_type`은 index의 명시값이 우선한다. 기존 `resource_kind=file|data`는 호환 alias로 읽어 `document|media` 또는 machine-native artifact로 매핑한다. 명시값이 없으면 locator/detail/role/data_type으로 보수적으로 추론한다.
 - Mermaid graph 안의 Artifact node label은 `DOCUMENT|MEDIA|KNOWLEDGE STORE|EVENT STORE|LOCAL DATABASE`와 `id`만 표시한다. `artifact_type`, `primary_consumer`, `medium`, `location`, `locator`, `detail`은 graph 아래 `Artifact Node Index` 표로 분리해 시각적 복잡도를 낮춘다.
@@ -30,7 +30,8 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 디렉토리는 workflow topology와 Artifact 소비 관계에서 파생되는 구현 경계다. 디렉토리를 먼저 만들지 않고, 소비자가 없는 Artifact boundary는 줄이거나 합치는 후보로 본다.
 - Mermaid shape는 GitHub Markdown 호환성을 우선한다. task는 `["label"]`, document는 `@{ shape: doc }`, machine-native artifact는 cylinder, media는 stadium, decision은 `{{"label"}}`, eval(평가 게이트)은 `[/"label"\]` trapezoid로 렌더링한다.
 - eval 노드(`wf:Eval`)는 평가를 수행하는 주체(oracle)를 레이블에 `oracle: {value}` 형태로 표시한다. `wf:oracle` 선언이 없으면 `wf:oracleType`을 사용한다.
-- eval 엣지는 3종이다: `artifact -.->|eval:check| eval`, `eval -->|eval:order| step`, `eval -.->|eval:report| artifact`. eval 엣지는 workflow view와 artifact-stream view 양쪽에 모두 표시된다.
+- eval 엣지는 `artifact -.->|validated_by| eval`, `eval -->|requests_revision| step/decision`, `eval -.->|approves| artifact`, `eval -.->|report| artifact`로 표시된다. eval 엣지는 workflow view와 artifact-stream view 양쪽에 모두 표시된다.
+- `usesTool`이 있는 agentTask의 artifact stream은 tool 위임 효율을 볼 수 있도록 `artifact --consumes--> tool --produces--> artifact`로 렌더링하고, agentTask는 workflow edge인 `delegates_to`로 tool에 연결한다.
 - Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Artifact node는 index artifact id(`content.draft` 등)를 우선 사용하고 미등록 Artifact만 `local_file:<path>`/짧은 `deliverable:<hash>` key를 쓴다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
 - 분석 목적은 “어떤 흐름에서 실패가 많았는가”, “어떤 workflow가 자주 실행되는가”, “에이전트가 어디서 반복/이탈/재시도하는가”를 드러내는 것이다.
@@ -136,7 +137,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 
 - `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
 - `wf:hasNode`, `wf:hasWorkflowRef`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 Branch node나 `hasBranch` edge로 렌더링하지 않고, `decision -.->|on:<condition>| target` 조건부 process edge로 직접 표현한다.
-- `wf:Eval` 노드의 `wf:onFail`은 `-.->|on: fail|` 엣지로 렌더링하고, `eval:check/order/report` 3개 eval 엣지는 별도 eval-edge pass에서 모든 view에 공통으로 렌더링한다.
+- `wf:Eval` 노드의 `wf:onFail`은 `-.->|on: fail|` 엣지로 렌더링하고, `validated_by`/`requests_revision`/`approves`/`report` eval 엣지는 별도 eval-edge pass에서 모든 view에 공통으로 렌더링한다.
 - `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨긴다. workflow view의 `next` spine은 공유 Data id의 producer/consumer 관계에서 먼저 파생하고, stream 정보가 부족할 때만 `wf:next`를 fallback으로 사용한다.
 - `wf:directory`는 Artifact node로 파생한다. 현재는 `data_type=local_file`, `location=index:<artifact-id>`, `locator=<dirPath>`로 표시한다. index에 없으면 raw local_file fallback key를 쓴다. `role: input/reference`는 `artifact --upstream--> task`, `role: output`은 `task --downstream--> artifact`, `role: input_output`은 양방향 stream edge로 표현한다.
 - `wf:deliverables`는 downstream Artifact node로 표시한다. 현재는 `data_type=local_file`, `location=declared deliverable`, `detail=<deliverable>`로 렌더링하고 detail 기반으로 `artifact_type`을 추론한다. 이후 schema가 확장되면 `artifact_type`을 TTL metadata로 명시할 수 있다.

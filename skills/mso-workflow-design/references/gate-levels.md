@@ -1,227 +1,130 @@
-# Gate Levels — Decision Node Judge
+# Intervention Levels — Derived Repository Classification
 
-`type: decision` 노드의 `judge` 필드로 인간 개입 수준을 지정한다.  
-이 값은 운영 비용, 위험도, SLA를 결정하는 1차 정보다.
+`type: decision` 노드는 단일 `Decision` class를 사용한다. 판단 주체는
+`decision_subject` property로 표현하며 값은 `user` 또는 `agent`뿐이다.
 
-## Table of Contents
+`HITL/HITLFE/HOTL/HOOTL`은 decision 노드의 필드가 아니라, workflow 경로 안에
+`decision_subject=user` decision 또는 `oracle_type=user` eval이 있는지로 파생하는
+repository 운영 분류다.
 
-1. [4-Level Taxonomy](#1-4-level-taxonomy)
-2. [Decision Matrix](#2-decision-matrix)
-3. [YAML Field Spec](#3-yaml-field-spec)
-4. [Mermaid Visualization](#4-mermaid-visualization)
-5. [Anti-Patterns](#5-anti-patterns)
-6. [Project Examples](#6-project-examples)
+## 1. Decision Subject
 
----
+| Subject | 의미 | Mermaid |
+|---------|------|---------|
+| `user` | 사용자/사람/운영자가 process branch를 판단 | `decision` class + 주황 node-level style |
+| `agent` | agent가 process branch를 판단 | `decision` class + 파랑 node-level style |
 
-## 1. 4-Level Taxonomy
-
-| Level | Full Name | 정의 | 인간 개입 시점 |
-|-------|-----------|------|--------------|
-| **HITL** | Human-In-The-Loop | 모든 의사결정에 사람이 명시적으로 승인/실행 | Pre-execution (필수) |
-| **HITLFE** | Human-In-The-Loop For Exceptions | 정상 경로는 자동, 예외/임계치 초과 시만 에스컬레이션 | Conditional (예외 시) |
-| **HOTL** | Human-On-The-Loop | 시스템 자율 실행, 사람은 감독·중단 권한 | Concurrent (모니터링) |
-| **HOOTL** | Human-Out-Of-The-Loop | 완전 자율, 사람 개입 없음 (사후 감사만) | None (또는 사후) |
-
-자동화 수준: **HITL → HITLFE → HOTL → HOOTL** 순으로 인간 개입 감소.
-
-| Level | 인건비 | 처리 속도 | 리스크 |
-|-------|-------|---------|--------|
-| HITL | 매우 높음 | 매우 느림 | 매우 낮음 |
-| HITLFE | 중간 | 빠름 | 낮음 |
-| HOTL | 낮음 | 매우 빠름 | 중간 |
-| HOOTL | 거의 없음 | 최대 | 높음 (사후 발견) |
-
----
-
-## 2. Decision Matrix
-
-새 decision 노드의 judge를 결정할 때 다음 질문을 순서대로 답한다.
-
-```
-Q1. 잘못된 결정의 비용이 회복 불가능한가 (법적·재무·운영 위협)?
-    → YES: HITL
-    → NO: Q2
-
-Q2. 의사결정 신뢰도가 95% 이상 측정 가능한가?
-    → NO: HITL
-    → YES: Q3
-
-Q3. 예외 케이스를 사후가 아닌 실시간으로 차단해야 하는가?
-    → YES: HITLFE
-    → NO: Q4
-
-Q4. 실시간 모니터링·중단이 사업적으로 필요한가?
-    → YES: HOTL
-    → NO: HOOTL
-```
-
-### Quick Heuristics
-
-- **정책 변경 / 골든셋 라벨링** → HITL
-- **고위험 거래 / 정책 위반 의심** → HITLFE
-- **실시간 챗봇 응답 / 라우팅** → HOTL
-- **ETL / 배치 마스킹 / 계산** → HOOTL
-
----
-
-## 3. YAML Field Spec
-
-decision 노드의 `judge`별 추가 필드.
-
-### HITL
+agent decision은 사람이 매번 판단하지 않으므로 `decision_criteria`, `threshold`,
+`pass_criteria`, `success_criteria` 중 하나로 판단 기준을 남긴다. 관측 그래프에서는
+이 기준을 node label이 아니라 branch edge label에 붙인다.
 
 ```yaml
 - type: decision
-  id: acp-d-001
-  label: "정책 변경 확정 검토"
-  judge: HITL
-  owner: owner@example.com          # 필수
-  sla: "24시간 이내"               # optional
+  id: nlu-d-201
+  label: "골든 후보 선별·목표 판단"
+  decision_subject: user
+  decision_criteria: "승격 후보가 골든셋 기준을 충족하는지 확인"
   branches:
-    - on: rejected
-      goto: acp-s-007             # 거절 시 복귀 step
+    - on: approved
+      goto: nlu-s-203
+    - on: target_met
 ```
 
-### HITLFE
+## 2. Eval Boundary
+
+`Eval`은 artifact/process 자체의 품질·정합성을 판정할 때만 사용한다.
+예: `[[nlu engine process]]`, evaluator, corpus, 배포 가능성, metric gate.
+여기서 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라
+agentTask의 tool use를 가리키는 artifact-like target으로 취급한다. 관측 그래프에서는
+평가 대상 artifact가 `--validated_by--> Eval`, `Eval --requests_revision--> agentTask`,
+`Eval --approves--> artifact`, `agentTask --delegates_to--> [[tool]]` 형태로 표현한다.
+artifact stream에서는 tool 위임의 효율을 확인해야 하므로 `artifact --consumes--> tool --produces--> artifact`
+를 optimization spine으로 둔다.
+
+`check`보다 `validated_by`를 표준 edge label로 쓴다. `check`는 실행 행위처럼 보이지만,
+`validated_by`는 artifact가 어떤 Eval에 의해 검증·확정되는지 나타내므로 workflow 최적화 그래프에서
+책임 경계가 더 분명하다.
+
+단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는
+`Eval`이 아니라 `decision_subject=user`인 `Decision`이다.
 
 ```yaml
-- type: decision
-  id: acp-d-002
-  label: "품질 기준 달성 여부 평가"
-  judge: HITLFE
-  owner: owner@example.com          # 필수
-  threshold: "F1 < 0.87"          # 필수 — 에스컬레이션 조건
-  sla: "24시간 이내"               # optional
-  branches:
-    - on: escalated
-      goto: acp-s-010
+- type: eval
+  id: nlu-d-102
+  label: "HITL 리뷰 수행"
+  oracle_type: user
+  target_artifact: "04.modules/conversational-nlu-classifier-v2/data/"
+  criteria:
+    - "intent_final 확정 가능성과 tool 재실행 필요성"
 ```
 
-### HOTL / HOOTL
+## 3. Derived Intervention Levels
 
-`owner`, `threshold` 불필요. branches만 정의하면 된다.
+| Level | 파생 조건 | 의미 |
+|-------|-----------|------|
+| HITL | 모든 주요 경로에 user decision 또는 user eval이 있음 | 사람 판단이 실행 경로에 필수 |
+| HITLFE | 예외/임계치 경로에만 user decision 또는 user eval이 있음 | 조건부 사람 판단 |
+| HOTL | 실행은 agent가 판단하지만 결과가 사람에게 노출·알림됨 | 사람 모니터링 필수 |
+| HOOTL | user decision/user eval/필수 노출 없이 agent가 판단 | 완전 위임 |
 
-```yaml
-- type: decision
-  id: sdm-d-001
-  label: "마스킹 결과 품질 확인"
-  judge: HOTL
-  branches:
-    - on: flagged
-      goto: sdm-s-005
-```
+이 분류는 repository나 workflow path 수준에서 계산한다. 개별 node의 표준 TTL에는
+`decision_subject`와 `oracle_type`만 기록한다.
 
-### Field Reference
+## 4. Mermaid Semantics
 
-| Field | Judge | Required | 설명 |
-|-------|-------|----------|------|
-| `judge` | 전체 | **필수** | HITL / HITLFE / HOTL / HOOTL |
-| `owner` | HITL, HITLFE | **필수** | 의사결정 책임자 (이메일) |
-| `threshold` | HITLFE | **필수** | 에스컬레이션 발동 조건 |
-| `sla` | HITL, HITLFE | optional | 인간 응답 SLA |
-| `branches` | 전체 | optional | 조건별 분기. 생략 시 sequential next |
-
-**branches.on 허용 값:**
-
-| judge | 허용 조건 |
-|-------|---------|
-| HITL | `approved` · `rejected` · `escalated` |
-| HITLFE | `auto-approved` · `escalated` · `rejected` |
-| HOTL | `passed` · `flagged` |
-| HOOTL | `completed` · `failed` |
-
----
-
-## 4. Mermaid Visualization
-
-`workflow_to_mermaid.py`가 decision 노드를 judge별 shape·color로 렌더링한다.
-
-| Judge | Shape | Color | Mermaid Class |
-|-------|-------|-------|--------------|
-| HITL | `{ }` (마름모) | 🔴 Red | `classDef hitl fill:#ffcccc,stroke:#cc0000,stroke-width:3px` |
-| HITLFE | `{{hexagon}}` | 🟠 Orange | `classDef hitlfe fill:#ffe4b5,stroke:#ff8c00,stroke-width:2px` |
-| HOTL | `[/parallelogram/]` | 🟡 Yellow | `classDef hotl fill:#fffacd,stroke:#daa520,stroke-width:2px` |
-| HOOTL | `([rounded])` | 🟢 Green | `classDef hootl fill:#d4f4dd,stroke:#2e8b57,stroke-width:1px` |
+모든 decision은 Mermaid class `decision`을 사용한다. 사용자 판단이면 주황색,
+agent 판단이면 파란색 node-level style을 적용한다. `Eval`은 빨간색이고,
+`Validation`은 자동 검증이므로 eval과 구분되는 파란색 계열을 사용한다.
 
 ```mermaid
 flowchart TD
-    A{hand-off 확정 검토}:::hitl -->|rejected| B[draft 파일 수정]
-    A -->|approved| C{{품질 기준 평가}}:::hitlfe
-    C -->|escalated| D[재검증]
-    C -->|auto-approved| E[/실시간 라우팅/]:::hotl
-    E --> F([PII 마스킹]):::hootl
+    A{{"후보 선택<br>id: nlu-d-201<br>Decision<br>subject: user"}}:::decision
+    B{{"자동 라우팅<br>id: nlu-d-101<br>Decision<br>subject: agent"}}:::decision
+    C[/"엔진 품질 평가<br>id: nlu-e-101<br>Eval<br>oracle: metric"/]:::eval
+    T[["[[nlu engine process]]<br>TOOL"]]:::tool
+    D[("labeling.sqlite<br>LOCAL DATABASE")]
 
-    classDef hitl fill:#ffcccc,stroke:#cc0000,stroke-width:3px
-    classDef hitlfe fill:#ffe4b5,stroke:#ff8c00,stroke-width:2px
-    classDef hotl fill:#fffacd,stroke:#daa520,stroke-width:2px
-    classDef hootl fill:#d4f4dd,stroke:#2e8b57,stroke-width:1px
+    A -->|on: approved / 기준 충족| B
+    B -->|on: passed / threshold >= 0.87| C
+    D -.->|validated_by| C
+    C -->|requests_revision| B
+    C -.->|approves| D
+    B -->|delegates_to| T
+
+    classDef decision fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef eval fill:#fee2e2,stroke:#dc2626,color:#111827
+    classDef tool fill:#eef2ff,stroke:#4f46e5,color:#111827
+    style A fill:#ffedd5,stroke:#ea580c,color:#111827
+    style B fill:#dbeafe,stroke:#2563eb,color:#111827
 ```
-
----
 
 ## 5. Anti-Patterns
 
-### ❌ HOOTL Drift
-
-고위험 단계를 HOOTL로 표시. 인시던트 시 책임 소재 불명확.
-
-```yaml
-# Bad — 회복 불가, HITL이어야 함
-- type: decision
-  id: x-d-001
-  judge: HOOTL  # 정책 변경인데?
-
-# Good
-- type: decision
-  id: x-d-001
-  judge: HITLFE
-  threshold: "amount > $10,000 or risk_score > 0.7"
-```
-
-### ❌ Missing Owner on HITL
-
-`owner` 누락. 에스컬레이션 발생 시 책임자를 알 수 없음.
+### `judge`를 신규 Decision 필드로 쓰기
 
 ```yaml
 # Bad
 - type: decision
-  judge: HITL  # owner 없음
+  id: x-d-001
+  judge: HITL
 
 # Good
 - type: decision
-  judge: HITL
-  owner: owner@example.com
+  id: x-d-001
+  decision_subject: user
 ```
 
-### ❌ HOTL without Monitoring Channel
-
-HOTL인데 모니터링 채널 미정의. 사실상 HOOTL.
+### 후보 선택을 Eval로 모델링하기
 
 ```yaml
+# Bad — 후보 artifact 중 선택/재생산 판단은 process branch다.
+- type: eval
+  id: x-e-001
+  label: "후보 산출물 선택"
+
 # Good
-- type: step
-  id: x-s-010
-  label: "실시간 챗봇 응답 생성"
-  # HOTL decision 노드가 이 step 뒤에 분리 정의됨
-  # → decision 노드에 monitoring 필드 추가 가능
+- type: decision
+  id: x-d-001
+  label: "후보 산출물 선택"
+  decision_subject: user
 ```
-
----
-
-## 6. Project Examples
-
-| Module | Decision Label | Recommended Judge | 이유 |
-|--------|---------------|-----------------|------|
-| 02.policy-engine | 정책 변경 확정 검토 | HITL | 운영 영향, 롤백 비용 큼 |
-| 02.policy-engine | 품질 기준 달성 여부 | HITLFE | F1 임계치 기반 에스컬레이션 |
-| 03.data-masking | PII 신뢰도 검증 | HITLFE | 재식별 위험 차단 |
-| 04.vendor-x | Faithfulness 검토 | HITLFE | 환각 의심 케이스 수동 검토 |
-| 10.RAG-Corpus-Dataset | QA 골든셋 라벨 확인 | HITL | 평가 기준 정본 |
-
----
-
-## Related
-
-- [yaml-schema.md](yaml-schema.md) — decision 노드 전체 문법 스펙
-- [motif-patterns.md](motif-patterns.md) — Decision Node Motif

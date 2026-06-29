@@ -50,7 +50,7 @@ fields:
     default: block
     description: |
       실패 시 동작. block(워크플로우 중단), retry(이전 step 재시도),
-      manual_review(HITL decision 노드로 위임).
+      manual_review(user decision 노드로 위임).
 
   directories:
     required: false
@@ -75,7 +75,7 @@ structural_invariants:
   - "label 비어있지 않음"
   - "harness 비어있지 않음 (자동 실행 주체가 명시되어야 함)"
   - "pass_criteria 최소 1개 이상"
-  - "decision 의 judge 와 혼용 금지 — validation 은 자동 판정, decision 은 판단 주체 필요"
+  - "decision_subject 와 혼용 금지 — validation 은 자동 판정, decision 은 판단 주체 필요"
   - "directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"
 
 mermaid:

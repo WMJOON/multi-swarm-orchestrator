@@ -1,10 +1,10 @@
-# Multi-Swarm Orchestrator (MSO) v0.5.0
+# Multi-Swarm Orchestrator (MSO) v0.5.1
 
 MSO는 **Repository Execution System**이다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 repository 구조, workflow topology, artifact supply chain, work-memory를 선언하고 관측해 에이전트가 같은 작업을 이어갈 수 있는 실행 환경을 만든다.
 
-변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다. README에는 현재 버전에서 사용자가 바로 알아야 할 업데이트만 요약한다.
+변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다. README에는 minor update(v0.X) 이상의 운영 의미만 요약하고, patch release(v0.X.Y) 상세는 CHANGELOG에만 기록한다.
 
 ## Current Version Update
 

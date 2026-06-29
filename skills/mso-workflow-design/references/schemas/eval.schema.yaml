@@ -5,6 +5,13 @@ description: |
   품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다.
   feedback loop 안에 Eval gate가 없으면
   산출물이 재귀적으로 소비되며 drift가 누적될 수 있다.
+  단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 Eval이
+  아니라 decision_subject=user 인 Decision이다. Eval은 NLU engine process, evaluator,
+  corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다.
+  여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의
+  tool use를 가리키는 artifact-like target이다.
+  관측 그래프에서는 artifact --validated_by--> Eval --requests_revision--> agentTask,
+  Eval --approves--> artifact, agentTask --delegates_to--> [[tool]] 흐름으로 표현한다.
 
 fields:
   type:
@@ -49,12 +56,12 @@ fields:
   target_artifact:
     required: false
     type: string
-    description: "평가 대상 산출물 또는 artifact id/path."
+    description: "Eval이 검증하는 산출물, DB table, corpus, evaluator 등 artifact id/path."
 
   order_target:
     required: false
     type: string
-    description: "평가 결과로 실행 지시(eval:order)를 받을 downstream step id."
+    description: "평가 결과 개선·재작업 요청(requests_revision)을 받을 downstream step/decision id."
 
   order_artifact:
     required: false
@@ -100,4 +107,5 @@ structural_invariants:
   - "oracle_type ∈ {user, agent, metric}"
   - "criteria 최소 1개 이상"
   - "Decision gate와 Eval gate는 분리한다"
+  - "후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다"
   - "legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"

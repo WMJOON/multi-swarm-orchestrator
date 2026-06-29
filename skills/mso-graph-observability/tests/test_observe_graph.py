@@ -147,6 +147,57 @@ def test_workflow_subgraph_renders_dataflow_nodes():
     assert "classDef knowledge_store" in markdown
 
 
+def test_step_with_deliverable_and_tool_remains_agent_task():
+    """A produced artifact is not a branch; tool delegation stays attached to the Step."""
+    graph = Graph()
+    wf = observe_graph.WF
+    step = wf["node/demo/nlu-s-101"]
+    next_step = wf["node/demo/nlu-v-101"]
+    phase = wf["phase/demo/p"]
+
+    for node, label in ((step, "라운드 실행"), (next_step, "검증")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("NLU")))
+    graph.add((step, wf.next, next_step))
+    graph.add((step, wf.deliverables, Literal("table:labels")))
+    graph.add((step, wf.usesTool, Literal("[[nlu engine process]]")))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+
+    assert "step_node_demo_nlu_s_101_" in markdown
+    assert "Decision / inferred-branch" not in markdown
+    assert "[[nlu engine process]]<br>TOOL" in markdown
+    assert "-->|delegates_to|" in markdown
+    assert "|target|" not in markdown
+
+
+def test_step_with_multiple_control_targets_is_inferred_decision():
+    graph = Graph()
+    wf = observe_graph.WF
+    step = wf["node/demo/nlu-s-104"]
+    target_a = wf["node/demo/a"]
+    target_b = wf["node/demo/b"]
+    phase = wf["phase/demo/p"]
+
+    for node, label in ((step, "분기"), (target_a, "A"), (target_b, "B")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("NLU")))
+    graph.add((step, wf.next, target_a))
+    graph.add((step, wf.next, target_b))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+
+    assert "Decision / inferred-branch" in markdown
+
+
 def test_workflow_and_artifact_stream_views_are_separated():
     graph = Graph()
     wf = observe_graph.WF

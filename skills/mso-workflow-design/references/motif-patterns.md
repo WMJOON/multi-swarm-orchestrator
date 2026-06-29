@@ -6,7 +6,7 @@
 
 1. [Phase Structure Motif](#1-phase-structure-motif) — discovery/development/testing
 2. [Step Definition Motif](#2-step-definition-motif) — location/deliverables/validation
-3. [Decision Node Motif](#3-decision-node-motif-hitlhitlfehotlhootl) — judge 수준, 분기 조건
+3. [Decision Node Motif](#3-decision-node-motif) — decision_subject, 분기 조건
 4. [Deliverable Taxonomy Motif](#4-deliverable-taxonomy-motif) — type 기반 분류
 5. [Dependencies Motif](#5-dependencies-motif) — requires/provides
 6. [Success Criteria Motif](#6-success-criteria-motif) — 표준 4차원
@@ -100,28 +100,25 @@ testing:
 
 ---
 
-## 3. Decision Node Motif (HITL/HITLFE/HOTL/HOOTL)
+## 3. Decision Node Motif
 
-`type: decision` 노드에 `judge` 필드로 인간 개입 수준을 명시한다.  
+`type: decision` 노드에 `decision_subject` 필드로 판단 주체를 명시한다.
 **전체 문법은 [yaml-schema.md](yaml-schema.md) Section 3, gate 시각화는 [gate-levels.md](gate-levels.md)를 따른다.**
 
-### 4-Level Taxonomy
+### Subject Taxonomy
 
-| Level | 인간 개입 시점 | 사용 예 |
+| Subject | 판단 주체 | 사용 예 |
 |-------|-------------|--------|
-| **HITL** | Pre-execution — 모든 결정에 사람 승인 | 정책 변경, 골든셋 라벨링 |
-| **HITLFE** | Conditional — 임계치 초과 시만 에스컬레이션 | 저신뢰 PII, Faithfulness < 0.7 |
-| **HOTL** | Concurrent — 자율 실행, 사람은 감독·중단 권한 | 실시간 챗봇, 라우팅 |
-| **HOOTL** | None/Post — 완전 자율, 사후 감사만 | ETL, 배치 마스킹, 계산 |
+| **user** | 사람/사용자가 process branch를 판단 | 정책 변경, 후보 artifact 선택, 골든셋 승인 |
+| **agent** | agent가 process branch를 판단 | threshold routing, 자동 라우팅, 배치 판단 |
 
 ### Decision Quick-Path
 
 ```
-회복 불가능한 영향? → HITL
-신뢰도 ≥ 95% 측정 가능? → 아래로
-실시간 예외 차단 필요? → HITLFE
-사람 모니터링 필요? → HOTL
-나머지 → HOOTL
+판단 책임이 사람에게 있는가? → user
+후보 artifact 선택/재생산 판단인가? → user
+자동 routing case와 판단 기준이 명확한가? → agent
+기준이 불명확하거나 운영 책임자가 직접 봐야 하는가? → user
 ```
 
 ### Example
@@ -129,7 +126,7 @@ testing:
 - type: decision
   id: acp-d-001
   label: "hand-off 확정 검토"
-  judge: HITL
+  decision_subject: user
   owner: owner@example.com
   sla: "24시간 이내"
   branches:
@@ -288,7 +285,8 @@ development:
       label: "..."
     - type: decision
       id: [mod]-d-001
-      judge: HITL | HITLFE | HOTL | HOOTL
+      decision_subject: user | agent
+      decision_criteria: [string]
       branches: [...]
 
 testing:
