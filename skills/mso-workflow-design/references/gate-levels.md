@@ -37,8 +37,9 @@ agent decision은 사람이 매번 판단하지 않으므로 `decision_criteria`
 여기서 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라
 agentTask의 tool use를 가리키는 artifact-like target으로 취급한다. 관측 그래프에서는
 `Eval --target--> [[tool]]`, `tool-produced artifact --validated_by--> Eval`,
-`Eval --requests_revision--> agentTask`, `Eval --approves--> next agentTask/end`,
-`agentTask --delegates_to--> [[tool]]` 형태로 표현한다.
+`Eval --requests_revision--> remediation agentTask`, `Eval --approves--> next agentTask/end`,
+`remediation agentTask --target--> [[tool]]` 형태로 표현한다. 실행 도구 위임은 별도로
+`agentTask --delegates_to--> [[tool]]` 로 표시한다.
 artifact stream에서는 tool 위임의 효율을 확인해야 하므로 `artifact --consumes--> tool --produces--> artifact`
 를 optimization spine으로 둔다.
 

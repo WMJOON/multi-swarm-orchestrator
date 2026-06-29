@@ -53,7 +53,8 @@ wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
 wf:StepShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:instruction ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "instruction: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:usesTool ; sh:datatype xsd:string ; sh:message "usesTool: schema 제약 위반" ] .
+    sh:property [ sh:path wf:usesTool ; sh:datatype xsd:string ; sh:message "usesTool: schema 제약 위반" ] ;
+    sh:property [ sh:path wf:targetArtifact ; sh:datatype xsd:string ; sh:message "targetArtifact: schema 제약 위반" ] .
 
 wf:ValidationShape a sh:NodeShape ; sh:targetClass wf:Validation ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
@@ -149,6 +150,27 @@ wf:EvalToolTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
                     || LCASE(STR(?role)) IN ("staging", "generated", "write")
                   )
                 }
+              }
+            }
+        """ ;
+    ] .
+wf:EvalRevisionTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "eval revision shape: tool/process Eval.orderTarget must point to a remediation Step with the same wf:targetArtifact" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:targetArtifact ?tool ;
+                    wf:orderTarget ?order .
+              FILTER(
+                CONTAINS(LCASE(STR(?tool)), "process")
+                || CONTAINS(LCASE(STR(?tool)), "tool")
+                || CONTAINS(LCASE(STR(?tool)), "processing artifact")
+              )
+              FILTER NOT EXISTS {
+                ?targetStep a wf:Step ;
+                            wf:targetArtifact ?tool .
+                FILTER(REPLACE(STR(?targetStep), "^.*/", "") = STR(?order))
               }
             }
         """ ;

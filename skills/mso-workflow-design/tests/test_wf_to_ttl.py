@@ -334,6 +334,91 @@ def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
     assert res["uncontrolled_loops"] == []
 
 
+def test_eval_tool_revision_target_must_be_remediation_step(tmp_path):
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "step",
+                "id": "s-label",
+                "label": "라벨링",
+                "instruction": "라벨링 엔진을 실행한다",
+                "status": "active",
+                "uses_tool": "[[nlu engine process]]",
+                "directories": [{"role": "input", "path": "scripts/"}],
+                "deliverables": ["data/labeling.db#labels"],
+            },
+            {
+                "type": "eval",
+                "id": "e-review",
+                "label": "엔진 평가",
+                "status": "active",
+                "oracle_type": "user",
+                "criteria": ["labels table 기반으로 엔진 개선 여부 판단"],
+                "target_artifact": "[[nlu engine process]]",
+                "order_target": "d-route",
+            },
+            {
+                "type": "decision",
+                "id": "d-route",
+                "label": "라우팅",
+                "status": "active",
+                "decision_subject": "user",
+                "branches": [{"on": "approved", "goto": "s-label"}, {"on": "rejected", "goto": "s-label"}],
+            },
+        ],
+    }]}
+
+    res = wf_to_ttl.validate(_write(tmp_path, "bad-eval-order-target.yaml", doc))
+
+    assert res["ok"] is False
+    assert "eval revision shape" in res["shacl_report"]
+
+
+def test_eval_tool_revision_target_accepts_targeted_remediation_step(tmp_path):
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "step",
+                "id": "s-label",
+                "label": "라벨링",
+                "instruction": "라벨링 엔진을 실행한다",
+                "status": "active",
+                "uses_tool": "[[nlu engine process]]",
+                "directories": [{"role": "input", "path": "scripts/"}],
+                "deliverables": ["data/labeling.db#labels"],
+            },
+            {
+                "type": "eval",
+                "id": "e-review",
+                "label": "엔진 평가",
+                "status": "active",
+                "oracle_type": "user",
+                "criteria": ["labels table 기반으로 엔진 개선 여부 판단"],
+                "target_artifact": "[[nlu engine process]]",
+                "order_target": "s-fix",
+            },
+            {
+                "type": "step",
+                "id": "s-fix",
+                "label": "엔진 개선",
+                "instruction": "평가 결과에 따라 프롬프트 또는 라벨링 처리 로직을 개선한다",
+                "status": "active",
+                "target_artifact": "[[nlu engine process]]",
+            },
+        ],
+    }]}
+
+    res = wf_to_ttl.validate(_write(tmp_path, "good-eval-order-target.yaml", doc))
+
+    assert res["ok"], res
+
+
 def test_multi_workflow_phase_and_node_uris_are_workflow_scoped(tmp_path):
     """서로 다른 workflow의 동명 phase/node가 RDF 병합에서 충돌하지 않는다."""
     doc_a = {

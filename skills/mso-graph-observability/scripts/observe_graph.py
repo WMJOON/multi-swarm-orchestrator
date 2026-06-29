@@ -1044,6 +1044,23 @@ def data_ref_for_locator(
                 "location": f"index:{enriched['id']}",
                 "locator": enriched.get("locator", normalize_locator(locator)),
             }
+    explicit_type = infer_artifact_type(
+        data_type=data_type,
+        locator=normalized,
+        artifact_id=f"{data_type}:{normalized}",
+    )
+    if explicit_type == "table":
+        fallback_id = f"{data_type}:{normalized}"
+        return {
+            "key": fallback_id,
+            "id": fallback_id,
+            "data_type": data_type,
+            "artifact_type": explicit_type,
+            "resource_kind": "data",
+            "primary_consumer": ARTIFACT_PRIMARY_CONSUMERS.get(explicit_type, "-"),
+            "location": normalized,
+            "locator": normalized,
+        }
     prefix_ref: dict[str, str] | None = None
     prefix_len = -1
     for ref in data_registry.values():
@@ -1159,8 +1176,12 @@ def deliverable_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str
 def has_supply_chain(graph: Graph, node: URIRef) -> bool:
     """artifact-stream 뷰에 표시할 공급망 연결이 있는지 확인.
     wf:directory 또는 wf:deliverables 또는 eval targetArtifact 중 하나라도 있으면 True."""
-    if list(graph.objects(node, WF.directory)):
-        return True
+    for directory in graph.objects(node, WF.directory):
+        role_value = graph.value(directory, WF.dirRole)
+        role = literal_text(role_value) if isinstance(role_value, Literal) else "reference"
+        produces, consumes, _ = data_edge_labels(role)
+        if produces or consumes:
+            return True
     if list(graph.objects(node, WF.deliverables)):
         return True
     if graph.value(node, WF.targetArtifact) is not None:
@@ -1195,7 +1216,10 @@ def data_keys(graph: Graph, scope: str, data_registry: dict[str, dict[str, str]]
     data_registry = data_registry or {}
     keys: set[str] = set()
     for node in workflow_node_terms(graph, scope):
-        for _, path, _ in directory_data_for_node(graph, node):
+        for role, path, _ in directory_data_for_node(graph, node):
+            produces, consumes, _ = data_edge_labels(role)
+            if not produces and not consumes:
+                continue
             keys.add(data_ref_for_locator(data_registry, data_type="local_file", locator=path)["id"])
         for deliverable, _ in deliverable_data_for_node(graph, node):
             keys.add(deliverable_data_ref(deliverable)["id"])
@@ -1216,8 +1240,10 @@ def collect_data_streams(
             node_id = display_id(node)
             for role, path, _ in directory_data_for_node(graph, node):
                 ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
-                refs.setdefault(ref["id"], ref)
                 produces, consumes, _ = data_edge_labels(role)
+                if not produces and not consumes:
+                    continue
+                refs.setdefault(ref["id"], ref)
                 if produces:
                     producers.setdefault(ref["id"], set()).add(node_id)
                 if consumes:
@@ -2125,6 +2151,9 @@ def build_workflow_topology(
             source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
             stream_actor_id = task_tool_node_id(node) or source_id
             for role, path, _ in directory_data_for_node(graph, node):
+                produces, consumes, label_suffix = data_edge_labels(role)
+                if not produces and not consumes:
+                    continue
                 ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
                 if show_data_stream:
                     data_refs.setdefault(ref["id"], ref)
@@ -2143,7 +2172,6 @@ def build_workflow_topology(
                 else:
                     data_node_id = data_id(ref["id"])
                 data_node_ids.add(data_node_id)
-                produces, consumes, label_suffix = data_edge_labels(role)
                 if produces:
                     produced_data_node_ids.add(data_node_id)
                     data_producers.setdefault(data_node_id, set()).add(node)
@@ -2246,6 +2274,7 @@ def build_workflow_topology(
         # while artifacts produced by that tool are --validated_by--> Eval.
         # Non-tool targetArtifact is directly artifact --validated_by--> Eval.
         # Eval --approves--> next task/end. Eval.orderTarget requests a revision.
+        # Step.targetArtifact means remediation agentTask --target--> artifact/tool.
         # Step.usesTool means agentTask --delegates_to--> tool.
         if include_internal:
             eval_nodes = {
@@ -2285,7 +2314,7 @@ def build_workflow_topology(
 
                 is_eval_node = (target_node, RDF.type, WF.Eval) in graph
                 art_str = first_literal(graph, target_node, WF.targetArtifact)
-                if art_str and is_eval_node:
+                if art_str:
                     ref = data_ref_for_locator(data_registry, data_type="local_file", locator=art_str)
                     art_ref = ref if ref else {
                         "id": f"local_file:{art_str}", "data_type": "local_file",
@@ -2301,7 +2330,9 @@ def build_workflow_topology(
                         )
                         declare_data(art_ref["id"], art_label_str, art_ref.get("artifact_type", "document"))
                         data_node_ids.add(art_nid)
-                    if art_ref.get("artifact_type") == "tool":
+                    if not is_eval_node:
+                        edge(node_nid, "-->", "target", art_nid)
+                    elif art_ref.get("artifact_type") == "tool":
                         edge(node_nid, "-->", "target", art_nid)
                         target_locator = normalize_locator(art_ref.get("locator", art_str))
                         for producer in process_nodes:
@@ -2355,7 +2386,7 @@ def build_workflow_topology(
                                 )
                                 data_node_ids.add(produced_nid)
                                 edge(produced_nid, "-.->", "validated_by", node_nid)
-                    else:
+                    elif is_eval_node:
                         edge(art_nid, "-.->", "validated_by", node_nid)
 
                 if is_eval_node:

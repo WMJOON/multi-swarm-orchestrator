@@ -23,13 +23,13 @@ wf:Branch a owl:Class ; rdfs:label "Branch"@ko ;
 wf:Decision a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Decision"@ko ;
     rdfs:comment "분기/판단 노드. workflow graph 는 task/decision 노드와 process edge 로 구성된다. decision 은 단일 class 이며, 판단 주체는 decision_subject property(user|agent)로 표현한다. HITL/HITLFE/HOTL/HOOTL 같은 운영 수준은 workflow 경로에 user decision 또는 user eval 이 개입하는지로 파생한다. 산출물 품질평가/판단 주체는 별도의 eval gate로 표현한다. | invariants: id 는 워크플로우 내 unique decision_subject ∈ {user, agent} Decision gate와 Eval gate는 분리한다 agent decision 은 branches[].on 에 routing case 를 명시한다 agent decision 은 decision_criteria 또는 threshold/pass_criteria/success_criteria 중 하나로 판단 기준을 남긴다"@ko .
 wf:Eval a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Eval"@ko ;
-    rdfs:comment "산출물 평가 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의 품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다. feedback loop 안에 Eval gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. 단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 Eval이 아니라 decision_subject=user 인 Decision이다. Eval은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다. 여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target이다. 관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval, Eval --requests_revision--> agentTask, Eval --approves--> next agentTask/end, agentTask --delegates_to--> [[tool]] 흐름으로 표현한다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Eval gate는 분리한다 후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다 legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"@ko .
+    rdfs:comment "산출물 평가 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의 품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다. feedback loop 안에 Eval gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. 단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 Eval이 아니라 decision_subject=user 인 Decision이다. Eval은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다. 여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target이다. 관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval, Eval --requests_revision--> remediation agentTask, Eval --approves--> next agentTask/end, remediation agentTask --target--> [[tool]] 흐름으로 표현한다. agentTask가 실행 도구를 위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Eval gate는 분리한다 후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다 tool/process target Eval의 order_target은 routing Decision이 아니라 개선 Step을 가리킨다 legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"@ko .
 wf:Group a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Group"@ko ;
     rdfs:comment "여러 노드를 Mermaid subgraph로 묶는 컨테이너. | invariants: id 는 워크플로우 내 unique steps 비어있지 않음"@ko .
 wf:Phase a owl:Class ; rdfs:label "Phase"@ko ;
     rdfs:comment "워크플로우의 단계(phase) 컨테이너. | invariants: id 비어있지 않음 status ∈ {completed, active, pending} steps 또는 workflows 둘 중 하나는 존재해야 함 (둘 다 비면 ERROR) workflows[] 각 항목은 workflow_ref.schema.yaml 의 invariant 를 따름"@ko .
 wf:Step a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Step"@ko ;
-    rdfs:comment "실행 작업 노드. I/O는 선택적. | invariants: id 는 워크플로우 내 unique label 비어있지 않음 instruction 비어있지 않음 (지시격 — 실행 지시. SHACL StepShape 강제) directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"@ko .
+    rdfs:comment "실행 작업 노드. I/O는 선택적. | invariants: id 는 워크플로우 내 unique label 비어있지 않음 instruction 비어있지 않음 (지시격 — 실행 지시. SHACL StepShape 강제) directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant) Eval.orderTarget 이 가리키는 개선 Step 은 필요 시 target_artifact 로 개선 대상을 명시한다"@ko .
 wf:Validation a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Validation"@ko ;
     rdfs:comment "자동 검증 하네스 노드. 스크립트·테스트 러너·스키마 검증기 등이 자동으로 pass/fail 을 판정하는 게이트. decision(사람/모델 판단) 과 명확히 구분. | invariants: id 는 워크플로우 내 unique label 비어있지 않음 harness 비어있지 않음 (자동 실행 주체가 명시되어야 함) pass_criteria 최소 1개 이상 decision_subject 와 혼용 금지 — validation 은 자동 판정, decision 은 판단 주체 필요 directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"@ko .
 wf:WorkflowRef a owl:Class ; rdfs:label "WorkflowRef"@ko ;
@@ -65,7 +65,7 @@ wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; 
 wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval, Group, Phase, Step, Validation"@ko .
 wf:subSteps a owl:DatatypeProperty ; rdfs:label "subSteps"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:successCriteria a owl:DatatypeProperty ; rdfs:label "successCriteria"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
-wf:targetArtifact a owl:DatatypeProperty ; rdfs:label "targetArtifact"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:targetArtifact a owl:DatatypeProperty ; rdfs:label "targetArtifact"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Eval, Step"@ko .
 wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval"@ko .
 wf:usesTool a owl:DatatypeProperty ; rdfs:label "usesTool"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:validation a owl:DatatypeProperty ; rdfs:label "validation"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
@@ -96,7 +96,7 @@ wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
     rdfs:domain wf:Node ;
     rdfs:comment "step.directories[] 항목. dirRole + dirPath 필수. wf:dirNote 선택. validate_abox.py 검증 대상."@ko .
 wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:string ;
-    rdfs:comment "directory.role. 필수. 유효값: input | output | input_output | reference | instruction."@ko .
+    rdfs:comment "directory.role. 필수. 프로젝트 자유 어휘. 일반값: input | output | input_output | reference | instruction. implementation/tool_internal/internal 계열은 artifact stream edge로 해석하지 않는다."@ko .
 wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
     rdfs:comment "directory.path. 필수. 교차-스킬(scaffold) 멤버십 대상."@ko .
 wf:dirNote a owl:DatatypeProperty ; rdfs:label "dirNote"@ko ; rdfs:range xsd:string ;

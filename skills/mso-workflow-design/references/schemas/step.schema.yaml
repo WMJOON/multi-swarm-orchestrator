@@ -45,7 +45,9 @@ fields:
         type: string
         description: |
           이 디렉토리의 역할. 자유형 string. 프로젝트 enum 컨벤션 권장.
-          일반적인 값 예: input, output, reference, instruction.
+          일반적인 값 예: input, output, input_output, reference, instruction.
+          implementation/tool_internal/internal 계열은 tool 또는 step 내부 구현으로,
+          artifact stream의 consumes/produces edge로 해석하지 않는다.
       path:
         required: true
         type: string
@@ -63,6 +65,15 @@ fields:
       agentTask --delegates_to--> [[tool]] 보조 edge로 표시한다. artifact stream에서는
       위임 효율을 보기 위해 artifact --consumes--> tool --produces--> artifact 흐름으로 렌더링한다.
 
+  target_artifact:
+    required: false
+    type: string
+    description: |
+      이 Step이 개선·수정·조정 대상으로 삼는 artifact/tool/process.
+      Eval의 order_target으로 호출되는 remediation/optimization Step에서 주로 사용한다.
+      관측 그래프에서는 agentTask --target--> [[tool]] 로 표시한다. uses_tool이 실행 중
+      위임 도구라면, target_artifact는 수정·개선 대상이다.
+
   validation:
     required: false
     type: list
@@ -79,3 +90,4 @@ structural_invariants:
   - "label 비어있지 않음"
   - "instruction 비어있지 않음 (지시격 — 실행 지시. SHACL StepShape 강제)"
   - "directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant)"
+  - "Eval.orderTarget 이 가리키는 개선 Step 은 필요 시 target_artifact 로 개선 대상을 명시한다"

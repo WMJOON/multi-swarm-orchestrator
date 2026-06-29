@@ -11,8 +11,9 @@ description: |
   여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의
   tool use를 가리키는 artifact-like target이다.
   관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval,
-  Eval --requests_revision--> agentTask, Eval --approves--> next agentTask/end,
-  agentTask --delegates_to--> [[tool]] 흐름으로 표현한다.
+  Eval --requests_revision--> remediation agentTask, Eval --approves--> next agentTask/end,
+  remediation agentTask --target--> [[tool]] 흐름으로 표현한다. agentTask가 실행 도구를
+  위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다.
 
 fields:
   type:
@@ -62,7 +63,10 @@ fields:
   order_target:
     required: false
     type: string
-    description: "평가 결과 개선·재작업 요청(requests_revision)을 받을 downstream step/decision id."
+    description: |
+      평가 결과 개선·재작업 요청(requests_revision)을 받을 downstream Step id.
+      tool/process를 target_artifact로 평가하는 Eval이면 order_target은 같은 tool/process를
+      target_artifact로 갖는 remediation/optimization Step이어야 한다.
 
   order_artifact:
     required: false
@@ -109,4 +113,5 @@ structural_invariants:
   - "criteria 최소 1개 이상"
   - "Decision gate와 Eval gate는 분리한다"
   - "후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다"
+  - "tool/process target Eval의 order_target은 routing Decision이 아니라 개선 Step을 가리킨다"
   - "legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"

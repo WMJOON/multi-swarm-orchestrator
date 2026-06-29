@@ -114,7 +114,7 @@ wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
     rdfs:domain wf:Node ;
     rdfs:comment "step.directories[] 항목. dirRole + dirPath 필수. wf:dirNote 선택. validate_abox.py 검증 대상."@ko .
 wf:dirRole a owl:DatatypeProperty ; rdfs:label "dirRole"@ko ; rdfs:range xsd:string ;
-    rdfs:comment "directory.role. 필수. 유효값: input | output | input_output | reference | instruction."@ko .
+    rdfs:comment "directory.role. 필수. 프로젝트 자유 어휘. 일반값: input | output | input_output | reference | instruction. implementation/tool_internal/internal 계열은 artifact stream edge로 해석하지 않는다."@ko .
 wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:string ;
     rdfs:comment "directory.path. 필수. 교차-스킬(scaffold) 멤버십 대상."@ko .
 wf:dirNote a owl:DatatypeProperty ; rdfs:label "dirNote"@ko ; rdfs:range xsd:string ;
@@ -325,6 +325,27 @@ wf:EvalToolTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
                     || LCASE(STR(?role)) IN ("staging", "generated", "write")
                   )
                 }
+              }
+            }
+        \"\"\" ;
+    ] .
+wf:EvalRevisionTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "eval revision shape: tool/process Eval.orderTarget must point to a remediation Step with the same wf:targetArtifact" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:targetArtifact ?tool ;
+                    wf:orderTarget ?order .
+              FILTER(
+                CONTAINS(LCASE(STR(?tool)), "process")
+                || CONTAINS(LCASE(STR(?tool)), "tool")
+                || CONTAINS(LCASE(STR(?tool)), "processing artifact")
+              )
+              FILTER NOT EXISTS {
+                ?targetStep a wf:Step ;
+                            wf:targetArtifact ?tool .
+                FILTER(REPLACE(STR(?targetStep), "^.*/", "") = STR(?order))
               }
             }
         \"\"\" ;

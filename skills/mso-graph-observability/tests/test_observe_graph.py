@@ -175,6 +175,65 @@ def test_step_with_deliverable_and_tool_remains_agent_task():
     assert "|target|" not in markdown
 
 
+def test_tool_step_can_consume_and_produce_same_table_without_internal_scripts():
+    graph = Graph()
+    wf = observe_graph.WF
+    step = wf["node/demo/nlu-s-101"]
+    phase = wf["phase/demo/p"]
+
+    graph.add((step, RDF.type, wf.Step))
+    graph.add((step, RDF.type, wf.Node))
+    graph.add((step, RDFS.label, Literal("라운드 실행")))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("NLU")))
+    graph.add((phase, wf.hasNode, step))
+    graph.add((step, wf.usesTool, Literal("[[nlu engine process]]")))
+
+    table_dir = BNode()
+    graph.add((step, wf.directory, table_dir))
+    graph.add((table_dir, wf.dirRole, Literal("input_output")))
+    graph.add((table_dir, wf.dirPath, Literal("data/labeling.db#labels")))
+
+    scripts_dir = BNode()
+    graph.add((step, wf.directory, scripts_dir))
+    graph.add((scripts_dir, wf.dirRole, Literal("implementation")))
+    graph.add((scripts_dir, wf.dirPath, Literal("scripts/")))
+
+    data_registry = {
+        "data/": {
+            "id": "demo.data",
+            "data_type": "local_file",
+            "locator": "data/",
+            "artifact_type": "local_database",
+        }
+    }
+
+    markdown = observe_graph.build_workflow_topology(
+        graph,
+        scope="demo",
+        data_registry=data_registry,
+        view="artifact-stream",
+    )
+
+    assert "labeling.db#labels<br>TABLE" in markdown
+    assert "demo.data" not in markdown
+    assert "[[nlu engine process]]<br>TOOL" in markdown
+    assert any(
+        "labeling.db#labels" not in line
+        and "data_local_file_data_labeling_db_labels_" in line
+        and "-.->|consumes|" in line
+        and "data_local_file___nlu_engine_process_" in line
+        for line in markdown.splitlines()
+    )
+    assert any(
+        "data_local_file___nlu_engine_process_" in line
+        and "-.->|produces|" in line
+        and "data_local_file_data_labeling_db_labels_" in line
+        for line in markdown.splitlines()
+    )
+    assert "scripts/<br>" not in markdown
+
+
 def test_step_with_multiple_control_targets_is_inferred_decision():
     graph = Graph()
     wf = observe_graph.WF
@@ -220,7 +279,9 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
     graph.add((producer, wf.usesTool, Literal("[[nlu engine process]]")))
     graph.add((producer, wf.deliverables, Literal("data/labeling.db#labels")))
     graph.add((eval_node, wf.targetArtifact, Literal("[[nlu engine process]]")))
+    graph.add((eval_node, wf.orderTarget, Literal("fix")))
     graph.add((eval_node, wf.next, next_task))
+    graph.add((next_task, wf.targetArtifact, Literal("[[nlu engine process]]")))
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
 
@@ -231,6 +292,11 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
     assert "eval_node_demo_eval_" in markdown
     assert "step_node_demo_fix_" in markdown
     assert "-->|approves|" in markdown
+    assert "-->|requests_revision|" in markdown
+    assert any(
+        "step_node_demo_fix_" in line and "-->|target|" in line and "data_local_file___nlu_engine_process_" in line
+        for line in markdown.splitlines()
+    )
     assert not any(
         "data_local_file___nlu_engine_process_" in line and "|validated_by|" in line and "eval_node_demo_eval_" in line
         for line in markdown.splitlines()
