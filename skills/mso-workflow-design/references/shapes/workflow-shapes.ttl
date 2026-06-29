@@ -56,12 +56,6 @@ wf:StepShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:property [ sh:path wf:usesTool ; sh:datatype xsd:string ; sh:message "usesTool: schema 제약 위반" ] ;
     sh:property [ sh:path wf:targetArtifact ; sh:datatype xsd:string ; sh:message "targetArtifact: schema 제약 위반" ] .
 
-wf:ValidationShape a sh:NodeShape ; sh:targetClass wf:Validation ;
-    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:harness ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "harness: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:passCriteria ; sh:minCount 1 ; sh:message "passCriteria: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:onFail ; sh:in ( "block" "retry" "manual_review" ) ; sh:message "onFail: schema 제약 위반" ] .
-
 wf:WorkflowRefShape a sh:NodeShape ; sh:targetClass wf:WorkflowRef ;
     sh:property [ sh:path wf:ref ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "ref: schema 제약 위반" ] ;
     sh:property [ sh:path wf:module ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "module: schema 제약 위반" ] ;

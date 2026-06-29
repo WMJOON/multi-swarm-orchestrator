@@ -5,7 +5,7 @@
   노드 구조의 단일 진실원은 references/schemas/*.yaml 이다. TBox(workflow-tbox.ttl)와
   SHACL(workflow-shapes.ttl)은 그로부터 *생성*된 파생물 — 손으로 동기화하지 않는다(drift 0).
   schemas 의 기계가독 부분만 변환한다:
-    type            → owl:Class (step/decision/validation/group/eval ⊂ Node; phase/workflow_ref 독립)
+    type            → owl:Class (step/decision/group/eval ⊂ Node; phase/workflow_ref 독립)
     required:true   → sh:minCount 1
     type:enum       → sh:in (values)
     type:string|bool→ sh:datatype xsd:string|boolean
@@ -37,11 +37,11 @@ SHAPES_OUT = _DIR.parent / "references" / "shapes" / "workflow-shapes.ttl"
 NS = "https://mso.dev/ontology/workflow#"
 
 # type → 클래스명. Node 하위 = 실행 노드. phase/workflow_ref/branch 는 독립.
-_CLASS = {"step": "Step", "decision": "Decision", "validation": "Validation",
+_CLASS = {"step": "Step", "decision": "Decision",
           "eval": "Eval",
           "group": "Group", "phase": "Phase", "workflow_ref": "WorkflowRef",
           "branch": "Branch"}
-_NODE_SUB = {"Step", "Decision", "Validation", "Group", "Eval"}
+_NODE_SUB = {"Step", "Decision", "Group", "Eval"}
 
 # 직접 property 로 만들지 않는 필드(클래스 타입·식별자·컨테이너·복합).
 #   type → rdf:type / id → URI 자체 / steps·workflows → 그래프 층(hasNode/refersTo)
@@ -90,7 +90,7 @@ wf: a owl:Ontology ;
 _GRAPH_OVERLAY = """
 # ─── 그래프 층 (root-workflow 템플릿 개념 — schema 없음, 여기서 정의) ──────────────
 wf:Task a owl:Class ; rdfs:label "Task"@ko ;
-    rdfs:comment "실행·생성·검증을 수행하는 업무 노드 관측 상위 개념. Step/Validation/Group/WorkflowRef가 task 성격을 가진다. (schema 없음)"@ko .
+    rdfs:comment "실행·생성·검증을 수행하는 업무 노드 관측 상위 개념. Step/Group/WorkflowRef가 task 성격을 가진다. (schema 없음)"@ko .
 wf:Module    a owl:Class ; rdfs:label "Module"@ko ;
     rdfs:comment "critical_dependencies 의 from/to 단위. (schema 없음)"@ko .
 wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;

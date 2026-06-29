@@ -104,23 +104,6 @@ def test_critical_dep_cycle_is_observed_not_rejected(tmp_path):
 
 # ─── 로컬 shape (SHACL) ───
 
-def test_validation_node_missing_harness_fails_shacl(tmp_path):
-    doc = {
-        "phases": [{
-            "id": "t", "name": "T", "status": "active",
-            "steps": [{
-                "type": "validation", "id": "t-v-01", "label": "스키마 검증",
-                "status": "active", "pass_criteria": ["schema valid"],
-                # harness 누락 → ValidationShape 위반
-            }],
-        }]
-    }
-    res = wf_to_ttl.validate(_write(tmp_path, "badv.yaml", doc))
-    assert res["ok"] is False
-    assert res["shacl_conforms"] is False
-    assert "harness" in res["shacl_report"]
-
-
 def test_bad_status_enum_fails_shacl(tmp_path):
     doc = {"phases": [{"id": "x", "name": "X", "status": "done"}]}  # done ∉ enum
     res = wf_to_ttl.validate(_write(tmp_path, "badstatus.yaml", doc))
@@ -128,19 +111,19 @@ def test_bad_status_enum_fails_shacl(tmp_path):
     assert res["shacl_conforms"] is False
 
 
-def test_wellformed_validation_node_conforms(tmp_path):
+def test_validation_projects_to_eval_metric(tmp_path):
+    # v0.6.1 phase-less: type:validation → wf:Eval + oracle_type=metric 주입(projection).
     doc = {
         "phases": [{
             "id": "t", "name": "T", "status": "active",
             "steps": [{
                 "type": "validation", "id": "t-v-01", "label": "스키마 검증",
-                "status": "active", "harness": "schema_validator",
-                "pass_criteria": ["schema valid"],
+                "status": "active", "criteria": ["schema valid"],
             }],
         }]
     }
     res = wf_to_ttl.validate(_write(tmp_path, "okv.yaml", doc))
-    assert res["ok"], res
+    assert res["ok"], res  # validation → eval, oracle_type=metric 주입으로 conform
 
 
 # ─── ABox ↔ TBox 정합 (range / 통제어휘) ───

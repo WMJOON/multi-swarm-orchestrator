@@ -4,8 +4,8 @@ MSO는 **Repository Execution System**이다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 repository 구조, workflow topology, artifact supply chain, work-memory를 선언하고 관측해 에이전트가 같은 작업을 이어갈 수 있는 실행 환경을 만든다.
 
-> **MSO의 Eval은 Evolve를 위한 것이고, 그 Eval 또한 하나의 Workflow다.**
-> AI 시대의 workflow에는 고정된 phase 가 없다 — 대신 **Workflow와 Oracle이 순환**한다. 산출물을 Oracle이 평가(Eval)하고, 그 평가가 workflow 자신을 진화(Evolve)시키며, 그 진화를 수행하는 oracle 또한 workflow다. 평가와 진화가 맞물려 도는 이 **phase-less 루프**, 그 순환 자체가 AI 시대의 phase다.
+> **MSO의 eval은 evolve를 위한 것이고, 그 eval과 evolve 또한 하나의 Oracle workflow다.**
+> AI 시대의 workflow에는 고정된 phase 가 없다 — 대신 workflow와 Oracle이 순환한다. 산출물을 Oracle이 평가(eval)하고, 그 평가가 workflow 자신을 진화(evolve)시키며, 그 진화를 수행하는 oracle 또한 workflow다. 평가와 진화가 맞물려 도는 이 phase-less 루프, 그 순환 자체가 AI 시대의 phase다.
 
 변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다. README에는 현재 버전에서 사용자가 바로 알아야 할 업데이트만 요약한다.
 

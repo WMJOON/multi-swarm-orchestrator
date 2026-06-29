@@ -118,7 +118,7 @@ mkdir -p agent-context/workflow
 | Phase Structure | 하나 이상의 phase (id 어휘는 프로젝트 — MSO 권장: discovery/development/testing) |
 | Step Definition | `type: step` — `id`, `label`, `status`, `directories` (optional), `deliverables` |
 | **Decision Gate** | **`type: decision` — process branch/진행 판단. 단일 `Decision` class에 `decision_subject` property(user/agent)로 판단 주체를 표현** |
-| **Validation Harness** | **`type: validation` — 자동 검증 게이트. `harness` (runner 식별자), `pass_criteria` 필수** |
+| **Validation → Eval (v0.6.1 폐지)** | **`type: validation` 폐지 → `wf:Eval`(oracle_type=metric)로 투영. 자동 검증 게이트는 metric eval + `harness`(harness-manifest 집계)로 표현** |
 | **Eval Gate** | **`type: eval` — 산출물 평가 게이트. `oracle_type` ∈ {user/agent/metric}, `criteria` 필수. feedback loop의 drift 개입점. legacy YAML의 `type: oracle`은 import 시 `wf:Eval`로 투영** |
 | Deliverable Taxonomy | `type`, `location`, `status` |
 | Dependencies | `requires` (입력), `provides` (출력) |

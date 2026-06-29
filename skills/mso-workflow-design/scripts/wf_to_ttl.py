@@ -46,7 +46,7 @@ TBOX = _REF / "tbox" / "workflow-tbox.ttl"
 _TYPE_CLASS = {
     "step": WF.Step,
     "decision": WF.Decision,
-    "validation": WF.Validation,
+    "validation": WF.Eval,  # v0.6.1 phase-less: Validation 폐지 → Eval(oracle_type=metric)
     "eval": WF.Eval,
     "oracle": WF.Eval,  # legacy YAML alias
     "group": WF.Group,
@@ -153,8 +153,11 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
         ordered_uris.append(nu)
         g.add((nu, RDF.type, cls))
         g.add((nu, RDF.type, WF.Node))   # 명시 상위타입 — 추론 없이 hasNode range(sh:class wf:Node) 성립
-        if cls in {WF.Step, WF.Validation, WF.Group, WF.WorkflowRef}:
+        if cls in {WF.Step, WF.Group, WF.WorkflowRef}:
             g.add((nu, RDF.type, WF.Task))
+        # v0.6.1 phase-less: validation 은 Eval(oracle_type=metric)로 투영 — 자동 pass/fail 게이트
+        if ntype == "validation" and not n.get("oracle_type"):
+            g.add((nu, WF.oracleType, Literal("metric")))
         g.add((phase_uri, WF.hasNode, nu))
         _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/decisionSubject/owner/...
         for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI)

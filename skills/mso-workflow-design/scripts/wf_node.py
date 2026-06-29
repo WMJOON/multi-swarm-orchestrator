@@ -10,7 +10,7 @@ wf_node.py — Workflow node schema tool
   python wf_node.py harness-manifest <root_workflow.yaml>
                             [--out <path>] [--format json|yaml]   # harness 집계
 
-type: step | decision | validation | eval | group | phase
+type: step | decision | eval | group | phase
 
 네이밍 컨벤션(id 패턴, module 약어 등)은 프로젝트에서 정의한다.
 이 스킬은 구조적 invariant 만 강제한다.
@@ -105,9 +105,7 @@ def cmd_scaffold(node_type: str, node_id: str | None, decision_subject: str | No
         node = _scaffold_step(nid)
     elif node_type == "decision":
         node = _scaffold_decision(nid, decision_subject or "agent")
-    elif node_type == "validation":
-        node = _scaffold_validation(nid)
-    elif node_type in ("eval", "oracle"):
+    elif node_type in ("eval", "oracle", "validation"):  # v0.6.1 phase-less: validation → eval(metric)
         node = _scaffold_eval(nid)
     elif node_type == "group":
         node = _scaffold_group(nid)
@@ -150,18 +148,6 @@ def _scaffold_decision(node_id: str, decision_subject: str) -> dict:
         {"on": "TODO-case", "goto": "TODO-node-id"}
     ]
     return node
-
-
-def _scaffold_validation(node_id: str) -> dict:
-    return {
-        "type": "validation",
-        "id": node_id,
-        "label": "TODO: 검증 대상",
-        "status": "pending",
-        "harness": "TODO: runner-id",
-        "pass_criteria": ["TODO: 조건"],
-        "on_fail": "block",
-    }
 
 
 def _scaffold_eval(node_id: str) -> dict:
@@ -403,11 +389,13 @@ def _collect_node_ids(nodes: list) -> list[str]:
 
 
 def _collect_validations(nodes: list) -> list[dict]:
+    # v0.6.1 phase-less: validation 폐지 → harness 필드를 가진 노드(eval[metric] 등)를 수집.
+    # cmd_harness_manifest 가 type 무관하게 harness 게이트를 모은다.
     out = []
     for n in nodes:
         if not isinstance(n, dict):
             continue
-        if n.get("type") == "validation":
+        if n.get("harness"):
             out.append(n)
         if n.get("type") == "group":
             out.extend(_collect_validations(n.get("steps", []) or []))
