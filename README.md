@@ -4,7 +4,37 @@ MSO는 **Repository Execution System**이다.
 
 Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에서 repository 구조, workflow topology, artifact supply chain, work-memory를 선언하고 관측해 에이전트가 같은 작업을 이어갈 수 있는 실행 환경을 만든다.
 
-변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다.
+변경 이력은 [docs/changelog.md](docs/changelog.md)에 정리한다. README에는 현재 버전에서 사용자가 바로 알아야 할 업데이트만 요약한다.
+
+## Current Version Update
+
+> README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
+
+### v0.5.0 (2026-06-29) — Repository Agent-Context Graph Environment
+
+MSO는 workflow topology 생성기에서 **repository용 agent-context graph environment**로 확장됐다.
+
+이번 버전의 핵심은 repository workflow를 설계할 때 다음 세 lens를 함께 보는 것이다.
+
+| Lens | 역할 | 관측 기준 |
+|---|---|---|
+| Agentic Workflow | agent task의 실행 순서, 조건, 분기를 설계한다. | step, decision, validation, next/branch edge |
+| Artifact Supply Chain | repository artifact의 생산, 소비, 저장 위치를 설계한다. | artifact type, directory, deliverable, consumes/produces edge |
+| Eval Gate | artifact 품질과 수용 가능성을 평가한다. | eval, oracle, targetArtifact, orderTarget, orderArtifact, criteria |
+
+이 세 lens는 graph shape requirement이며, workflow-design 대화에서는 이를 slot group으로 본다. 비어 있는 slot이 있으면 바로 파일을 만들지 않고 slot-filling 질문을 먼저 던져 안정적인 repository workflow topology를 만든다.
+
+운영 경계도 정리됐다.
+
+| 영역 | v0.5.0 책임 |
+|---|---|
+| `mso-workflow-design` | TTL workflow/artifact/eval node-edge 생성 및 shape 점검 |
+| `mso-scaffold-design` | artifact stream TTL을 index, sub-module, agent-context와 연결 |
+| `mso-graph-observability` | TTL graph를 workflow별 3-view로 projection하고 artifact stream 개선 리포트 생성 |
+| UUG | 사용자 발화/turn 패턴, 자주 쓰는 workflow 후보 분석 |
+| MSO | intent→action dispatch, repository runtime graph, work-memory 신호 |
+
+SSOT는 TTL ABox다. YAML workflow는 legacy migration input으로만 허용하고, migration 후 제거한다. 관측 산출물은 `agent-context/observability/graph/<workflow-scope>/{repository-graph,workflow-graph,artifact-stream-graph}.md` 구조로 생성한다.
 
 ## Core Philosophy
 
@@ -131,11 +161,15 @@ agent-context/
 ├── observability/
 │   └── graph/
 │       ├── README.md
-│       ├── workflow-topology.md
-│       ├── workflow-subgraphs/
-│       ├── workflow-views/
-│       ├── artifact-stream-views/
+│       ├── workflow-subgraph-index.md
+│       ├── <workflow-scope>/
+│       │   ├── repository-graph.md
+│       │   ├── workflow-graph.md
+│       │   └── artifact-stream-graph.md
 │       ├── artifact-stream-report.md
+│       ├── workflow-ssot-report.md
+│       ├── class-layer-map.md
+│       ├── property-map.md
 │       └── runtime-analysis.md
 └── work-memory/
     ├── schema.yaml
