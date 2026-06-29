@@ -556,7 +556,7 @@ def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
     if shape == "hexagon":
         return f'{node_id}{{{{"{label}"}}}}'
     if shape == "trapezoid":
-        return f'{node_id}[/"{label}"\\]'
+        return f'{node_id}[/"{label}"/]'
     if shape == "subroutine":
         return f'{node_id}[["{label}"]]'
     return f'{node_id}["{label}"]'
