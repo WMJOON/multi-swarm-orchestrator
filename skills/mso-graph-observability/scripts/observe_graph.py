@@ -414,7 +414,7 @@ def infer_artifact_type(
         return "local_database"
     if any(str(part or "").lower().startswith(marker) for part in (locator, artifact_id, detail) for marker in TABLE_MARKERS):
         return "table"
-    if "#" in (locator or "") and _contains_any(haystack, LOCAL_DATABASE_MARKERS | {"sqlite", ".db"}):
+    if "#" in haystack and _contains_any(haystack, LOCAL_DATABASE_MARKERS | {"sqlite", ".db"}):
         return "table"
     if data_type_norm in {"api", "mcp", "object_store", "external_url"}:
         return "knowledge_store"
@@ -996,6 +996,10 @@ def data_label(
         name = node_id.removeprefix("local_file:").removeprefix("index:").removeprefix("deliverable:")
     else:
         name = location
+    if artifact_type == "table" and "#" in name:
+        db_path, table_name = name.rsplit("#", 1)
+        db_name = db_path.rstrip("/").rsplit("/", 1)[-1] or db_path
+        name = f"{db_name}#{table_name}"
     parts = [mermaid_label(name, 52), type_label]
     return "<br>".join(p for p in parts if p)
 
@@ -2238,8 +2242,10 @@ def build_workflow_topology(
                 edge(source_id, "-.->", label, end_id)
 
         # delegation/validation/revision/report edges — shown in ALL scoped views.
-        # Eval.targetArtifact means artifact --validated_by--> Eval and
-        # Eval --approves--> artifact. Eval.orderTarget requests a revision.
+        # Eval.targetArtifact means Eval --target--> tool when it points at a tool,
+        # while artifacts produced by that tool are --validated_by--> Eval.
+        # Non-tool targetArtifact is directly artifact --validated_by--> Eval.
+        # Eval --approves--> next task/end. Eval.orderTarget requests a revision.
         # Step.usesTool means agentTask --delegates_to--> tool.
         if include_internal:
             eval_nodes = {
@@ -2277,8 +2283,9 @@ def build_workflow_topology(
                         data_node_ids.add(tool_nid)
                     edge(node_nid, "-->", "delegates_to", tool_nid)
 
+                is_eval_node = (target_node, RDF.type, WF.Eval) in graph
                 art_str = first_literal(graph, target_node, WF.targetArtifact)
-                if art_str and (target_node, RDF.type, WF.Eval) in graph:
+                if art_str and is_eval_node:
                     ref = data_ref_for_locator(data_registry, data_type="local_file", locator=art_str)
                     art_ref = ref if ref else {
                         "id": f"local_file:{art_str}", "data_type": "local_file",
@@ -2294,8 +2301,75 @@ def build_workflow_topology(
                         )
                         declare_data(art_ref["id"], art_label_str, art_ref.get("artifact_type", "document"))
                         data_node_ids.add(art_nid)
-                    edge(art_nid, "-.->", "validated_by", node_nid)
-                    edge(node_nid, "-.->", "approves", art_nid)
+                    if art_ref.get("artifact_type") == "tool":
+                        edge(node_nid, "-->", "target", art_nid)
+                        target_locator = normalize_locator(art_ref.get("locator", art_str))
+                        for producer in process_nodes:
+                            producer_tools = [
+                                normalize_locator(literal_text(tool))
+                                for tool in graph.objects(producer, WF.usesTool)
+                                if isinstance(tool, Literal) and literal_text(tool)
+                            ]
+                            if target_locator not in producer_tools:
+                                continue
+                            produced_deliverables: list[tuple[str, dict[str, str]]] = [
+                                (deliverable, deliverable_data_ref(deliverable))
+                                for deliverable, _ in deliverable_data_for_node(graph, producer)
+                            ]
+                            has_table_deliverable = any(
+                                ref.get("artifact_type") == "table" for _, ref in produced_deliverables
+                            )
+                            if not has_table_deliverable:
+                                for role, path, _ in directory_data_for_node(graph, producer):
+                                    produces, _, _ = data_edge_labels(role)
+                                    if not produces:
+                                        continue
+                                    produced_ref = data_ref_for_locator(
+                                        data_registry, data_type="local_file", locator=path
+                                    )
+                                    produced_nid = declare_data(
+                                        produced_ref["id"],
+                                        data_label(
+                                            produced_ref["data_type"],
+                                            produced_ref["location"],
+                                            node_id=produced_ref["id"],
+                                            locator=produced_ref["locator"],
+                                            artifact_type=produced_ref.get("artifact_type", "document"),
+                                        ),
+                                        produced_ref.get("artifact_type", "document"),
+                                    )
+                                    data_node_ids.add(produced_nid)
+                                    edge(produced_nid, "-.->", "validated_by", node_nid)
+                            for deliverable, produced_ref in produced_deliverables:
+                                produced_nid = declare_data(
+                                    produced_ref["id"],
+                                    data_label(
+                                        produced_ref["data_type"],
+                                        produced_ref["location"],
+                                        deliverable,
+                                        node_id=produced_ref["id"],
+                                        locator=produced_ref["locator"],
+                                        artifact_type=produced_ref.get("artifact_type", "document"),
+                                    ),
+                                    produced_ref.get("artifact_type", "document"),
+                                )
+                                data_node_ids.add(produced_nid)
+                                edge(produced_nid, "-.->", "validated_by", node_nid)
+                    else:
+                        edge(art_nid, "-.->", "validated_by", node_nid)
+
+                if is_eval_node:
+                    approval_targets = [
+                        t for t in sorted(graph.objects(target_node, WF.next), key=str)
+                        if isinstance(t, URIRef) and in_scope(t)
+                    ]
+                    if approval_targets:
+                        for approved_target in approval_targets:
+                            a_prefix, a_cls, a_suffix, a_shape = visual_kind(approved_target)
+                            a_nid = declare(approved_target, a_prefix, a_cls, a_suffix, a_shape)
+                            edge(node_nid, "-->", "approves", a_nid)
+                    else:
+                        edge(node_nid, "-->", "approves", declare_boundary("end"))
 
                 # requests_revision — eval --> downstream task/decision
                 order_str = first_literal(graph, target_node, WF.orderTarget)
@@ -2323,24 +2397,9 @@ def build_workflow_topology(
                         data_node_ids.add(r_nid)
                     edge(node_nid, "-.->", "report", r_nid)
 
-        # artifact-stream: preserve control edges only between nodes already
-        # present in the supply-chain view. Do not introduce control-only
-        # decisions/validations into this view.
-        if view in stream_view_names:
-            for src, arr, lbl, tgt in control_edges:
-                if arr not in ("-.->", "-.>", "-->"):
-                    continue
-                src_nid = mermaid_id(visual_kind(src)[0], src)
-                tgt_nid = mermaid_id(visual_kind(tgt)[0], tgt)
-                if src_nid not in declared or tgt_nid not in declared or not in_scope(tgt):
-                    continue
-                edge(src_nid, arr, lbl, tgt_nid)
-            for src, lbl in terminal_branch_edges:
-                src_nid = mermaid_id(visual_kind(src)[0], src)
-                if src_nid not in declared:
-                    continue
-                end_id = declare_boundary("end")
-                edge(src_nid, "-.->", lbl, end_id)
+        # artifact-stream intentionally omits workflow control edges such as
+        # next/on:. Eval lifecycle and tool delegation edges above remain visible
+        # because they explain artifact validation and revision flow.
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")

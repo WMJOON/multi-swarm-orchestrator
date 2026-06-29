@@ -10,8 +10,9 @@ description: |
   corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다.
   여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의
   tool use를 가리키는 artifact-like target이다.
-  관측 그래프에서는 artifact --validated_by--> Eval --requests_revision--> agentTask,
-  Eval --approves--> artifact, agentTask --delegates_to--> [[tool]] 흐름으로 표현한다.
+  관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval,
+  Eval --requests_revision--> agentTask, Eval --approves--> next agentTask/end,
+  agentTask --delegates_to--> [[tool]] 흐름으로 표현한다.
 
 fields:
   type:

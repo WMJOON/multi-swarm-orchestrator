@@ -18,6 +18,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 시각적으로 보는 1차 대상은 workflow graph다.
 - workflow별 관측 뷰는 세 가지로 분리한다. `artifact-stream`은 `artifact --consumes--> task --produces--> artifact` supply chain을, `workflow`는 그 stream에서 파생한 `((start)) --next--> task --next--> ((end))` task spine을, `integrated`는 둘을 한 화면에 함께 보여준다.
 - TTL 원본의 node/edge shape를 수정하지 않는다. 누락·과잉·bypass 후보는 `artifact-stream-report.md`와 runtime analysis 같은 개선 리포트로 제안한다.
+- work-memory/runtime analysis에서 반복 실패·결정 drift·artifact consumer 누락을 발견하면 graph Markdown을 고치지 않는다. 해당 signal을 evidence로 삼아 workflow TTL ABox를 갱신하고 graph를 재생성한다.
 - 같은 target Artifact id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
 - MSO는 Data Pipeline이 아니라 Artifact Supply Chain을 관측한다. Artifact는 repository가 관리하는 단위이고, Data는 Artifact 내부 표현 방식이며, Knowledge는 Data가 해석되었을 때 얻어지는 의미 계층이다.
 - Artifact node는 `artifact_type`, `data_type`, `location`을 가진 관측 노드다. `data_type`은 저장/접근 매체(local_file/api/mcp/database 등), `artifact_type`은 소비/운영 의미를 뜻한다.
@@ -30,7 +31,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 디렉토리는 workflow topology와 Artifact 소비 관계에서 파생되는 구현 경계다. 디렉토리를 먼저 만들지 않고, 소비자가 없는 Artifact boundary는 줄이거나 합치는 후보로 본다.
 - Mermaid shape는 GitHub Markdown 호환성을 우선한다. task는 `["label"]`, document는 `@{ shape: doc }`, machine-native artifact는 cylinder, media는 stadium, decision은 `{{"label"}}`, eval(평가 게이트)은 `[/"label"\]` trapezoid로 렌더링한다.
 - eval 노드(`wf:Eval`)는 평가를 수행하는 주체(oracle)를 레이블에 `oracle: {value}` 형태로 표시한다. `wf:oracle` 선언이 없으면 `wf:oracleType`을 사용한다.
-- eval 엣지는 `artifact -.->|validated_by| eval`, `eval -->|requests_revision| step/decision`, `eval -.->|approves| artifact`, `eval -.->|report| artifact`로 표시된다. eval 엣지는 workflow view와 artifact-stream view 양쪽에 모두 표시된다.
+- eval 엣지는 `artifact -.->|validated_by| eval`, `eval -->|target| tool`, `eval -->|requests_revision| step/decision`, `eval -->|approves| next/end`, `eval -.->|report| artifact`로 표시된다. `targetArtifact`가 tool이면 해당 tool이 생산한 artifact가 `validated_by` 대상이다. eval 엣지는 workflow view와 artifact-stream view 양쪽에 모두 표시된다.
 - `usesTool`이 있는 agentTask의 artifact stream은 tool 위임 효율을 볼 수 있도록 `artifact --consumes--> tool --produces--> artifact`로 렌더링하고, agentTask는 workflow edge인 `delegates_to`로 tool에 연결한다.
 - Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Artifact node는 index artifact id(`content.draft` 등)를 우선 사용하고 미등록 Artifact만 `local_file:<path>`/짧은 `deliverable:<hash>` key를 쓴다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.

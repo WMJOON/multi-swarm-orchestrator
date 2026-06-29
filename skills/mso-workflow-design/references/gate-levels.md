@@ -36,14 +36,16 @@ agent decision은 사람이 매번 판단하지 않으므로 `decision_criteria`
 예: `[[nlu engine process]]`, evaluator, corpus, 배포 가능성, metric gate.
 여기서 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라
 agentTask의 tool use를 가리키는 artifact-like target으로 취급한다. 관측 그래프에서는
-평가 대상 artifact가 `--validated_by--> Eval`, `Eval --requests_revision--> agentTask`,
-`Eval --approves--> artifact`, `agentTask --delegates_to--> [[tool]]` 형태로 표현한다.
+`Eval --target--> [[tool]]`, `tool-produced artifact --validated_by--> Eval`,
+`Eval --requests_revision--> agentTask`, `Eval --approves--> next agentTask/end`,
+`agentTask --delegates_to--> [[tool]]` 형태로 표현한다.
 artifact stream에서는 tool 위임의 효율을 확인해야 하므로 `artifact --consumes--> tool --produces--> artifact`
 를 optimization spine으로 둔다.
 
 `check`보다 `validated_by`를 표준 edge label로 쓴다. `check`는 실행 행위처럼 보이지만,
-`validated_by`는 artifact가 어떤 Eval에 의해 검증·확정되는지 나타내므로 workflow 최적화 그래프에서
-책임 경계가 더 분명하다.
+`validated_by`는 artifact가 어떤 Eval에 의해 검증되는지 나타내므로 workflow 최적화 그래프에서
+책임 경계가 더 분명하다. Eval target이 tool이면 tool 자체가 아니라 그 tool이 생산한 artifact가
+`validated_by` 대상이다.
 
 단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는
 `Eval`이 아니라 `decision_subject=user`인 `Decision`이다.
@@ -86,9 +88,10 @@ flowchart TD
 
     A -->|on: approved / 기준 충족| B
     B -->|on: passed / threshold >= 0.87| C
+    C -->|target| T
     D -.->|validated_by| C
     C -->|requests_revision| B
-    C -.->|approves| D
+    C -->|approves| E((end))
     B -->|delegates_to| T
 
     classDef decision fill:#f3f4f6,stroke:#6b7280,color:#111827

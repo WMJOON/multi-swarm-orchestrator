@@ -204,8 +204,8 @@ python wm_node.py reindex
 | Skill | 관계 |
 |---|---|
 | **mso-scaffold-design** | work-memory 디렉토리가 scaffold(index.yaml) 에 등록되어 있어야 함. |
-| **mso-workflow-design** | workflow 의 decision/validation 노드 변경 시 UD entry 자동 생성 권장. |
-| **mso-graph-observability** | work-memory JSONL runtime analysis와 별도로 TTL projection을 graph 관측 입력으로 확장 가능. |
+| **mso-workflow-design** | workflow 의 decision/validation/eval 노드 변경 시 UD/AD entry 자동 생성 권장. 반복 IN/TS/EP/PT는 workflow TTL ABox 업데이트 후보 evidence로 사용한다. |
+| **mso-graph-observability** | work-memory JSONL runtime analysis와 별도로 TTL projection을 graph 관측 입력으로 확장 가능. artifact-stream graph 누락은 Markdown 직접 수정이 아니라 workflow TTL edge 보강으로 환류한다. |
 | **simple-knowledge-zvec** | 본 스킬의 zvec 인덱싱 기반 라이브러리. |
 
 ## 의존성

@@ -151,6 +151,21 @@ def test_work_memory_decision_governance_schema_contract():
     assert "refines" in schema
 
 
+def test_work_memory_feedback_update_pattern_documented():
+    """work-memory signal 이 workflow/artifact graph 업데이트 evidence 로 쓰이는 패턴을 문서화한다."""
+    patterns = (SKILLS / "mso-workflow-design" / "references" / "workflow-patterns.md").read_text()
+    workflow_skill = (SKILLS / "mso-workflow-design" / "SKILL.md").read_text()
+    graph_skill = (SKILLS / "mso-graph-observability" / "SKILL.md").read_text()
+    memory_skill = (SKILLS / "mso-work-memory" / "SKILL.md").read_text()
+
+    assert "Work-Memory Feedback Update Pattern" in patterns
+    assert "work-memory signal" in patterns
+    assert "TTL ABox가 SSOT-of-record" in patterns
+    assert "workflow 업데이트 evidence" in workflow_skill
+    assert "workflow TTL ABox를 갱신" in graph_skill
+    assert "workflow TTL ABox 업데이트 후보 evidence" in memory_skill
+
+
 def test_repository_setup_bootstraps_alternatives_record_dir(tmp_path):
     """init.py 가 새 프로젝트에 AR 디렉토리와 schema-driven AR 타입을 부트스트랩한다."""
     init_py = SKILLS / "mso-repository-setup" / "scripts" / "init.py"

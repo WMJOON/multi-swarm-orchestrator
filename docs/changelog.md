@@ -10,20 +10,21 @@
 |------|------|
 | artifact-stream control-only node filtering | `artifact-stream` view에서 supply-chain에 참여하지 않는 control-only decision/validation 노드가 edge target 선언 과정에서 새로 표시되지 않도록 수정 |
 | eval gate projection | `wf:Eval` 노드는 `oracle_type=user/agent/metric`을 기준으로 Mermaid label에 표시. legacy `wf:judge`는 migration fallback으로만 해석 |
-| eval target edge coverage | `wf:targetArtifact`를 가진 Eval 노드를 `validated_by`/`approves` edge 생성 대상에 포함해 artifact/eval 연결 누락을 방지 |
+| eval target edge coverage | `wf:targetArtifact`를 가진 Eval 노드를 target/validation edge 생성 대상에 포함해 artifact/eval/tool 연결 누락을 방지 |
 | inferred branch decision | `wf:Step`이라도 control outgoing과 명시 deliverable을 함께 가지면 branch-like node로 보고 `Decision / inferred-branch` hexagon으로 projection |
 | decision subject model | `Decision`은 단일 class로 유지하고, 판단 주체는 `decision_subject`/`wf:decisionSubject`(`user`/`agent`)로 표현하도록 schema/docs/observability를 정렬 |
 | HITL taxonomy derivation | `HITL/HITLFE/HOTL/HOOTL`은 node property가 아니라 workflow 경로 안의 user decision/user eval 개입 여부로 파생하는 repository 운영 분류로 내림 |
 | agent decision criteria | `decision_criteria`/`wf:decisionCriteria`를 추가하고, agent decision의 판단 기준을 branch edge label 조건으로 표시 |
 | Eval vs Decision boundary | 후보 artifact 선택/재생산 판단은 `decision_subject=user`인 Decision으로, engine process/corpus/evaluator 품질·정합성 평가는 Eval로 구분 |
-| tool artifact target | `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target으로 취급하고, `targetArtifact`가 process/tool wikilink일 때 TOOL artifact로 렌더링 |
-| validation/revision/delegation semantics | `Eval.targetArtifact`는 `artifact --validated_by--> Eval` 및 `Eval --approves--> artifact`, `Eval.orderTarget`은 `Eval --requests_revision--> agentTask`, non-Eval `usesTool`은 workflow edge인 `agentTask --delegates_to--> [[tool]]`로 분리 |
+| tool artifact target | `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target으로 취급하고, `Eval.targetArtifact`가 process/tool wikilink일 때 `Eval --target--> TOOL`로 렌더링 |
+| validation/revision/delegation semantics | `Eval.targetArtifact`가 tool이면 `Eval --target--> tool` 및 `tool-produced artifact --validated_by--> Eval`, `Eval.orderTarget`은 `Eval --requests_revision--> agentTask`, 승인 흐름은 `Eval --approves--> next agentTask/end`, non-Eval `usesTool`은 workflow edge인 `agentTask --delegates_to--> [[tool]]`로 분리 |
 | tool delegation spine | `usesTool`이 있는 agentTask의 artifact stream은 `artifact --consumes--> tool --produces--> artifact`로 렌더링해 tool 위임의 토큰 효율·생산성 최적화 여부를 볼 수 있게 함 |
 | tool delegation shape | `usesTool` step은 `delegates_to` workflow edge와 `consumes/produces` spine을 만들 수 있도록 input/reference artifact, output/deliverable artifact를 SHACL-SPARQL로 검증 |
 | inferred branch boundary | deliverable 생산은 branch/control outgoing으로 세지 않도록 수정해, `next + deliverable` step이 agentTask 대신 inferred decision으로 오분류되지 않게 함 |
 | Mermaid decision styling | Mermaid class는 모두 `decision`으로 유지하고, `decision_subject=user`는 주황색, `decision_subject=agent` 및 inferred branch는 파란색 node-level style로 표시 |
 | validation color semantics | `wf:Validation`은 eval 빨강과 분리해 파란색 계열로 표시. eval 빨강은 `wf:Eval` 전용으로 사용 |
 | workflow spine boundary | artifact-derived spine이 존재할 때도 TTL control outgoing이 있는 노드에는 `end` fallback edge를 붙이지 않도록 수정 |
+| work-memory feedback update pattern | `IN/TS/AD/UD/EP/PT/PR` 기록을 evidence로 삼아 workflow TTL과 artifact stream edge를 갱신하는 패턴을 문서화. work-memory는 근거, TTL ABox는 SSOT, Mermaid graph는 파생 뷰라는 경계를 명시 |
 | release policy | README에는 patch release 상세를 쓰지 않고, v0.5.1 상세는 CHANGELOG에만 기록하도록 정책 문구 정리 |
 | 전체 버전 | README header, install script, SKILL.md version field, manifest version, version alignment test를 v0.5.1로 정렬 |
 

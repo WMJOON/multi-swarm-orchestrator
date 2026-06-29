@@ -14,6 +14,7 @@ MOTIF와의 구분:
 
 1. [Local File Versioning Pattern](#1-local-file-versioning-pattern)
 2. [Git Versioning Pattern](#2-git-versioning-pattern)
+3. [Work-Memory Feedback Update Pattern](#3-work-memory-feedback-update-pattern)
 
 ---
 
@@ -185,6 +186,68 @@ feature branch → [commit — 저장소별 고유 변경] → {user: PR review}
 | 모듈 | commit 내용 | group id |
 |------|-----------|----------|
 | `04.vendor-x/05.modules/rag-eval` | RAGAS 평가 엔진 수정 | (적용 예정) |
+
+---
+
+## 3. Work-Memory Feedback Update Pattern
+
+work-memory에 누적된 이슈, 결정, 해결, 회고가 workflow TTL 또는 artifact stream graph의 구조적 업데이트 신호가 될 때 사용한다.
+
+**work-memory는 evidence이고, workflow TTL ABox가 SSOT-of-record다.** 관측 Markdown/Mermaid는 TTL에서 재생성되는 파생 뷰이므로 직접 수정하지 않는다.
+
+### 사이클
+
+```
+work-memory signal → classify update → edit TTL ABox → validate/regenerate graph → record follow-up memory
+```
+
+### Signal 매핑
+
+| Work-memory signal | Workflow / artifact stream 업데이트 후보 |
+|--------------------|------------------------------------------|
+| 반복 `IN` / `TS` | 실패가 반복되는 step에 validation/eval gate 추가 |
+| `AD` / `UD` 정책 변경 | decision node의 `decision_subject`, branch case, criteria 갱신 |
+| `EP` / `PT` 패턴 | 여러 workflow에 반복 적용할 Workflow Pattern 후보 |
+| `artifact-stream-report` 누락 소비자 | produced artifact의 downstream consumer, eval, cross-workflow boundary 보강 |
+| `PR` 원칙 | scaffold convention 또는 workflow invariant로 승격 검토 |
+
+### Gate 매핑
+
+| Stage | 책임 | 산출물 |
+|-------|------|--------|
+| signal 수집 | `mso-work-memory` | `IN/AD/UD/TS/EP/PT/PR` entry와 relations |
+| update 분류 | agent decision 또는 user decision | TTL 변경 필요 여부, 영향 workflow 범위 |
+| TTL 수정 | `mso-workflow-design` | `agent-context/workflow/*.abox.ttl` |
+| graph 재생성 | `mso-graph-observability` | workflow graph, artifact-stream graph, runtime analysis |
+| follow-up 기록 | `mso-work-memory` | 변경 근거 AD/UD 또는 해결 TS, 필요 시 EP/PT |
+
+### 운영 규칙
+
+1. work-memory entry가 곧바로 graph를 수정하지 않는다. entry는 TTL 편집의 근거와 추적 링크다.
+2. workflow node/edge 변경은 반드시 TTL ABox에서 수행한다.
+3. artifact-stream graph에서 발견한 누락은 Markdown을 고치지 않고, TTL의 `wf:directory`, `wf:deliverables`, `wf:targetArtifact`, `wf:orderTarget`, `wf:usesTool` 중 필요한 edge를 보강한다.
+4. 구조 변경이 사용자 정책·책임 경계를 바꾸면 `UD`로 남기고, agent 권한 내 보수적 정리면 `AD`로 남긴다.
+5. 같은 유형의 update가 3개 이상 workflow에서 반복되면 이 파일의 Workflow Pattern 후보로 승격한다.
+
+### TTL 변경 예시
+
+```ttl
+<wf:node/release-rel-e-020> a wf:Eval, wf:Node ;
+    wf:label "릴리즈 산출물 회귀 평가" ;
+    wf:oracleType "metric" ;
+    wf:targetArtifact "agent-context/workflow/release-report.jsonl" ;
+    wf:criteria "최근 TS에서 반복된 회귀 조건을 통과해야 함" ;
+    wf:orderTarget "rel-s-030" ;
+    wf:orderArtifact "agent-context/observability/graph/release/eval-report.md" .
+```
+
+### 현재 적용 후보
+
+| 후보 | 이유 |
+|------|------|
+| workflow eval gate 보강 | 반복 TS가 특정 산출물 품질 문제로 모일 때 |
+| artifact consumer 보강 | artifact-stream-report가 produced-but-unconsumed artifact를 반복 지적할 때 |
+| decision branch 정리 | UD/AD가 같은 decision boundary의 drift를 계속 만들 때 |
 
 ---
 

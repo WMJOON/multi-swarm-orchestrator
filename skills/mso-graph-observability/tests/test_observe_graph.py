@@ -163,7 +163,7 @@ def test_step_with_deliverable_and_tool_remains_agent_task():
     graph.add((phase, RDF.type, wf.Phase))
     graph.add((phase, RDFS.label, Literal("NLU")))
     graph.add((step, wf.next, next_step))
-    graph.add((step, wf.deliverables, Literal("table:labels")))
+    graph.add((step, wf.deliverables, Literal("data/labeling.db#labels")))
     graph.add((step, wf.usesTool, Literal("[[nlu engine process]]")))
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
@@ -196,6 +196,72 @@ def test_step_with_multiple_control_targets_is_inferred_decision():
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
 
     assert "Decision / inferred-branch" in markdown
+
+
+def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/nlu-s-101"]
+    eval_node = wf["node/demo/eval"]
+    next_task = wf["node/demo/fix"]
+    phase = wf["phase/demo/p"]
+
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("NLU")))
+    for node, cls, label in (
+        (producer, wf.Step, "라벨링"),
+        (eval_node, wf.Eval, "검수"),
+        (next_task, wf.Step, "수정"),
+    ):
+        graph.add((node, RDF.type, cls))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((producer, wf.usesTool, Literal("[[nlu engine process]]")))
+    graph.add((producer, wf.deliverables, Literal("data/labeling.db#labels")))
+    graph.add((eval_node, wf.targetArtifact, Literal("[[nlu engine process]]")))
+    graph.add((eval_node, wf.next, next_task))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+
+    assert "[[nlu engine process]]<br>TOOL" in markdown
+    assert "-->|target|" in markdown
+    assert "labeling.db#labels<br>TABLE" in markdown
+    assert "-.->|validated_by|" in markdown
+    assert "eval_node_demo_eval_" in markdown
+    assert "step_node_demo_fix_" in markdown
+    assert "-->|approves|" in markdown
+    assert not any(
+        "data_local_file___nlu_engine_process_" in line and "|validated_by|" in line and "eval_node_demo_eval_" in line
+        for line in markdown.splitlines()
+    )
+    assert not any(
+        "eval_node_demo_eval_" in line and "|approves|" in line and "data_local_file___nlu_engine_process_" in line
+        for line in markdown.splitlines()
+    )
+
+
+def test_eval_without_next_approves_end_boundary():
+    graph = Graph()
+    wf = observe_graph.WF
+    eval_node = wf["node/demo/eval"]
+    phase = wf["phase/demo/p"]
+
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("NLU")))
+    graph.add((eval_node, RDF.type, wf.Eval))
+    graph.add((eval_node, RDF.type, wf.Node))
+    graph.add((eval_node, RDFS.label, Literal("검수")))
+    graph.add((phase, wf.hasNode, eval_node))
+    graph.add((eval_node, wf.targetArtifact, Literal("[[nlu engine process]]")))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+
+    assert "boundary_end_demo_end_" in markdown
+    assert any(
+        "eval_node_demo_eval_" in line and "-->|approves|" in line and "boundary_end_demo_end_" in line
+        for line in markdown.splitlines()
+    )
 
 
 def test_workflow_and_artifact_stream_views_are_separated():
@@ -240,6 +306,61 @@ def test_workflow_and_artifact_stream_views_are_separated():
     assert "-.->|produces|" in artifact_stream
     assert "((start))" not in artifact_stream
     assert "-->|next|" not in artifact_stream
+
+
+def test_artifact_stream_omits_control_edges_between_declared_stream_nodes():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/producer"]
+    decision = wf["node/demo/decision"]
+    consumer = wf["node/demo/consumer"]
+    phase = wf["phase/demo/p"]
+    branch = wf["node/demo/decision_branch_approved_consumer"]
+
+    for node, cls, label in (
+        (producer, wf.Step, "Produce"),
+        (decision, wf.Decision, "Gate"),
+        (consumer, wf.Step, "Consume"),
+    ):
+        graph.add((node, RDF.type, cls))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+
+    output_dir = BNode()
+    graph.add((producer, wf.directory, output_dir))
+    graph.add((output_dir, wf.dirRole, Literal("output")))
+    graph.add((output_dir, wf.dirPath, Literal("generated/results/")))
+
+    decision_input = BNode()
+    graph.add((decision, wf.directory, decision_input))
+    graph.add((decision_input, wf.dirRole, Literal("input")))
+    graph.add((decision_input, wf.dirPath, Literal("generated/results/")))
+
+    consumer_input = BNode()
+    graph.add((consumer, wf.directory, consumer_input))
+    graph.add((consumer_input, wf.dirRole, Literal("input")))
+    graph.add((consumer_input, wf.dirPath, Literal("generated/results/")))
+
+    graph.add((producer, wf.next, decision))
+    graph.add((decision, wf.next, consumer))
+    graph.add((decision, wf.hasBranch, branch))
+    graph.add((branch, RDF.type, wf.Branch))
+    graph.add((branch, wf.on, Literal("approved")))
+    graph.add((branch, wf.gotoNode, consumer))
+
+    artifact_stream = observe_graph.build_workflow_topology(graph, scope="demo", view="artifact-stream")
+
+    assert "step_node_demo_producer_" in artifact_stream
+    assert "decision_node_demo_decision_" in artifact_stream
+    assert "step_node_demo_consumer_" in artifact_stream
+    assert "-.->|consumes|" in artifact_stream
+    assert "-.->|produces|" in artifact_stream
+    assert "-->|next|" not in artifact_stream
+    assert "|on: approved|" not in artifact_stream
+    assert "((end))" not in artifact_stream
 
 
 def test_data_stream_report_flags_unconsumed_outputs_and_external_inputs():

@@ -480,10 +480,50 @@ def test_tool_delegation_shape_conforms(tmp_path):
             "instruction": "tool로 입력 artifact를 처리해 labels table을 생산하라",
             "uses_tool": "[[nlu engine process]]",
             "directories": [{"role": "input", "path": "scripts/"}],
-            "deliverables": ["table:labels"],
+            "deliverables": ["data/labeling.db#labels"],
         }],
     }]}
     res = wf_to_ttl.validate(_write(tmp_path, "good_tool.yaml", doc))
+    assert res["ok"], res
+
+
+def test_eval_tool_target_requires_produced_artifact(tmp_path):
+    """Eval target이 tool/process면 해당 tool의 produced artifact가 있어야 한다."""
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [{
+            "type": "eval", "id": "p-e-01", "label": "도구 검수",
+            "status": "active", "oracle_type": "user",
+            "target_artifact": "[[nlu engine process]]",
+            "criteria": ["tool 산출 품질 확인"],
+        }],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "bad_eval_tool.yaml", doc))
+    assert res["ok"] is False
+    assert res["shacl_conforms"] is False
+    assert "eval tool target shape" in res["shacl_report"]
+
+
+def test_eval_tool_target_with_produced_artifact_conforms(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {
+                "type": "step", "id": "p-s-01", "label": "도구 실행",
+                "status": "active", "instruction": "tool로 labels를 생산하라",
+                "uses_tool": "[[nlu engine process]]",
+                "directories": [{"role": "input", "path": "scripts/"}],
+                "deliverables": ["data/labeling.db#labels"],
+            },
+            {
+                "type": "eval", "id": "p-e-01", "label": "도구 검수",
+                "status": "active", "oracle_type": "user",
+                "target_artifact": "[[nlu engine process]]",
+                "criteria": ["tool 산출 품질 확인"],
+            },
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "good_eval_tool.yaml", doc))
     assert res["ok"], res
 
 

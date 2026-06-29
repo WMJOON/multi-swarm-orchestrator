@@ -297,6 +297,38 @@ wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
             }
         \"\"\" ;
     ] .
+wf:EvalToolTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "eval tool target shape: tool/process target must have a producer step with output/deliverable artifacts so produced artifact --validated_by--> Eval can be rendered" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:targetArtifact ?tool .
+              FILTER(
+                CONTAINS(LCASE(STR(?tool)), "process")
+                || CONTAINS(LCASE(STR(?tool)), "tool")
+                || CONTAINS(LCASE(STR(?tool)), "processing artifact")
+              )
+              FILTER NOT EXISTS {
+                ?producer a wf:Step ;
+                          wf:usesTool ?tool .
+                {
+                  ?producer wf:deliverables ?deliverable .
+                }
+                UNION
+                {
+                  ?producer wf:directory ?dir .
+                  ?dir wf:dirPath ?path .
+                  ?dir wf:dirRole ?role .
+                  FILTER(
+                    CONTAINS(LCASE(STR(?role)), "output")
+                    || LCASE(STR(?role)) IN ("staging", "generated", "write")
+                  )
+                }
+              }
+            }
+        \"\"\" ;
+    ] .
 wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:property [ sh:path wf:hasBranch ; sh:class wf:Branch ;
                   sh:message "hasBranch 타깃은 wf:Branch 여야 함" ] .
