@@ -126,6 +126,7 @@ Oracle 노드는 반드시 다음 두 관계를 선언해야 한다.
 | **order (출력)** | `wf:orderTarget` | 평가 통과 시 order를 받을 downstream step id |
 
 `validate_abox.py` 가 이 두 조건을 강제한다 (`.abox.ttl` 저장 시 PostToolUse hook 자동 실행).
+`observe_graph.py --root .` 도 동일 hook에서 자동 실행되어 subgraph/artifact-stream-views 등 observability 산출물을 재생성한다.
 
 **Slot-filling Oracle**: `wf:hasSlot` + `wf:EntitySlot` 을 선언하면 slot-filling 방식으로 동작한다. 모든 슬롯(`slotFilled=true`)이 충족될 때 `wf:orderArtifact`를 생성하고 `orderTarget` step에 전달한다. 이 경우 `orderArtifact`도 필수다.
 
