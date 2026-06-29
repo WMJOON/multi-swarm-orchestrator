@@ -1852,7 +1852,7 @@ def build_workflow_topology(
                             control_incoming.add(target)
                             control_outgoing.add(decision)
 
-        for oracle in filter_scope(subjects_of_type(graph, WF.Oracle), scope):
+        for oracle in [n for n in subjects_of_type(graph, WF.Oracle) if scope is None or in_scope(n)]:
                 on_fail_id = first_literal(graph, oracle, WF.onFail)
                 if on_fail_id:
                     target = WF[f"node/{on_fail_id}"]
@@ -1870,7 +1870,7 @@ def build_workflow_topology(
 
         for node in process_nodes:
             for target in sorted(graph.objects(node, WF.next), key=str):
-                if isinstance(target, URIRef) and workflow_scope(target) == scope:
+                if isinstance(target, URIRef) and in_scope(target):
                     control_edges.append((node, "-->", "next", target))
                     control_incoming.add(target)
                     control_outgoing.add(node)
