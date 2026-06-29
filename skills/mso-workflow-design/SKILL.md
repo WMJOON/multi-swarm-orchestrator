@@ -116,6 +116,43 @@ mkdir -p agent-context/workflow
 | 역할 | user/agent decision gate | script/test runner | user/agent/metric oracle gate |
 | loop 통제 | 단독으로 drift loop를 끊지 않음 | 검증 실행 근거 | feedback loop의 개입점 |
 
+#### Oracle 필수 패턴: `artifact --check--> oracle --order--> agentTask`
+
+Oracle 노드는 반드시 다음 두 관계를 선언해야 한다.
+
+| 방향 | TTL 프로퍼티 | 의미 |
+|------|------------|------|
+| **check (입력)** | `wf:directory dirRole=input` 또는 `wf:targetArtifact` | 평가 대상 artifact |
+| **order (출력)** | `wf:orderTarget` | 평가 통과 시 order를 받을 downstream step id |
+
+`validate_abox.py` 가 이 두 조건을 강제한다 (`.abox.ttl` 저장 시 PostToolUse hook 자동 실행).
+
+**Slot-filling Oracle**: `wf:hasSlot` + `wf:EntitySlot` 을 선언하면 slot-filling 방식으로 동작한다. 모든 슬롯(`slotFilled=true`)이 충족될 때 `wf:orderArtifact`를 생성하고 `orderTarget` step에 전달한다. 이 경우 `orderArtifact`도 필수다.
+
+```ttl
+# 예시 — slot-filling oracle
+<wf:node/my-d-001> a wf:Oracle, wf:Node ;
+    wf:label "문서 선별 게이트" ;
+    wf:oracleType "user" ;
+    wf:evaluator "owner@example.com" ;
+    wf:targetArtifact "01.raw-data/" ;          # check 대상
+    wf:orderTarget "my-s-007" ;                 # order 수신 step
+    wf:orderArtifact "01.raw-data/manifest.csv" ;
+    wf:hasSlot <wf:node/my-d-001_slot_cluster_a>,
+               <wf:node/my-d-001_slot_quality> ;
+    wf:threshold "ALL hasSlot[*].slotFilled == true" ;
+    wf:onFail "my-s-005" .                      # 재수집 경로
+
+<wf:node/my-d-001_slot_cluster_a> a wf:EntitySlot ;
+    wf:slotName "cluster_a" ;
+    wf:slotConstraint "selected_docs >= 5" ;
+    wf:slotFilled false .
+```
+
+**공급망 주의**: `orderTarget` step이 oracle의 `orderArtifact`를 소비하려면 해당 step의 `wf:directory` 에 `dirRole=input` 으로 선언해야 공급망 뷰에서 연결이 보인다. oracle의 `wf:orderTarget`만 선언하면 제어 흐름은 맞지만 artifact stream이 끊겨 보인다.
+
+**bypass 방지**: oracle 하위 step(corpus 정리, QA 생성 등)이 oracle 이전 artifact(`raw-data/`)를 직접 소비하면 oracle을 우회하는 `next` 엣지가 공급망에서 자동 추론된다. oracle 이후에만 실행돼야 하는 step은 oracle의 `orderArtifact`를 input으로 추가해 의존 관계를 명시한다.
+
 ### 다중 Workflow 패턴 (Repo당 N개 workflow)
 
 하나의 레포에 여러 workflow 가 공존할 수 있다. (예: 정책 사이클, 데이터 파이프라인, 평가, 릴리즈, lifecycle 등)
