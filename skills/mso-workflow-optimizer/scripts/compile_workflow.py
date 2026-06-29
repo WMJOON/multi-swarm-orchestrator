@@ -79,9 +79,17 @@ DEFAULT_POLICY: dict[str, Any] = {
             "execution_plane": "queue-or-interrupt",
             "control_plane": "present-to-user-or-metric-oracle",
         },
+        # v0.6.0 oracle graph (SPEC §5): execution plane 은 evolves 를 *제안*만 하고
+        # (AR 처럼), workflow 를 실제로 바꾸는 evolve 확정은 control plane oracle 권위다.
+        # oracle graph 의 stratification(C∩W=∅)은 design-time SHACL 이 보장하고,
+        # 여기서는 run-time 에 evolve 행위를 control plane 으로 gate 한다.
+        "evolves": {
+            "execution_plane": "propose-only",
+            "control_plane": "confirm-after-human-or-metric-oracle",
+        },
         "control_plane_events": {
             "enabled": True,
-            "halt_on": ["request_user_decision", "propose_alternatives"],
+            "halt_on": ["request_user_decision", "propose_alternatives", "propose_evolution"],
         },
     },
 }

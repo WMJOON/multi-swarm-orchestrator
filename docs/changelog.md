@@ -1,32 +1,20 @@
 # 변경 이력
 
-## v0.5.1 (2026-06-29) — Artifact-stream branch/eval projection patch
+## v0.6.0 (2026-06-30) — Oracle Graph (self-improvement stratification)
 
-> **patch release 상세는 CHANGELOG에만 기록한다.** README는 minor update(v0.X) 이상의 운영 의미를 유지하고, v0.X.Y 패치의 세부 수정 내역은 이 문서에서 추적한다.
+> **workflow self-improvement loop 의 자기참조를 edge 종류(base/oracle)로 차단하는 oracle graph 레이어 추가.** skill = sub-workflow 이므로 self-improvement 를 base workflow 에 직접 넣으면 evolve 행위가 자기 자신으로 되돌아오는 순환이 생긴다. design-time SHACL 이 자기참조를 막고, run-time optimizer governance 가 evolve 확정을 control plane 으로 gate 하는 이중 방어.
 
-### Fixed
+### Added
 
-| 변경 | 내용 |
+| 항목 | 내용 |
 |------|------|
-| artifact-stream control-only node filtering | `artifact-stream` view에서 supply-chain에 참여하지 않는 control-only decision/validation 노드가 edge target 선언 과정에서 새로 표시되지 않도록 수정 |
-| eval gate projection | `wf:Eval` 노드는 `oracle_type=user/agent/metric`을 기준으로 Mermaid label에 표시. legacy `wf:judge`는 migration fallback으로만 해석 |
-| eval target edge coverage | `wf:targetArtifact`를 가진 Eval 노드를 target/validation edge 생성 대상에 포함해 artifact/eval/tool 연결 누락을 방지 |
-| inferred branch decision | `wf:Step`이라도 control outgoing과 명시 deliverable을 함께 가지면 branch-like node로 보고 `Decision / inferred-branch` hexagon으로 projection |
-| decision subject model | `Decision`은 단일 class로 유지하고, 판단 주체는 `decision_subject`/`wf:decisionSubject`(`user`/`agent`)로 표현하도록 schema/docs/observability를 정렬 |
-| HITL taxonomy derivation | `HITL/HITLFE/HOTL/HOOTL`은 node property가 아니라 workflow 경로 안의 user decision/user eval 개입 여부로 파생하는 repository 운영 분류로 내림 |
-| agent decision criteria | `decision_criteria`/`wf:decisionCriteria`를 추가하고, agent decision의 판단 기준을 branch edge label 조건으로 표시 |
-| Eval vs Decision boundary | 후보 artifact 선택/재생산 판단은 `decision_subject=user`인 Decision으로, engine process/corpus/evaluator 품질·정합성 평가는 Eval로 구분 |
-| tool artifact target | `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target으로 취급하고, `Eval.targetArtifact`가 process/tool wikilink일 때 `Eval --target--> TOOL`로 렌더링 |
-| validation/revision/delegation semantics | `Eval.targetArtifact`가 tool이면 `Eval --target--> tool` 및 `tool-produced artifact --validated_by--> Eval`, `Eval.orderTarget`은 `Eval --requests_revision--> agentTask`, 승인 흐름은 `Eval --approves--> next agentTask/end`, non-Eval `usesTool`은 workflow edge인 `agentTask --delegates_to--> [[tool]]`로 분리 |
-| tool delegation spine | `usesTool`이 있는 agentTask의 artifact stream은 `artifact --consumes--> tool --produces--> artifact`로 렌더링해 tool 위임의 토큰 효율·생산성 최적화 여부를 볼 수 있게 함 |
-| tool delegation shape | `usesTool` step은 `delegates_to` workflow edge와 `consumes/produces` spine을 만들 수 있도록 input/reference artifact, output/deliverable artifact를 SHACL-SPARQL로 검증 |
-| inferred branch boundary | deliverable 생산은 branch/control outgoing으로 세지 않도록 수정해, `next + deliverable` step이 agentTask 대신 inferred decision으로 오분류되지 않게 함 |
-| Mermaid decision styling | Mermaid class는 모두 `decision`으로 유지하고, `decision_subject=user`는 주황색, `decision_subject=agent` 및 inferred branch는 파란색 node-level style로 표시 |
-| validation color semantics | `wf:Validation`은 eval 빨강과 분리해 파란색 계열로 표시. eval 빨강은 `wf:Eval` 전용으로 사용 |
-| workflow spine boundary | artifact-derived spine이 존재할 때도 TTL control outgoing이 있는 노드에는 `end` fallback edge를 붙이지 않도록 수정 |
-| work-memory feedback update pattern | `IN/TS/AD/UD/EP/PT/PR` 기록을 evidence로 삼아 workflow TTL과 artifact stream edge를 갱신하는 패턴을 문서화. work-memory는 근거, TTL ABox는 SSOT, Mermaid graph는 파생 뷰라는 경계를 명시 |
-| release policy | README에는 patch release 상세를 쓰지 않고, v0.5.1 상세는 CHANGELOG에만 기록하도록 정책 문구 정리 |
-| 전체 버전 | README header, install script, SKILL.md version field, manifest version, version alignment test를 v0.5.1로 정렬 |
+| oracle graph 모델 | 레이어를 노드 type 아닌 **edge** 로 구분. `delegatesTo`(base 수단) ↔ `exercises`(평가 실행, 대상 불변)·`evolves`(개선) (oracle 대상), 경계 `measures`. 계층 `workflow --has_subWorkflow--> workflow`(대칭: oracle-workflow = sub-workflow 의 meta). evolves/exercises/has_subWorkflow 모두 workflow→workflow. |
+| SHACL invariant | `EvolvesSelfShape`(자기 evolve) + `EvolvesStratificationShape`(C·W 가 `has_subWorkflow*` 연결 시 위반 — C∩W=∅) + `SubWorkflowPartitionShape`(workflow 부모 ≤1 — 형제·oracle disjoint). 실 yaml→TTL emission 데이터로 검출. |
+| artifact 노드화 | `wf:Artifact` + `produces`/`consumes`/`check`/`measures` (orphan 탐지·supply-chain view). |
+| oracle view | `mso-graph-observability` 가 `oracle-graph.md`(`evolves`/`exercises`/`has_subWorkflow`/`target` edge-필터) 자동 생성. |
+| control plane governance | `mso-workflow-optimizer` `governance.evolves`(execution=propose-only / control=confirm-after-human-or-metric-oracle) + halt_on `propose_evolution` — evolve 확정은 control plane oracle 권위(SPEC §5). |
+
+상세 설계: `planning/mso-v0.6.0-SPEC-oracle-graph.md`.
 
 ## v0.5.0 (2026-06-29) — Workflow/Artifact/Eval graph observability
 
