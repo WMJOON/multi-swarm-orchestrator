@@ -475,6 +475,10 @@ def load_data_registry(root: Path) -> dict[str, dict[str, str]]:
     for module in doc.get("modules", []) or []:
         if not isinstance(module, dict):
             continue
+        # skip planned/inactive modules — their dirs pollute suffix-match results
+        module_status = str(module.get("status") or "active").strip().lower()
+        if module_status not in ("active", ""):
+            continue
         module_id = str(module.get("id") or "").strip()
         module_path = str(module.get("path") or "").strip()
         register_data_ref(
@@ -553,6 +557,8 @@ def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
         return f'{node_id}{{{{"{label}"}}}}'
     if shape == "trapezoid":
         return f'{node_id}[/"{label}"\\]'
+    if shape == "subroutine":
+        return f'{node_id}[["{label}"]]'
     return f'{node_id}["{label}"]'
 
 
@@ -564,7 +570,7 @@ def mermaid_node_label(graph: Graph, term: URIRef, suffix: str = "") -> str:
         parts.append(f"id: {node_id}")
     if suffix:
         parts.append(suffix)
-    return mermaid_label("\\n".join(parts), 140)
+    return "<br>".join(mermaid_label(p, 140) for p in parts)
 
 
 def mermaid_node(graph: Graph, term: URIRef, prefix: str, suffix: str = "", shape: str = "rect") -> str:
@@ -900,7 +906,7 @@ def data_label(
     parts = [ARTIFACT_LABELS.get(artifact_type, artifact_type.upper())]
     if node_id:
         parts.append(f"id: {node_id}")
-    return mermaid_label("\\n".join(parts), 72)
+    return "<br>".join(mermaid_label(p, 72) for p in parts)
 
 
 def enrich_artifact_ref(ref: dict[str, str], *, data_type: str, locator: str) -> dict[str, str]:
@@ -955,6 +961,32 @@ def data_ref_for_locator(
             prefix_len = len(prefix)
     if prefix_ref:
         enriched = enrich_artifact_ref(prefix_ref, data_type=data_type, locator=normalized)
+        return {
+            "key": f"index:{enriched['id']}",
+            "id": enriched["id"],
+            "data_type": enriched["data_type"],
+            "artifact_type": enriched["artifact_type"],
+            "resource_kind": enriched["resource_kind"],
+            "primary_consumer": enriched["primary_consumer"],
+            "location": f"index:{enriched['id']}",
+            "locator": enriched.get("locator", normalized),
+        }
+    # Suffix match: TTL may store module-relative paths (e.g. "data/") while
+    # the index registers root-relative paths (e.g. "04.modules/.../data/").
+    # Pick the longest registry locator that ends with the query locator.
+    suffix_ref: dict[str, str] | None = None
+    suffix_match_len = -1
+    for ref in data_registry.values():
+        ref_locator = ref.get("locator", "")
+        if not ref_locator:
+            continue
+        norm_ref = normalize_locator(ref_locator)
+        if norm_ref.endswith(normalized) and len(norm_ref) > len(normalized):
+            if len(norm_ref) > suffix_match_len:
+                suffix_ref = ref
+                suffix_match_len = len(norm_ref)
+    if suffix_ref:
+        enriched = enrich_artifact_ref(suffix_ref, data_type=data_type, locator=normalized)
         return {
             "key": f"index:{enriched['id']}",
             "id": enriched["id"],
@@ -1272,6 +1304,317 @@ def build_artifact_stream_report(
     return build_data_stream_report(graph, data_registry)
 
 
+def build_process_map(
+    graph: Graph,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    """Phase-level process map: [['scope<br>phase']] subroutine nodes + shared artifact cylinders.
+
+    Shows only cross-scope artifacts and machine-native (local_database/event_store/knowledge_store)
+    artifacts. Deliverable free-text nodes are intentionally excluded — they have no stable id and
+    fragment the supply chain view.
+    """
+    data_registry = data_registry or {}
+
+    # --- Phase → Step reverse mapping (via wf:hasNode) ---
+    step_to_phase: dict[str, str] = {}
+    for phase in subjects_of_type(graph, WF.Phase):
+        for step in graph.objects(phase, WF.hasNode):
+            if isinstance(step, URIRef):
+                step_to_phase[str(step)] = str(phase)
+
+    phases = subjects_of_type(graph, WF.Phase)
+    if not phases:
+        return "_No wf:Phase nodes found in TTL. Add phases to your workflow ABox to generate a process map._"
+
+    phase_scope_map: dict[str, str] = {}
+    phase_label_map: dict[str, str] = {}
+    phase_node_ids: dict[str, str] = {}
+    for phase in phases:
+        scope = workflow_scope(phase)
+        if not scope:
+            continue
+        pstr = str(phase)
+        phase_scope_map[pstr] = scope
+        phase_label_map[pstr] = preferred_label(graph, phase) or display_id(phase)
+        phase_node_ids[pstr] = mermaid_id("proc", phase)
+
+    # --- Collect artifact refs per phase (aggregate from all nodes in that phase) ---
+    node_types = (WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group)
+    all_nodes = [n for cls in node_types for n in subjects_of_type(graph, cls)]
+
+    all_refs: dict[str, dict[str, str]] = {}
+    phase_arts: dict[str, dict[str, tuple[bool, bool]]] = {}  # pstr → {aid: (produces, consumes)}
+
+    for node in all_nodes:
+        nstr = str(node)
+        pstr = step_to_phase.get(nstr)
+        if not pstr:
+            scope = workflow_scope(node)
+            if scope:
+                candidates = [p for p, s in phase_scope_map.items() if s == scope]
+                if len(candidates) == 1:
+                    pstr = candidates[0]
+        if not pstr:
+            continue
+
+        for role, path, _ in directory_data_for_node(graph, node):
+            ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+            all_refs.setdefault(ref["id"], ref)
+            produces, consumes, _ = data_edge_labels(role)
+            prev = phase_arts.setdefault(pstr, {}).get(ref["id"], (False, False))
+            phase_arts[pstr][ref["id"]] = (prev[0] or produces, prev[1] or consumes)
+
+        for deliverable, _ in deliverable_data_for_node(graph, node):
+            ref = deliverable_data_ref(deliverable)
+            all_refs.setdefault(ref["id"], ref)
+            prev = phase_arts.setdefault(pstr, {}).get(ref["id"], (False, False))
+            phase_arts[pstr][ref["id"]] = (True, prev[1])
+
+    # --- Decide which artifacts to display ---
+    artifact_scope_set: dict[str, set[str]] = {}
+    for pstr, arts in phase_arts.items():
+        scope = phase_scope_map.get(pstr, "")
+        for aid in arts:
+            artifact_scope_set.setdefault(aid, set()).add(scope)
+
+    cross_scope = {aid for aid, scopes in artifact_scope_set.items() if len(scopes) > 1}
+    machine_native = {
+        aid for aid, ref in all_refs.items()
+        if ref.get("artifact_type") in MACHINE_NATIVE_ARTIFACTS
+    }
+    display_aids = (cross_scope | machine_native) - {
+        aid for aid in all_refs if aid.startswith("deliverable:")
+    }
+
+    # --- Build Mermaid ---
+    lines: list[str] = ["flowchart LR", ""]
+
+    artifact_nids: dict[str, str] = {}
+    for aid in sorted(display_aids):
+        ref = all_refs.get(aid, {})
+        atype = ref.get("artifact_type", "document")
+        shape = "database" if atype in MACHINE_NATIVE_ARTIFACTS else "document"
+        a_nid = data_id(aid)
+        artifact_nids[aid] = a_nid
+        label = data_label(
+            ref.get("data_type", "local_file"),
+            ref.get("location", aid),
+            artifact_type=atype,
+            node_id=aid,
+        )
+        lines.append(f"  {mermaid_shape(a_nid, label, shape)}")
+    lines.append("")
+
+    scopes_ordered = list(dict.fromkeys(
+        phase_scope_map.get(str(p), "") for p in phases
+        if phase_scope_map.get(str(p))
+    ))
+    for scope in scopes_ordered:
+        sg_id = re.sub(r"[^A-Za-z0-9_]", "_", scope)
+        lines.append(f"  subgraph {sg_id}[{scope_label(scope)}]")
+        for phase in phases:
+            pstr = str(phase)
+            if phase_scope_map.get(pstr) != scope:
+                continue
+            nid = phase_node_ids.get(pstr, "")
+            if not nid:
+                continue
+            plabel = f"{scope_label(scope)}<br>{mermaid_label(phase_label_map.get(pstr, ''), 36)}"
+            lines.append(f'    {mermaid_shape(nid, plabel, "subroutine")}')
+        lines.append("  end")
+        lines.append("")
+
+    for pstr, arts in sorted(phase_arts.items()):
+        p_nid = phase_node_ids.get(pstr, "")
+        if not p_nid:
+            continue
+        for aid, (produces, consumes) in sorted(arts.items()):
+            if aid not in display_aids:
+                continue
+            a_nid = artifact_nids.get(aid, "")
+            if not a_nid:
+                continue
+            if produces:
+                lines.append(f"  {p_nid} -->|produces| {a_nid}")
+            if consumes:
+                lines.append(f"  {a_nid} -->|consumes| {p_nid}")
+
+    if not artifact_nids and not phase_node_ids:
+        return "_No displayable process nodes or shared artifacts found._"
+
+    body = "\n".join(lines)
+    return f"> Phase-level process map. Each `[[...]]` node is a workflow phase; cylinders are shared machine-native artifacts.\n\n```mermaid\n{body}\n```"
+
+
+def _sort_steps_by_next_chain(graph: Graph, steps: list[URIRef]) -> list[URIRef]:
+    if not steps:
+        return steps
+    step_strs = {str(s): s for s in steps}
+    next_map: dict[str, str] = {}
+    for step in steps:
+        for nxt in graph.objects(step, WF.next):
+            if isinstance(nxt, URIRef) and str(nxt) in step_strs:
+                next_map[str(step)] = str(nxt)
+    pointed_to = set(next_map.values())
+    starts = [s for s in steps if str(s) not in pointed_to]
+    if not starts:
+        return steps
+    result: list[URIRef] = []
+    current: str | None = str(starts[0])
+    visited: set[str] = set()
+    while current and current not in visited:
+        visited.add(current)
+        node = step_strs.get(current)
+        if node:
+            result.append(node)
+        current = next_map.get(current)
+    for s in steps:
+        if str(s) not in visited:
+            result.append(s)
+    return result
+
+
+def build_process_flow(
+    graph: Graph,
+    scope: str,
+    data_registry: dict[str, dict[str, str]] | None = None,
+) -> str:
+    """Internal flow view for one workflow scope.
+
+    Phases are boxed subgraphs with steps inside. Phase sequence follows URI order
+    (or wf:order when available). Local-database artifacts are shown as cylinders.
+    """
+    data_registry = data_registry or {}
+
+    phases = [p for p in subjects_of_type(graph, WF.Phase) if workflow_scope(p) == scope]
+    if not phases:
+        return f"_No `wf:Phase` nodes found for scope `{scope}`._"
+
+    def phase_sort_key(p: URIRef) -> tuple[int, str]:
+        order_val = graph.value(p, WF.order)
+        if isinstance(order_val, Literal):
+            try:
+                return (int(str(order_val)), "")
+            except ValueError:
+                pass
+        local = display_id(p)
+        m = re.match(r"(?:phase[-_])?(\d+)", local)
+        return (int(m.group(1)), local) if m else (999, local)
+
+    phases_sorted = sorted(phases, key=phase_sort_key)
+
+    # --- Phase → Steps ---
+    phase_steps: dict[str, list[URIRef]] = {}
+    step_to_phase: dict[str, str] = {}
+    for phase in phases_sorted:
+        raw_steps: list[URIRef] = []
+        for step in graph.objects(phase, WF.hasNode):
+            if isinstance(step, URIRef):
+                raw_steps.append(step)
+                step_to_phase[str(step)] = str(phase)
+        phase_steps[str(phase)] = _sort_steps_by_next_chain(graph, raw_steps)
+
+    # --- Artifact collection (machine-native only) ---
+    phase_arts: dict[str, dict[str, tuple[dict[str, str], bool, bool]]] = {}
+    all_refs: dict[str, dict[str, str]] = {}
+    node_types = (WF.Step, WF.Decision, WF.Oracle, WF.Validation, WF.Group)
+    all_scope_nodes = [n for cls in node_types for n in subjects_of_type(graph, cls) if workflow_scope(n) == scope]
+    for node in all_scope_nodes:
+        pstr = step_to_phase.get(str(node))
+        if not pstr:
+            continue
+        for role, path, _ in directory_data_for_node(graph, node):
+            ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+            if ref.get("artifact_type") not in MACHINE_NATIVE_ARTIFACTS:
+                continue
+            all_refs.setdefault(ref["id"], ref)
+            produces, consumes, _ = data_edge_labels(role)
+            prev_p, prev_c = phase_arts.setdefault(pstr, {}).get(ref["id"], (ref, False, False))[1:]
+            phase_arts[pstr][ref["id"]] = (ref, prev_p or produces, prev_c or consumes)
+
+    display_aids = set(all_refs) - {a for a in all_refs if a.startswith("deliverable:")}
+
+    # --- Mermaid ---
+    lines: list[str] = ["flowchart TD", ""]
+
+    artifact_nids: dict[str, str] = {}
+    for aid in sorted(display_aids):
+        ref = all_refs[aid]
+        a_nid = data_id(aid)
+        artifact_nids[aid] = a_nid
+        label = data_label(ref.get("data_type", "local_file"), ref.get("location", aid),
+                           artifact_type=ref.get("artifact_type", "local_database"), node_id=aid)
+        lines.append(f"  {mermaid_shape(a_nid, label, 'database')}")
+    if display_aids:
+        lines.append("")
+
+    phase_nids: dict[str, str] = {}
+    step_nids: dict[str, str] = {}
+    for phase in phases_sorted:
+        pstr = str(phase)
+        p_nid = mermaid_id("ph", phase)
+        phase_nids[pstr] = p_nid
+        plabel = preferred_label(graph, phase) or display_id(phase)
+        sg_id = re.sub(r"[^A-Za-z0-9_]", "_", display_id(phase))
+        lines.append(f"  subgraph {sg_id}[\"{mermaid_label(plabel, 48)}\"]")
+        steps = phase_steps.get(pstr, [])
+        if steps:
+            for step in steps:
+                s_nid = mermaid_id("s", step)
+                step_nids[str(step)] = s_nid
+                slabel = preferred_label(graph, step) or display_id(step)
+                shape = "rect"
+                if (step, RDF.type, WF.Decision) in graph:
+                    shape = "hexagon"
+                elif (step, RDF.type, WF.Oracle) in graph or (step, RDF.type, WF.Validation) in graph:
+                    shape = "trapezoid"
+                lines.append(f'    {mermaid_shape(s_nid, mermaid_label(slabel, 44), shape)}')
+            for i in range(len(steps) - 1):
+                lines.append(f"    {mermaid_id('s', steps[i])} --> {mermaid_id('s', steps[i + 1])}")
+        else:
+            lines.append(f'    {mermaid_shape(p_nid, mermaid_label(plabel, 44), "subroutine")}')
+        lines.append("  end")
+        lines.append("")
+
+    for i in range(len(phases_sorted) - 1):
+        cur, nxt = phases_sorted[i], phases_sorted[i + 1]
+        cur_steps = phase_steps.get(str(cur), [])
+        nxt_steps = phase_steps.get(str(nxt), [])
+        src = mermaid_id("s", cur_steps[-1]) if cur_steps else phase_nids.get(str(cur), "")
+        dst = mermaid_id("s", nxt_steps[0]) if nxt_steps else phase_nids.get(str(nxt), "")
+        if src and dst:
+            lines.append(f"  {src} --> {dst}")
+
+    if phases_sorted:
+        lines.append("")
+
+    for phase in phases_sorted:
+        pstr = str(phase)
+        arts = phase_arts.get(pstr, {})
+        steps = phase_steps.get(pstr, [])
+        produce_src = mermaid_id("s", steps[-1]) if steps else phase_nids.get(pstr, "")
+        consume_dst = mermaid_id("s", steps[0]) if steps else phase_nids.get(pstr, "")
+        for aid, (ref, produces, consumes) in arts.items():
+            if aid not in display_aids:
+                continue
+            a_nid = artifact_nids.get(aid, "")
+            if not a_nid:
+                continue
+            if produces and produce_src:
+                lines.append(f"  {produce_src} -->|produces| {a_nid}")
+            if consumes and consume_dst:
+                lines.append(f"  {a_nid} -->|consumes| {consume_dst}")
+
+    body = "\n".join(lines)
+    return (
+        f"> Internal flow for `{scope_label(scope)}`. "
+        "Boxed subgraphs = phases; nodes inside = steps. "
+        "Cylinders = machine-native artifacts.\n\n"
+        f"```mermaid\n{body}\n```"
+    )
+
+
 def build_workflow_topology(
     graph: Graph,
     scope: str | None = None,
@@ -1286,7 +1629,7 @@ def build_workflow_topology(
     if scope:
         intro = f"> `{display_view}` view for workflow scope `{scope}`. Generated from MSO workflow TTL."
         if view in stream_view_names:
-            notes.append("> Artifact stream view: `artifact --upstream--> task --downstream--> artifact` supply chain only.")
+            notes.append("> Artifact stream view: `artifact --consumes--> task --produces--> artifact` supply chain only.")
         elif view == "workflow":
             notes.append("> Workflow view: `((start)) --next--> task --next--> task --next--> ((end))` spine derived from shared artifact ids where possible.")
         else:
@@ -1374,22 +1717,45 @@ def build_workflow_topology(
         return "node", None, "", "rect"
 
     phases = filter_scope(subjects_of_type(graph, WF.Phase), scope)
+
+    # Build node→scope reverse map: flat-URI nodes (e.g. node/cd-s-001) have no
+    # workflow-id segment, so workflow_scope() returns None for them.
+    # Infer scope from the scoped phase that owns the node via wf:hasNode.
+    node_to_scope: dict[URIRef, str] = {}
+    for _phase_uri in subjects_of_type(graph, WF.Phase):
+        _phase_scope = workflow_scope(_phase_uri)
+        if _phase_scope:
+            for _node_uri in graph.objects(_phase_uri, WF.hasNode):
+                if isinstance(_node_uri, URIRef) and _node_uri not in node_to_scope:
+                    node_to_scope[_node_uri] = _phase_scope
+
+    def in_scope(term: URIRef) -> bool:
+        return workflow_scope(term) == scope or node_to_scope.get(term) == scope
+
     if include_internal:
         for phase in phases:
             phase_id = mermaid_id("phase", phase)
             status = first_literal(graph, phase, WF.status)
-            suffix = f"Phase / {status}" if status else "Phase"
-            label = mermaid_node_label(graph, phase, suffix)
+            if view in stream_view_names:
+                # artifact-stream: concise "scope / phase" label — no id/status noise
+                _phase_scope = workflow_scope(phase) or (scope or "")
+                _phase_lbl = preferred_label(graph, phase) or display_id(phase)
+                label = f"{scope_label(_phase_scope)} / {mermaid_label(_phase_lbl, 44)}"
+            else:
+                suffix = f"Phase / {status}" if status else "Phase"
+                label = mermaid_node_label(graph, phase, suffix)
             if phase_id not in declared:
                 lines.append(f'  subgraph {phase_id}["{label}"]')
                 lines.append("    direction LR")
                 declared.add(phase_id)
                 for node in sorted(graph.objects(phase, WF.hasNode), key=str):
-                    if isinstance(node, URIRef) and workflow_scope(node) == scope:
+                    if isinstance(node, URIRef) and in_scope(node):
                         node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
+                        if view in stream_view_names:
+                            node_suffix = ""  # artifact-stream: label + id only, no type/status
                         declare(node, node_prefix, node_cls, node_suffix, node_shape)
                 for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
-                    if isinstance(ref, URIRef) and workflow_scope(ref) == scope:
+                    if isinstance(ref, URIRef) and in_scope(ref):
                         declare(ref, "workflowref", "workflowRef", "WorkflowRef")
                 lines.append("  end")
     else:
@@ -1409,13 +1775,26 @@ def build_workflow_topology(
             (WF.WorkflowRef, "workflowRef"),
         ]
         for cls, css_class in node_classes:
-            for node in filter_scope(subjects_of_type(graph, cls), scope):
+            for node in subjects_of_type(graph, cls):
+                if scope is not None and not in_scope(node):
+                    continue
                 status = first_literal(graph, node, WF.status)
-                suffix = local_name(cls)
-                if status:
-                    suffix = f"{suffix} / {status}"
-                shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Oracle else "rect"
-                declare(node, local_name(cls).lower(), css_class, suffix, shape)
+                if view in stream_view_names:
+                    # artifact-stream: label only — no type/status suffix noise
+                    node_id = mermaid_id(local_name(cls).lower(), node)
+                    if node_id not in declared:
+                        _lbl = preferred_label(graph, node) or display_id(node)
+                        _lbl_short = f"{mermaid_label(_lbl, 52)}<br>id: {display_id(node)}"
+                        shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Oracle else "rect"
+                        lines.append(f"  {mermaid_shape(node_id, _lbl_short, shape)}")
+                        lines.append(f"  class {node_id} {css_class}")
+                        declared.add(node_id)
+                else:
+                    suffix = local_name(cls)
+                    if status:
+                        suffix = f"{suffix} / {status}"
+                    shape = "hexagon" if cls == WF.Decision else "trapezoid" if cls == WF.Oracle else "rect"
+                    declare(node, local_name(cls).lower(), css_class, suffix, shape)
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         declare(module, "module", "module", "Module")
@@ -1427,13 +1806,32 @@ def build_workflow_topology(
 
     for phase in phases:
         phase_id = mermaid_id("phase", phase) if include_internal else declare(phase, "phase")
+        if view in stream_view_names:
+            continue  # dependsOn arrows clutter the artifact-stream view
         for dep in sorted(graph.objects(phase, WF.dependsOn), key=str):
-            if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope):
+            if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope or in_scope(dep)):
                 dep_id = mermaid_id("phase", dep) if include_internal else declare(dep, "phase")
                 edge(dep_id, "-->", "dependsOn", phase_id)
 
+    # Implicit discovery → development → testing ordering for module phases that
+    # have no explicit wf:dependsOn (standard MSO module phase convention).
+    if include_internal and scope:
+        PHASE_ORDER = ["discovery", "development", "testing"]
+        ordered: dict[str, URIRef] = {}
+        for ph in phases:
+            ph_local = display_id(ph)
+            if ph_local in PHASE_ORDER:
+                ordered[ph_local] = ph
+        for i in range(len(PHASE_ORDER) - 1):
+            src_key, dst_key = PHASE_ORDER[i], PHASE_ORDER[i + 1]
+            if src_key in ordered and dst_key in ordered:
+                dst_ph = ordered[dst_key]
+                if not list(graph.objects(dst_ph, WF.dependsOn)):
+                    edge(mermaid_id("phase", ordered[src_key]), "-->", "", mermaid_id("phase", dst_ph))
+
     if include_internal:
-        process_nodes = workflow_node_terms(graph, scope)
+        # Use in_scope so flat-URI nodes inferred from wf:hasNode are included
+        process_nodes = [n for n in workflow_node_terms(graph) if in_scope(n)]
         control_edges: list[tuple[URIRef, str, str, URIRef]] = []
         control_incoming: set[URIRef] = set()
         control_outgoing: set[URIRef] = set()
@@ -1454,6 +1852,22 @@ def build_workflow_topology(
                             control_incoming.add(target)
                             control_outgoing.add(decision)
 
+        for oracle in filter_scope(subjects_of_type(graph, WF.Oracle), scope):
+                on_fail_id = first_literal(graph, oracle, WF.onFail)
+                if on_fail_id:
+                    target = WF[f"node/{on_fail_id}"]
+                    if in_scope(target):
+                        control_edges.append((oracle, "-.->", "on: fail", target))
+                        control_incoming.add(target)
+                        control_outgoing.add(oracle)
+                order_target_id = first_literal(graph, oracle, WF.orderTarget)
+                if order_target_id:
+                    target = WF[f"node/{order_target_id}"]
+                    if in_scope(target):
+                        control_edges.append((oracle, "==>", "order", target))
+                        control_incoming.add(target)
+                        control_outgoing.add(oracle)
+
         for node in process_nodes:
             for target in sorted(graph.objects(node, WF.next), key=str):
                 if isinstance(target, URIRef) and workflow_scope(target) == scope:
@@ -1463,7 +1877,7 @@ def build_workflow_topology(
 
         if show_workflow_spine:
             for source, arrow, label, target in control_edges:
-                if arrow != "-.->":
+                if arrow not in ("-.->", "==>"):  # decision branch + oracle order/fail
                     continue
                 source_prefix, source_cls, source_suffix, source_shape = visual_kind(source)
                 target_prefix, target_cls, target_suffix, target_shape = visual_kind(target)
@@ -1498,12 +1912,12 @@ def build_workflow_topology(
                     produced_data_node_ids.add(data_node_id)
                     data_producers.setdefault(data_node_id, set()).add(node)
                     if show_data_stream:
-                        edge(source_id, "-->", f"downstream{label_suffix}", data_node_id)
+                        edge(source_id, "-->", f"produces{label_suffix}", data_node_id)
                 if consumes:
                     consumed_data_node_ids.add(data_node_id)
                     data_consumers.setdefault(data_node_id, set()).add(node)
                     if show_data_stream:
-                        edge(data_node_id, "-->", f"upstream{label_suffix}", source_id)
+                        edge(data_node_id, "-->", f"consumes{label_suffix}", source_id)
 
             for deliverable, _ in deliverable_data_for_node(graph, node):
                 ref = deliverable_data_ref(deliverable)
@@ -1528,7 +1942,7 @@ def build_workflow_topology(
                 produced_data_node_ids.add(data_node_id)
                 data_producers.setdefault(data_node_id, set()).add(node)
                 if show_data_stream:
-                    edge(source_id, "-->", "downstream", data_node_id)
+                    edge(source_id, "-->", "produces", data_node_id)
 
         stream_task_edges: set[tuple[URIRef, URIRef]] = set()
         for data_node_id in sorted(data_node_ids):
@@ -1773,7 +2187,7 @@ def build_property_map(graph: Graph, limit: int = 140) -> str:
                 domain_id = declare(domain, "domain", "classNode")
                 range_cls = "literalNode" if rng in LITERAL_RANGES or str(rng).startswith(str(XSD)) else "classNode"
                 range_id = declare(rng, "range", range_cls)
-                label = mermaid_label(f"{preferred_label(graph, prop)} ({prop_type})", 48)
+                label = mermaid_label(f"{preferred_label(graph, prop)} {prop_type}", 48)
                 lines.append(f"  {domain_id} -->|{label}| {range_id}")
                 edge_count += 1
             if edge_count >= limit:
@@ -1876,6 +2290,15 @@ def main() -> int:
             output_dir / "artifact-stream-views" / f"{scope}.md",
             f"MSO Artifact Stream View — {scope_label(scope)}",
             artifact_stream_view,
+        )
+    process_map_content = build_process_map(graph, data_registry=data_registry)
+    write_markdown(output_dir / "process-map.md", "MSO Process Map", process_map_content)
+    write_markdown(output_dir / "artifact-stream-views" / "process-map.md", "MSO Process Map", process_map_content)
+    for scope in workflow_scopes(graph):
+        write_markdown(
+            output_dir / "process-views" / f"{scope}.md",
+            f"MSO Process Flow — {scope_label(scope)}",
+            build_process_flow(graph, scope=scope, data_registry=data_registry),
         )
     write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
