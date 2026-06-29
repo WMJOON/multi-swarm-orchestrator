@@ -903,10 +903,18 @@ def data_label(
     locator: str | None = None,
     artifact_type: str = "document",
 ) -> str:
-    parts = [ARTIFACT_LABELS.get(artifact_type, artifact_type.upper())]
-    if node_id:
-        parts.append(f"id: {node_id}")
-    return "<br>".join(mermaid_label(p, 72) for p in parts)
+    type_label = ARTIFACT_LABELS.get(artifact_type, artifact_type.upper())
+    # 사람이 읽을 수 있는 이름: detail(deliverable 설명) > locator(파일 경로) > id 접두사 제거
+    if detail:
+        name = detail
+    elif locator:
+        name = locator
+    elif node_id:
+        name = node_id.removeprefix("local_file:").removeprefix("index:").removeprefix("deliverable:")
+    else:
+        name = location
+    parts = [mermaid_label(name, 52), type_label]
+    return "<br>".join(p for p in parts if p)
 
 
 def enrich_artifact_ref(ref: dict[str, str], *, data_type: str, locator: str) -> dict[str, str]:
@@ -1996,6 +2004,41 @@ def build_workflow_topology(
                     edge(start_id, "-->", "", node_id)
                 if node not in control_outgoing:
                     edge(node_id, "-->", "", end_id)
+
+        # artifact-stream: oracle check → order chain
+        if view in stream_view_names and show_data_stream:
+            for oracle in [n for n in subjects_of_type(graph, WF.Oracle) if scope is None or in_scope(n)]:
+                oracle_nid = mermaid_id("oracle", oracle)
+                if oracle_nid not in declared:
+                    continue
+                art_str = first_literal(graph, oracle, WF.targetArtifact)
+                if art_str:
+                    art_nid = data_id(art_str)
+                    if art_nid in data_node_ids:
+                        edge(art_nid, "-->", "check", oracle_nid)
+                order_str = first_literal(graph, oracle, WF.orderTarget)
+                if order_str:
+                    for cand in (WF[f"node/{scope}/{order_str}"], WF[f"node/{order_str}"]):
+                        if in_scope(cand):
+                            t_prefix, t_cls, t_suffix, t_shape = visual_kind(cand)
+                            t_nid = declare(cand, t_prefix, t_cls, t_suffix, t_shape)
+                            edge(oracle_nid, "==>", "order", t_nid)
+                            if t_cls == "decision":
+                                for src, arr, lbl, tgt in control_edges:
+                                    if arr == "-.>" or arr == "-.->":
+                                        src_nid = mermaid_id(visual_kind(src)[0], src)
+                                        if src_nid == t_nid and in_scope(tgt):
+                                            tgt_p, tgt_c, tgt_s, tgt_sh = visual_kind(tgt)
+                                            tgt_nid = declare(tgt, tgt_p, tgt_c, tgt_s, tgt_sh)
+                                            edge(t_nid, arr, lbl, tgt_nid)
+                                            for src2, arr2, lbl2, tgt2 in control_edges:
+                                                if arr2 == "-->" and lbl2 == "next":
+                                                    src2_nid = mermaid_id(visual_kind(src2)[0], src2)
+                                                    if src2_nid == tgt_nid and in_scope(tgt2):
+                                                        tgt2_p, tgt2_c, tgt2_s, tgt2_sh = visual_kind(tgt2)
+                                                        tgt2_nid = declare(tgt2, tgt2_p, tgt2_c, tgt2_s, tgt2_sh)
+                                                        edge(tgt_nid, arr2, lbl2, tgt2_nid)
+                            break
 
     for module in filter_scope(subjects_of_type(graph, WF.Module), scope):
         module_id = declare(module, "module")
