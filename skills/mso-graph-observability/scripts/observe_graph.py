@@ -603,6 +603,12 @@ def mermaid_label(text: str, max_len: int = 72) -> str:
     return compact.replace('"', "'")
 
 
+def mermaid_edge_label(text: str, max_len: int = 72) -> str:
+    label = mermaid_label(text, max_len)
+    label = label.replace("|", "/")
+    return re.sub(r"[\[\]\(\)\{\}]", " ", label).strip()
+
+
 def mermaid_shape(node_id: str, label: str, shape: str = "rect") -> str:
     if shape == "circle":
         return f"{node_id}(({label}))"
@@ -1877,7 +1883,7 @@ def build_workflow_topology(
         return data_id(ref["id"])
 
     def edge(source_id: str, arrow: str, label: str, target_id: str) -> None:
-        label_part = f"|{label}|" if label else ""
+        label_part = f"|{mermaid_edge_label(label)}|" if label else ""
         line = f"  {source_id} {arrow}{label_part} {target_id}"
         if line not in emitted_edges:
             lines.append(line)
