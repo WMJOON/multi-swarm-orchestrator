@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # commit-work-memory.sh  (mso-work-memory)
-# work-memory 자동 로그(auditlog/worklog)만 커밋한다. 항상 exit 0 (non-blocking).
+# work-memory 변경분(auditlog, 수동 worklog, track/insight)을 커밋한다. 항상 exit 0 (non-blocking).
 #
 # ── 존재 이유 ────────────────────────────────────────────────────────────
 # auditlog 는 PostToolUse(Bash|Edit|Write) 에서 append 된다. 따라서 에이전트가
@@ -10,8 +10,8 @@
 # 새 로그를 남기지 않는다. 즉 "로그 저장 → (훅)커밋 → 커밋은 로그 안 남김".
 #
 # ── 배치 ────────────────────────────────────────────────────────────────
-# Stop / PreCompact 에서 worklog.py append 직후에 호출한다. work-memory-check.sh
-# 보다 먼저 두어, 검사 시점에 트리가 이미 clean 이도록 한다.
+# Stop / PreCompact 에서 호출한다. Stop hook 은 worklog 를 생성하지 않는다.
+# worklog 는 workflow TTL node 실행을 명시할 수 있을 때 수동으로 남긴다.
 #
 # ── 경계 ────────────────────────────────────────────────────────────────
 #  - 커밋 대상은 WORKMEM_DIR 경로뿐 — 코드/문서 변경은 절대 자동 커밋하지 않는다.

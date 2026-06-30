@@ -1,71 +1,33 @@
-# (생성물) root-workflow-template.yaml → ABox TTL. wf_to_ttl.py serialize 결과.
 @prefix wf: <https://mso.dev/ontology/workflow#> .
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-<https://mso.dev/ontology/workflow#criticaldep/02.policy-engine__01.ingestion> a wf:CriticalDependency ;
-    wf:cdFrom "02.policy-engine" ;
-    wf:cdTo "01.ingestion" ;
+<https://mso.dev/ontology/workflow#criticaldep/policy-engine__ingestion> a wf:CriticalDependency ;
+    wf:cdFrom "policy-engine" ;
+    wf:cdTo "ingestion" ;
     wf:description "정책 수립을 위한 상담 데이터 분석 필요" .
-
-<https://mso.dev/ontology/workflow#criticaldep/03.data-masking__01.ingestion> a wf:CriticalDependency ;
-    wf:cdFrom "03.data-masking" ;
-    wf:cdTo "01.ingestion" ;
-    wf:description "PII 마스킹 테스트셋 구축을 위한 실제 상담 데이터 필요" .
-
-<https://mso.dev/ontology/workflow#criticaldep/04.vendor-x__02.policy-engine> a wf:CriticalDependency ;
-    wf:cdFrom "04.vendor-x" ;
-    wf:cdTo "02.policy-engine" ;
-    wf:description "라우팅 정책이 RAG 평가 평가 기준에 포함됨" .
-
-<https://mso.dev/ontology/workflow#criticaldep/04.vendor-x__10.RAG-Corpus-Dataset> a wf:CriticalDependency ;
-    wf:cdFrom "04.vendor-x" ;
-    wf:cdTo "10.RAG-Corpus-Dataset" ;
-    wf:description "RAG 평가 엔진의 테스트셋 필요" .
 
 <https://mso.dev/ontology/workflow#keydecision/14d03a75> a wf:KeyDecision ;
     wf:decisionText "RAG 평가 엔진을 GitHub submodule로 관리" ;
-    wf:impactModule "04.vendor-x" ;
-    wf:rationale "독립적인 버전 관리, VendorX 협업 용이성" .
-
-<https://mso.dev/ontology/workflow#keydecision/41cdf440> a wf:KeyDecision ;
-    wf:decisionText "모듈별 상세 문서화 (Level 1 ~ Level 4)" ;
-    wf:impactModule "all" ;
-    wf:rationale "다양한 사용자 유형(관리자, 개발자, 데이터 사이언티스트)을 위한 진행적 공개" .
-
-<https://mso.dev/ontology/workflow#keydecision/f990c1ab> a wf:KeyDecision ;
-    wf:decisionText "점진적 읽기 경로 (README → index.yaml → docs/ → CLAUDE.md)" ;
-    wf:impactModule "documentation" ;
-    wf:rationale "온보딩 시간 단축, 필요 정보 빠른 접근" .
+    wf:impactModule "rag-eval" ;
+    wf:rationale "독립적인 버전 관리와 외부 협업 경계를 분리하기 위함" .
 
 <https://mso.dev/ontology/workflow#milestone/m-core-modules-ready> a wf:Milestone ;
     wf:label "모든 핵심 모듈 완성" ;
     wf:milestoneDate "2026-05-21" ;
-    wf:milestoneOf <https://mso.dev/ontology/workflow#phase/phase-02-development> ;
+    wf:milestoneOf <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
     wf:status "completed" .
-
-<https://mso.dev/ontology/workflow#milestone/m-final-handoff> a wf:Milestone ;
-    wf:label "최종 인계 완료" ;
-    wf:milestoneDate "2026-05-31" ;
-    wf:milestoneOf <https://mso.dev/ontology/workflow#phase/phase-05-delivery> ;
-    wf:status "pending" .
 
 <https://mso.dev/ontology/workflow#milestone/m-testing-complete> a wf:Milestone ;
     wf:label "모든 모듈 테스트 완료" ;
     wf:milestoneDate "2026-05-22" ;
-    wf:milestoneOf <https://mso.dev/ontology/workflow#phase/phase-03-testing> ;
+    wf:milestoneOf <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> ;
     wf:status "pending" .
 
-<https://mso.dev/ontology/workflow#module/03.data-masking> a wf:Module ;
-    wf:criticalDep <https://mso.dev/ontology/workflow#module/01.ingestion> .
-
-<https://mso.dev/ontology/workflow#module/04.vendor-x> a wf:Module ;
-    wf:criticalDep <https://mso.dev/ontology/workflow#module/02.policy-engine>,
-        <https://mso.dev/ontology/workflow#module/10.RAG-Corpus-Dataset> .
+<https://mso.dev/ontology/workflow#module/policy-engine> a wf:Module ;
+    wf:criticalDep <https://mso.dev/ontology/workflow#module/ingestion> .
 
 <https://mso.dev/ontology/workflow#project/workflow-00> a wf:Project ;
     wf:created "2026-05-21" ;
-    wf:description """한 프로젝트의 root-workflow(프로젝트 루트). 그 프로젝트의 모듈 sub-workflow 들을 조율하고 의존성을 관리한다. (전 프로젝트를 가로지르는 global 층은 UUG 영역.)
-""" ;
+    wf:description "프로젝트 root workflow. 모듈 sub-workflow, artifact supply chain, eval gate를 조율한다." ;
     wf:label "AI Chatbot 1.0 - Root Workflow" ;
     wf:owner "owner@example.com" ;
     wf:version "1.0.0" .
@@ -74,77 +36,79 @@
     wf:scKey "all_modules_documented" ;
     wf:scValue "모든 모듈 docs/ 문서 작성 완료" .
 
-<https://mso.dev/ontology/workflow#sc/masking_accuracy> a wf:SuccessCriterion ;
-    wf:scKey "masking_accuracy" ;
-    wf:scValue "PII 마스킹 정확도 95% 이상" .
-
-<https://mso.dev/ontology/workflow#sc/policy_validation> a wf:SuccessCriterion ;
-    wf:scKey "policy_validation" ;
-    wf:scValue "정책 프레임워크 v1.0 검증 완료" .
-
 <https://mso.dev/ontology/workflow#sc/stakeholder_approval> a wf:SuccessCriterion ;
     wf:scKey "stakeholder_approval" ;
-    wf:scValue "VendorX 벤더 협업 완료 및 승인" .
+    wf:scValue "벤더 협업 완료 및 승인" .
 
-<https://mso.dev/ontology/workflow#sc/test_coverage_rag_eval> a wf:SuccessCriterion ;
-    wf:scKey "test_coverage_rag_eval" ;
-    wf:scValue "RAG 평가 엔진 테스트셋 3,955 QA 이상" .
+<https://mso.dev/ontology/workflow#workflow/workflow-00> a wf:Workflow ;
+    wf:has_subWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development>,
+        <https://mso.dev/ontology/workflow#workflow/workflow-00/discovery>,
+        <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> .
 
-<https://mso.dev/ontology/workflow#module/02.policy-engine> a wf:Module ;
-    wf:criticalDep <https://mso.dev/ontology/workflow#module/01.ingestion> .
+<https://mso.dev/ontology/workflow#module/ingestion> a wf:Module .
 
-<https://mso.dev/ontology/workflow#module/10.RAG-Corpus-Dataset> a wf:Module .
+<https://mso.dev/ontology/workflow#node/development/development-s-001> a wf:Node,
+        wf:Step,
+        wf:Task ;
+    wf:deliverables "generated/module-output.md" ;
+    wf:directory <https://mso.dev/ontology/workflow#node/development/development-s-001_dir_generated_>,
+        <https://mso.dev/ontology/workflow#node/development/development-s-001_dir_src_> ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:instruction "설계된 workflow에 따라 핵심 모듈 산출물을 구현한다." ;
+    wf:label "핵심 모듈 구현" ;
+    wf:next <https://mso.dev/ontology/workflow#node/development/development-e-001> ;
+    wf:status "active" .
 
-<https://mso.dev/ontology/workflow#phase/phase-01-discovery> a wf:Phase ;
-    wf:description "모듈별 요구사항 분석, 범위 정의, 리소스 할당" ;
-    wf:label "발견 & 계획 (Discovery & Planning)" ;
-    wf:refersTo "01.ingestion/01.ingestion-workflow-00.yaml#discovery",
-        "02.policy-engine/02.policy-engine-workflow-00.yaml#discovery",
-        "03.data-masking/03.data-masking-workflow-00.yaml#discovery",
-        "04.vendor-x/04.vendor-x-workflow-00.yaml#discovery",
-        "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#discovery" ;
+<https://mso.dev/ontology/workflow#node/development/development-s-001_dir_generated_> wf:dirPath "generated/" ;
+    wf:dirRole "output" .
+
+<https://mso.dev/ontology/workflow#node/development/development-s-001_dir_src_> wf:dirPath "src/" ;
+    wf:dirRole "input" .
+
+<https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> a wf:Node,
+        wf:Step,
+        wf:Task ;
+    wf:deliverables "planning/requirements.md" ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/discovery> ;
+    wf:instruction "이해관계자 요구사항과 입력 artifact를 수집한다." ;
+    wf:label "요구사항 수집" ;
     wf:status "completed" .
 
-<https://mso.dev/ontology/workflow#phase/phase-04-documentation> a wf:Phase ;
-    wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-03-testing> ;
-    wf:description "최종 산출물 문서화, 사용자 가이드, 인계 문서 작성" ;
-    wf:label "문서화 & 전달 (Documentation & Delivery)" ;
-    wf:refersTo "docs/01-ingestion.md",
-        "docs/02-chatbot-policy.md",
-        "docs/03-data-masking.md",
-        "docs/04-vendor-x-rag-eval.md",
-        "docs/10-rag-corpus-dataset.md" ;
-    wf:status "completed" .
-
-<https://mso.dev/ontology/workflow#phase/phase-05-delivery> a wf:Phase ;
-    wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-04-documentation> ;
-    wf:description "최종 검수, 벤더 인계, 운영 인수인계" ;
-    wf:label "인계 & 배포 (Handoff & Deployment)" ;
-    wf:refersTo "04.vendor-x/2026-05-13 docs/analysis-report.md" ;
+<https://mso.dev/ontology/workflow#node/testing/testing-e-001> a wf:Eval,
+        wf:Node ;
+    wf:criteria "integration tests pass" ;
+    wf:harness "integration-test" ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> ;
+    wf:label "최종 통합 평가" ;
+    wf:onFail "manual_review" ;
+    wf:oracleType "metric" ;
     wf:status "pending" .
 
-<https://mso.dev/ontology/workflow#module/01.ingestion> a wf:Module .
+<https://mso.dev/ontology/workflow#node/development/development-e-001> a wf:Eval,
+        wf:Node ;
+    wf:criteria "unit tests pass" ;
+    wf:harness "unit-test" ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:label "구현 품질 평가" ;
+    wf:onFail "block" ;
+    wf:oracleType "metric" ;
+    wf:status "pending" .
 
-<https://mso.dev/ontology/workflow#phase/phase-02-development> a wf:Phase ;
-    wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-01-discovery> ;
-    wf:description "각 모듈의 핵심 기능 개발 및 구현" ;
-    wf:label "개발 & 구현 (Development & Implementation)" ;
-    wf:parallel true ;
-    wf:refersTo "01.ingestion/01.ingestion-workflow-00.yaml#development",
-        "02.policy-engine/02.policy-engine-workflow-00.yaml#development",
-        "03.data-masking/03.data-masking-workflow-00.yaml#development",
-        "04.vendor-x/04.vendor-x-workflow-00.yaml#development",
-        "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#development" ;
+<https://mso.dev/ontology/workflow#workflow/workflow-00/discovery> a wf:Workflow ;
+    wf:description "모듈별 요구사항 분석, 범위 정의, 리소스 할당" ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> ;
+    wf:label "발견 & 계획" ;
     wf:status "completed" .
 
-<https://mso.dev/ontology/workflow#phase/phase-03-testing> a wf:Phase ;
-    wf:dependsOn <https://mso.dev/ontology/workflow#phase/phase-02-development> ;
-    wf:description "각 모듈의 품질 검증, 성능 벤치마크, 통합 테스트" ;
-    wf:label "테스트 & 평가 (Testing & Evaluation)" ;
-    wf:parallel true ;
-    wf:refersTo "01.ingestion/01.ingestion-workflow-00.yaml#testing",
-        "02.policy-engine/02.policy-engine-workflow-00.yaml#testing",
-        "03.data-masking/03.data-masking-workflow-00.yaml#testing",
-        "04.vendor-x/04.vendor-x-workflow-00.yaml#testing",
-        "10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#testing" ;
+<https://mso.dev/ontology/workflow#workflow/workflow-00/testing> a wf:Workflow ;
+    wf:description "통합 테스트와 최종 평가" ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/testing/testing-e-001> ;
+    wf:label "테스트 & 평가" ;
+    wf:status "pending" .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00/development> a wf:Workflow ;
+    wf:description "각 모듈의 핵심 기능 개발 및 구현" ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/development/development-e-001>,
+        <https://mso.dev/ontology/workflow#node/development/development-s-001> ;
+    wf:label "개발 & 구현" ;
     wf:status "active" .

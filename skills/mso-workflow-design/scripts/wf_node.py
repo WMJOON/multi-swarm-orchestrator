@@ -10,14 +10,13 @@ wf_node.py — Workflow node schema tool
   python wf_node.py harness-manifest <root_workflow.yaml>
                             [--out <path>] [--format json|yaml]   # harness 집계
 
-type: step | decision | eval | group | phase
+type: step | decision | eval | group
 
 네이밍 컨벤션(id 패턴, module 약어 등)은 프로젝트에서 정의한다.
 이 스킬은 구조적 invariant 만 강제한다.
 
 계층 참조:
-- phase.workflows[].ref = "<sub_yaml>#<anchor>" 로 sub workflow 의 phase/group 참조.
-- workflow_ref.module 은 scaffold module id 와 일치해야 함.
+- workflow.workflows[].ref = "<sub_yaml>#<anchor>" 로 sub workflow 참조.
 - max_depth = 3 (root + 2단계). 순환 참조 차단.
 """
 
@@ -47,7 +46,7 @@ RESERVED_TOP_KEYS = {
 # ─── Schema loading ────────────────────────────────────────────────────────────
 
 def load_schema(node_type: str) -> dict:
-    if node_type == "oracle":
+    if node_type in ("oracle", "validation"):
         node_type = "eval"
     path = SCHEMAS_DIR / f"{node_type}.schema.yaml"
     if not path.exists():
@@ -110,7 +109,7 @@ def cmd_scaffold(node_type: str, node_id: str | None, decision_subject: str | No
     elif node_type == "group":
         node = _scaffold_group(nid)
     elif node_type == "phase":
-        node = _scaffold_phase()
+        sys.exit("[ERROR] v0.6.1 phase-less 정본에서는 phase scaffold 를 생성하지 않습니다. workflow/sub-workflow 의 steps[] 를 사용하세요.")
     else:
         sys.exit(f"[ERROR] 지원하지 않는 type: {node_type}")
 
@@ -169,19 +168,7 @@ def _scaffold_group(node_id: str) -> dict:
         "type": "group",
         "id": node_id,
         "label": "TODO: 사이클 이름",
-        "steps": ["# TODO: step | decision | validation | group 노드 추가"],
-    }
-
-
-def _scaffold_phase() -> dict:
-    return {
-        "id": "TODO-phase-id",
-        "label": "TODO: Phase 이름",
-        "status": "pending",
-        "show_wrapper": True,
-        "steps": ["# TODO: 노드 추가"],
-        "artifacts": [],
-        "success_criteria": [],
+        "steps": ["# TODO: step | decision | eval | group 노드 추가"],
     }
 
 
@@ -292,7 +279,7 @@ class ResolvedWorkflow:
 
 
 def resolve_workflow_tree(root_yaml: Path, max_depth: int = MAX_DEPTH) -> ResolvedWorkflow:
-    """root workflow YAML 에서 phase.workflows[].ref 를 따라가며 sub 트리 평탄화."""
+    """root workflow YAML 에서 workflow.workflows[].ref 를 따라가며 sub 트리 평탄화."""
     resolved = ResolvedWorkflow()
     resolved.root_source = root_yaml.resolve()
 
@@ -315,22 +302,22 @@ def _recurse_workflow(doc, source: Path, depth: int, max_depth: int,
     if source not in resolved.docs:
         resolved.docs[source] = doc
 
-        for phase_key, phase in _collect_phases(doc):
-            if not isinstance(phase, dict):
+        for workflow_key, workflow in _collect_workflows(doc):
+            if not isinstance(workflow, dict):
                 continue
-            for nid in _collect_node_ids(phase.get("steps", []) or []):
+            for nid in _collect_node_ids(workflow.get("steps", []) or []):
                 resolved.all_node_ids.append((nid, source))
-            for vn in _collect_validations(phase.get("steps", []) or []):
+            for vn in _collect_validations(workflow.get("steps", []) or []):
                 resolved.validation_nodes.append((vn, source, module_id_hint))
 
     # workflows[] 참조 따라가기 (anchor 별)
-    for phase_key, phase in _collect_phases(doc):
-        if not isinstance(phase, dict):
+    for workflow_key, workflow in _collect_workflows(doc):
+        if not isinstance(workflow, dict):
             continue
-        for ref_obj in phase.get("workflows", []) or []:
+        for ref_obj in workflow.get("workflows", []) or []:
             if not isinstance(ref_obj, dict):
                 continue
-            resolved.refs.append({"ref": ref_obj, "source": source, "phase": phase_key})
+            resolved.refs.append({"ref": ref_obj, "source": source, "workflow": workflow_key})
             ref_str = ref_obj.get("ref", "")
             if not ref_str:
                 continue
@@ -338,7 +325,7 @@ def _recurse_workflow(doc, source: Path, depth: int, max_depth: int,
             sub_path = (source.parent / ref_path_str).resolve()
             if depth + 1 > max_depth:
                 resolved.issues.append(ValidationError(
-                    f"phase:{phase_key}", "workflows.ref",
+                    f"workflow:{workflow_key}", "workflows.ref",
                     f"max_depth({max_depth}) 초과: 현재 depth={depth+1}"
                 ))
                 continue
@@ -348,7 +335,7 @@ def _recurse_workflow(doc, source: Path, depth: int, max_depth: int,
                 continue
             if not sub_path.exists():
                 resolved.issues.append(ValidationError(
-                    f"phase:{phase_key}", "workflows.ref",
+                    f"workflow:{workflow_key}", "workflows.ref",
                     f"sub workflow 파일 없음: {sub_path}"
                 ))
                 continue
@@ -361,7 +348,22 @@ def _recurse_workflow(doc, source: Path, depth: int, max_depth: int,
                               visited, resolved, module_id_hint=sub_module_id)
 
 
+def _collect_workflows(doc: dict) -> list[tuple[str, dict]]:
+    """v0.6.1 정본 workflows[] 우선, legacy phase 입력은 compatibility 로 반환."""
+    if not isinstance(doc, dict):
+        return []
+    workflows = doc.get("workflows")
+    if isinstance(workflows, list):
+        out = []
+        for wf in workflows:
+            if isinstance(wf, dict) and wf.get("id"):
+                out.append((str(wf["id"]), wf))
+        return out
+    return _collect_phases(doc)
+
+
 def _collect_phases(doc: dict) -> list[tuple[str, dict]]:
+    """legacy named phase 입력 compatibility helper."""
     if not isinstance(doc, dict):
         return []
     out = []
@@ -403,12 +405,12 @@ def _collect_validations(nodes: list) -> list[dict]:
 
 
 def _collect_phase_group_ids(doc: dict) -> set[str]:
-    """anchor 검증용 — sub 파일 내 phase id + group id 집합."""
+    """anchor 검증용 — sub 파일 내 workflow id + legacy phase id + group id 집합."""
     ids = set()
-    for key, _ in _collect_phases(doc):
+    for key, _ in _collect_workflows(doc):
         ids.add(key)
-    for _, phase in _collect_phases(doc):
-        for n in _walk_nodes(phase.get("steps", []) or []):
+    for _, workflow in _collect_workflows(doc):
+        for n in _walk_nodes(workflow.get("steps", []) or []):
             if n.get("type") == "group" and n.get("id"):
                 ids.add(n["id"])
     return ids
@@ -459,7 +461,7 @@ def cmd_validate(workflow_path: str, target_node_id: str | None = None,
             errors.append(ValidationError(nid, "id",
                                           f"전역 중복 id (sources: {uniq_srcs})"))
 
-    # workflow_ref 검증
+    # workflow ref 검증
     errors.extend(_validate_workflow_refs(resolved, scaffold_resolved))
 
     # cross-skill: directories.path / dependencies
@@ -472,34 +474,34 @@ def cmd_validate(workflow_path: str, target_node_id: str | None = None,
 
 def _validate_single_doc(doc: dict, source: Path,
                          target_node_id: str | None) -> list[ValidationError]:
-    """단일 workflow doc 의 phase / 노드 구조적 검증."""
+    """단일 workflow doc 의 workflow / 노드 구조적 검증."""
     errors: list[ValidationError] = []
 
-    phase_entries = _collect_phases(doc)
-    if not phase_entries:
-        errors.append(ValidationError(f"({source.name})", "phases",
-                                       "phase 가 하나도 없음"))
+    workflow_entries = _collect_workflows(doc)
+    if not workflow_entries:
+        errors.append(ValidationError(f"({source.name})", "workflows",
+                                       "workflow 가 하나도 없음"))
 
-    for phase_key, phase in phase_entries:
-        errors.extend(_validate_phase(phase_key, phase, source))
-        node_errors = _validate_nodes(phase.get("steps", []) or [], target_node_id)
+    for workflow_key, workflow in workflow_entries:
+        errors.extend(_validate_workflow(workflow_key, workflow, source))
+        node_errors = _validate_nodes(workflow.get("steps", []) or [], target_node_id)
         errors.extend(node_errors)
 
     return errors
 
 
-def _validate_phase(phase_id: str, phase: dict, source: Path) -> list[ValidationError]:
+def _validate_workflow(workflow_id: str, workflow: dict, source: Path) -> list[ValidationError]:
     errors: list[ValidationError] = []
-    ctx = f"phase:{phase_id} @ {source.name}"
+    ctx = f"workflow:{workflow_id} @ {source.name}"
 
-    if not isinstance(phase, dict):
-        errors.append(ValidationError(ctx, "(phase)", "phase 가 dict 아님"))
+    if not isinstance(workflow, dict):
+        errors.append(ValidationError(ctx, "(workflow)", "workflow 가 dict 아님"))
         return errors
 
-    if not phase.get("label"):
+    if not (workflow.get("label") or workflow.get("name")):
         errors.append(ValidationError(ctx, "label", "필수 필드 없음"))
 
-    status = phase.get("status")
+    status = workflow.get("status")
     allowed_status = ["completed", "active", "pending"]
     if not status:
         errors.append(ValidationError(ctx, "status", "필수 필드 없음"))
@@ -507,14 +509,14 @@ def _validate_phase(phase_id: str, phase: dict, source: Path) -> list[Validation
         errors.append(ValidationError(ctx, "status",
                                        f"허용값 아님: {status} (허용: {allowed_status})"))
 
-    has_steps = bool(phase.get("steps"))
-    has_workflows = bool(phase.get("workflows"))
-    has_artifacts = bool(phase.get("artifacts"))
+    has_steps = bool(workflow.get("steps"))
+    has_workflows = bool(workflow.get("workflows"))
+    has_artifacts = bool(workflow.get("artifacts"))
     if not has_steps and not has_workflows and not has_artifacts:
         errors.append(ValidationError(ctx, "steps|workflows|artifacts",
                                        "steps / workflows / artifacts 중 하나는 필요"))
 
-    ds = phase.get("default_decision_subject")
+    ds = workflow.get("default_decision_subject")
     if ds and ds not in DECISION_SUBJECTS:
         errors.append(ValidationError(ctx, "default_decision_subject", f"허용값 아님: {ds}"))
 
@@ -539,7 +541,12 @@ def _validate_nodes(nodes: list, target_id: str | None) -> list[ValidationError]
         elif node_type == "decision":
             errors.extend(_validate_decision(node_id, node))
         elif node_type == "validation":
-            errors.extend(_validate_validation(node_id, node))
+            legacy_eval = dict(node)
+            legacy_eval["type"] = "eval"
+            legacy_eval.setdefault("oracle_type", "metric")
+            if "criteria" not in legacy_eval and "pass_criteria" in legacy_eval:
+                legacy_eval["criteria"] = legacy_eval["pass_criteria"]
+            errors.extend(_validate_eval(node_id, legacy_eval))
         elif node_type in ("eval", "oracle"):
             errors.extend(_validate_eval(node_id, node))
         elif node_type == "group":
@@ -672,22 +679,19 @@ def _validate_group(node_id: str, node: dict) -> list[ValidationError]:
 
 def _validate_workflow_refs(resolved: ResolvedWorkflow,
                             scaffold_resolved: dict | None) -> list[ValidationError]:
-    """phase.workflows[].ref / module / anchor 검증."""
+    """workflow.workflows[].ref / optional module / anchor 검증."""
     errors: list[ValidationError] = []
     for entry in resolved.refs:
         ref_obj = entry["ref"]
         source = entry["source"]
-        phase_key = entry["phase"]
-        ctx = f"phase:{phase_key} @ {source.name}"
+        workflow_key = entry["workflow"]
+        ctx = f"workflow:{workflow_key} @ {source.name}"
 
         ref_str = ref_obj.get("ref")
         mod_id = ref_obj.get("module")
         if not ref_str:
             errors.append(ValidationError(ctx, "workflows.ref", "필수 필드 없음"))
             continue
-        if not mod_id:
-            errors.append(ValidationError(ctx, "workflows.module", "필수 필드 없음"))
-
         ref_file, _, anchor = ref_str.partition("#")
         sub_path = (source.parent / ref_file).resolve()
         if not sub_path.exists():
@@ -699,7 +703,7 @@ def _validate_workflow_refs(resolved: ResolvedWorkflow,
         if sub_doc is None:
             continue
 
-        # module 일치 검사 — sub 파일이 선언한 module.id 와 일치
+        # module 이 명시된 경우 sub 파일이 선언한 module.id 와 일치해야 한다.
         sub_decl_mod = (sub_doc.get("module") or {}).get("id")
         if mod_id and sub_decl_mod and mod_id != sub_decl_mod:
             errors.append(ValidationError(
@@ -749,8 +753,8 @@ def _validate_cross_skill(resolved: ResolvedWorkflow,
     module_ids = scaffold_resolved["module_ids"]
 
     for src, doc in resolved.docs.items():
-        for phase_key, phase in _collect_phases(doc):
-            for n in _walk_nodes(phase.get("steps", []) or []):
+        for workflow_key, workflow in _collect_workflows(doc):
+            for n in _walk_nodes(workflow.get("steps", []) or []):
                 for d in n.get("directories", []) or []:
                     p = d.get("path")
                     if not p:
@@ -807,7 +811,7 @@ def _print_results(errors: list[ValidationError], path: str):
 # ─── harness-manifest ─────────────────────────────────────────────────────────
 
 def cmd_harness_manifest(workflow_path: str, out: str | None, fmt: str = "json"):
-    """root workflow 부터 sub 까지 validation 노드의 harness 를 모아 manifest 생성."""
+    """root workflow 부터 sub 까지 harness 보유 Eval 노드를 모아 manifest 생성."""
     path = Path(workflow_path)
     if not path.exists():
         sys.exit(f"[ERROR] 파일 없음: {workflow_path}")
@@ -898,10 +902,10 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="노드 유형 스키마 출력")
-    p_show.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group", "phase"])
+    p_show.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group"])
 
     p_sc = sub.add_parser("scaffold", help="노드 스캐폴드 YAML 생성")
-    p_sc.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group", "phase"])
+    p_sc.add_argument("type", choices=["step", "decision", "validation", "eval", "oracle", "group"])
     p_sc.add_argument("--id", dest="node_id", default=None,
                       help="노드 id (생략 시 placeholder). 네이밍 패턴은 프로젝트 컨벤션.")
     p_sc.add_argument("--decision-subject", choices=DECISION_SUBJECTS,
@@ -912,7 +916,7 @@ def main():
     p_val.add_argument("--node", help="특정 node id만 검증")
     p_val.add_argument("--scaffold", help="cross-skill 검증용 scaffold root index.yaml")
 
-    p_har = sub.add_parser("harness-manifest", help="validation 노드 harness 집계")
+    p_har = sub.add_parser("harness-manifest", help="harness 보유 Eval 노드 집계")
     p_har.add_argument("workflow", help="root workflow YAML 경로")
     p_har.add_argument("--out", help="출력 파일 (생략 시 stdout)")
     p_har.add_argument("--format", choices=["json", "yaml"], default="json")

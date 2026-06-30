@@ -24,18 +24,24 @@ def _write(tmp_path, name, doc):
 
 # ─── 투영 ────────────────────────────────────────────────────────────────────
 
-def test_projects_phase_dependency_edges(tmp_path):
+def test_projects_workflow_membership_edges(tmp_path):
     doc = {
-        "phases": [
-            {"id": "a", "name": "A", "status": "completed", "dependencies": []},
-            {"id": "b", "name": "B", "status": "active", "dependencies": ["a"]},
+        "workflow": {"id": "root"},
+        "workflows": [
+            {"id": "a", "name": "A", "status": "completed", "steps": [
+                {"type": "step", "id": "a-s-01", "label": "A", "status": "completed"}
+            ]},
+            {"id": "b", "name": "B", "status": "active", "steps": [
+                {"type": "step", "id": "b-s-01", "label": "B", "status": "active"}
+            ]},
         ]
     }
     g, _ = wf_to_ttl.build_graph(_write(tmp_path, "wf.yaml", doc))
-    deps = list(g.triples((None, wf_to_ttl.WF.dependsOn, None)))
-    assert len(deps) == 1
-    assert str(deps[0][0]).endswith("phase/b")
-    assert str(deps[0][2]).endswith("phase/a")
+    memberships = list(g.triples((None, wf_to_ttl.WF.hasNode, None)))
+    subflows = list(g.triples((None, wf_to_ttl.WF.has_subWorkflow, None)))
+    assert len(memberships) == 2
+    assert len(subflows) == 2
+    assert all("workflow/root/" in str(s) for s, _, _ in memberships)
 
 
 def test_real_root_template_feedback_control_and_shape_conform():
@@ -48,40 +54,33 @@ def test_real_root_template_feedback_control_and_shape_conform():
 
 # ─── Feedback loop control (cycle 자체가 아니라 Eval 개입점 유무를 검증) ───
 
-def test_phase_feedback_loop_without_eval_fails(tmp_path):
+def test_node_feedback_loop_without_eval_fails(tmp_path):
     doc = {
-        "phases": [
-            {"id": "a", "name": "A", "status": "active", "dependencies": ["c"]},
-            {"id": "b", "name": "B", "status": "active", "dependencies": ["a"]},
-            {"id": "c", "name": "C", "status": "active", "dependencies": ["b"]},
+        "workflows": [
+            {"id": "a", "name": "A", "status": "active", "steps": [
+                {"type": "step", "id": "s-01", "label": "작업", "status": "active"},
+                {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
+                 "decision_subject": "agent", "branches": [{"on": "again", "goto": "s-01"}]},
+            ]},
         ]
     }
     res = wf_to_ttl.validate(_write(tmp_path, "cyclic.yaml", doc))
     assert res["ok"] is False
     assert len(res["uncontrolled_loops"]) >= 1
-    assert any(u.endswith(("phase/a", "phase/b", "phase/c")) for u in res["uncontrolled_loops"])
+    assert any(u.endswith(("node/a/s-01", "node/a/d-01")) for u in res["uncontrolled_loops"])
 
 
-def test_phase_feedback_loop_with_eval_gate_conforms(tmp_path):
+def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
     """순환은 허용하되 loop 안에 별도 Eval gate 가 있어야 한다."""
     doc = {
-        "phases": [
-            {"id": "a", "name": "A", "status": "active", "dependencies": ["c"]},
-            {
-                "id": "b",
-                "name": "B",
-                "status": "active",
-                "dependencies": ["a"],
-                "steps": [{
-                    "type": "oracle",
-                    "id": "b-o-01",
-                    "label": "Output quality oracle",
-                    "status": "active",
-                    "oracle_type": "user",
-                    "criteria": ["human accepted"],
-                }],
-            },
-            {"id": "c", "name": "C", "status": "active", "dependencies": ["b"]},
+        "workflows": [
+            {"id": "a", "name": "A", "status": "active", "steps": [
+                {"type": "step", "id": "s-01", "label": "작업", "status": "active"},
+                {"type": "eval", "id": "e-01", "label": "품질 평가", "status": "active",
+                 "oracle_type": "metric", "criteria": ["accepted"]},
+                {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
+                 "decision_subject": "agent", "branches": [{"on": "again", "goto": "s-01"}]},
+            ]},
         ]
     }
     res = wf_to_ttl.validate(_write(tmp_path, "controlled.yaml", doc))
@@ -402,8 +401,8 @@ def test_eval_tool_revision_target_accepts_targeted_remediation_step(tmp_path):
     assert res["ok"], res
 
 
-def test_multi_workflow_phase_and_node_uris_are_workflow_scoped(tmp_path):
-    """서로 다른 workflow의 동명 phase/node가 RDF 병합에서 충돌하지 않는다."""
+def test_multi_workflow_and_node_uris_are_workflow_scoped(tmp_path):
+    """서로 다른 workflow의 동명 sub-workflow/node가 RDF 병합에서 충돌하지 않는다."""
     doc_a = {
         "workflow": {"id": "workflow-a"},
         "generation": {
@@ -438,25 +437,42 @@ def test_multi_workflow_phase_and_node_uris_are_workflow_scoped(tmp_path):
     g2, _ = wf_to_ttl.build_graph(_write(tmp_path, "b.yaml", doc_b))
     combined = g1 + g2
 
-    phases = {str(s) for s in combined.subjects(wf_to_ttl.RDF.type, wf_to_ttl.WF.Phase)}
+    workflows = {str(s) for s in combined.subjects(wf_to_ttl.RDF.type, wf_to_ttl.WF.Workflow)}
     nodes = {str(s) for s in combined.subjects(wf_to_ttl.RDF.type, wf_to_ttl.WF.Step)}
 
-    assert any(uri.endswith("phase/workflow-a/generation") for uri in phases)
-    assert any(uri.endswith("phase/workflow-b/generation") for uri in phases)
+    assert any(uri.endswith("workflow/workflow-a/generation") for uri in workflows)
+    assert any(uri.endswith("workflow/workflow-b/generation") for uri in workflows)
     assert any(uri.endswith("node/workflow-a/s-010") for uri in nodes)
     assert any(uri.endswith("node/workflow-b/s-010") for uri in nodes)
-    assert len([uri for uri in phases if uri.endswith("/generation")]) == 2
+    assert len([uri for uri in workflows if uri.endswith("/generation")]) == 2
     assert len([uri for uri in nodes if uri.endswith("/s-010")]) == 2
 
 
-def test_depends_on_undeclared_phase_fails_range(tmp_path):
-    """dependsOn 타깃이 선언된 Phase 가 아니면 sh:class wf:Phase 위반(dangling ref)."""
+def test_has_subworkflow_undeclared_target_fails_range(tmp_path):
+    """has_subWorkflow 타깃이 Workflow 타입이 아니면 sh:class wf:Workflow 위반."""
+    doc = {"workflow": {"id": "root"}, "workflows": [
+        {"id": "a", "name": "A", "status": "active", "steps": [
+            {"type": "step", "id": "a-s-01", "label": "A", "status": "active"}
+        ]},
+    ]}
+    p = _write(tmp_path, "dangling.yaml", doc)
+    g, _ = wf_to_ttl.build_graph(p)
+    root = wf_to_ttl.WF["workflow/root"]
+    ghost = wf_to_ttl.WF["workflow/ghost"]
+    g.add((root, wf_to_ttl.WF.has_subWorkflow, ghost))
+    conforms, _ = wf_to_ttl.run_shacl(g)
+    assert conforms is False
+
+
+def test_legacy_phase_input_warns_but_conforms(tmp_path):
     doc = {"phases": [
-        {"id": "a", "name": "A", "status": "active", "dependencies": ["ghost"]},
+        {"id": "a", "name": "A", "status": "active", "steps": [
+            {"type": "step", "id": "a-s-01", "label": "A", "instruction": "A 수행", "status": "active"}
+        ]},
     ]}
     res = wf_to_ttl.validate(_write(tmp_path, "dangling.yaml", doc))
-    assert res["ok"] is False
-    assert res["shacl_conforms"] is False
+    assert res["ok"] is True
+    assert res["legacy_warnings"]
 
 
 def test_bad_decision_subject_enum_fails(tmp_path):
@@ -693,9 +709,12 @@ def test_unquoted_on_branch_normalized(tmp_path):
 
 
 def test_cli_validate_exit_code_on_uncontrolled_loop(tmp_path):
-    doc = {"phases": [
-        {"id": "a", "name": "A", "status": "active", "dependencies": ["b"]},
-        {"id": "b", "name": "B", "status": "active", "dependencies": ["a"]},
+    doc = {"workflows": [
+        {"id": "a", "name": "A", "status": "active", "steps": [
+            {"type": "step", "id": "s-01", "label": "작업", "status": "active"},
+            {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
+             "decision_subject": "agent", "branches": [{"on": "again", "goto": "s-01"}]},
+        ]},
     ]}
     p = _write(tmp_path, "c.yaml", doc)
     out = subprocess.run(

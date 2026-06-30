@@ -43,35 +43,23 @@ wf:EvalShape a sh:NodeShape ; sh:targetClass wf:Eval ;
 wf:GroupShape a sh:NodeShape ; sh:targetClass wf:Group ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] .
 
-wf:PhaseShape a sh:NodeShape ; sh:targetClass wf:Phase ;
-    sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:description ; sh:datatype xsd:string ; sh:message "description: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:parallel ; sh:datatype xsd:boolean ; sh:message "parallel: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:showWrapper ; sh:datatype xsd:boolean ; sh:message "showWrapper: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:defaultDecisionSubject ; sh:in ( "user" "agent" ) ; sh:message "defaultDecisionSubject: schema 제약 위반" ] .
-
 wf:StepShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:property [ sh:path wf:label ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "label: schema 제약 위반" ] ;
     sh:property [ sh:path wf:instruction ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "instruction: schema 제약 위반" ] ;
     sh:property [ sh:path wf:usesTool ; sh:datatype xsd:string ; sh:message "usesTool: schema 제약 위반" ] ;
     sh:property [ sh:path wf:targetArtifact ; sh:datatype xsd:string ; sh:message "targetArtifact: schema 제약 위반" ] .
 
-wf:WorkflowRefShape a sh:NodeShape ; sh:targetClass wf:WorkflowRef ;
-    sh:property [ sh:path wf:ref ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "ref: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:module ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "module: schema 제약 위반" ] ;
-    sh:property [ sh:path wf:harnessPropagate ; sh:datatype xsd:boolean ; sh:message "harnessPropagate: schema 제약 위반" ] .
-
 # ─── 그래프 층 range (schema 없음) ──────────────────────────────────────────────
-wf:PhaseGraphShape a sh:NodeShape ; sh:targetClass wf:Phase ;
-    sh:property [ sh:path wf:dependsOn ; sh:class wf:Phase ;
-                  sh:message "dependsOn 타깃은 wf:Phase 여야 함" ] ;
+wf:WorkflowGraphShape a sh:NodeShape ; sh:targetClass wf:Workflow ;
     sh:property [ sh:path wf:hasNode ; sh:class wf:Node ;
                   sh:message "hasNode 타깃은 wf:Node 여야 함" ] ;
-    sh:property [ sh:path wf:hasWorkflowRef ; sh:class wf:WorkflowRef ;
-                  sh:message "hasWorkflowRef 타깃은 wf:WorkflowRef 여야 함" ] .
+    sh:property [ sh:path wf:has_subWorkflow ; sh:class wf:Workflow ;
+                  sh:message "has_subWorkflow 타깃은 wf:Workflow 여야 함" ] .
 wf:NodeGraphShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:property [ sh:path wf:next ; sh:class wf:Node ;
-                  sh:message "next 타깃은 wf:Node 여야 함" ] .
+                  sh:message "next 타깃은 wf:Node 여야 함" ] ;
+    sh:property [ sh:path wf:inWorkflow ; sh:class wf:Workflow ;
+                  sh:message "inWorkflow 타깃은 wf:Workflow 여야 함" ] .
 wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:sparql [
         sh:message "tool delegation shape: wf:usesTool step needs a consumable input/reference artifact so artifact --consumes--> tool can be rendered" ;
@@ -179,26 +167,10 @@ wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .
 wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
-    sh:property [ sh:path wf:milestoneOf ; sh:class wf:Phase ;
-                  sh:message "milestoneOf 타깃은 wf:Phase 여야 함" ] .
+    sh:property [ sh:path wf:milestoneOf ; sh:class wf:Workflow ;
+                  sh:message "milestoneOf 타깃은 wf:Workflow(sub-workflow) 여야 함" ] .
 
 # ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
-wf:PhaseFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Phase ;
-    sh:sparql [
-        sh:message "uncontrolled phase feedback loop: wf:dependsOn cycle has no Eval gate in the loop" ;
-        sh:select """
-            PREFIX wf: <https://mso.dev/ontology/workflow#>
-            SELECT $this WHERE {
-              $this wf:dependsOn+ $this .
-              FILTER NOT EXISTS {
-                $this wf:dependsOn* ?phase .
-                ?phase wf:hasNode ?eval .
-                ?eval a wf:Eval .
-                ?phase wf:dependsOn* $this .
-              }
-            }
-        """ ;
-    ] .
 wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:sparql [
         sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval gate in the loop" ;

@@ -2,8 +2,9 @@
 # work-memory-check.sh  (mso-work-memory)
 # 비차단 기록 판단 넛지 (항상 exit 0).
 #
-# MSO 약점 보완: auditlog/worklog 는 자동 로깅이지만, "track-record/insight-record
+# MSO 약점 보완: auditlog 는 자동 로깅이지만, worklog/track-record/insight-record
 # entry 를 언제 남길지"에 대한 판단 트리거가 없었다. 이 훅이 그 넛지를 제공한다.
+# worklog 는 workflow TTL node 실행 기록이며 Stop hook 에서 자동 생성하지 않는다.
 #
 # ── 전달 의미론 (중요) ──────────────────────────────────────────────────
 # Provider별 훅 stdout 의미론이 다르므로 work-memory-check 는 컨텍스트 도달이

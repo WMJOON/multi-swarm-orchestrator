@@ -4,8 +4,8 @@
 
 ## Table of Contents
 
-1. [Phase Structure Motif](#1-phase-structure-motif) — discovery/development/testing
-2. [Step Definition Motif](#2-step-definition-motif) — location/deliverables/validation
+1. [Workflow Structure Motif](#1-workflow-structure-motif) — discovery/development/testing sub-workflows
+2. [Step Definition Motif](#2-step-definition-motif) — location/deliverables/eval
 3. [Decision Node Motif](#3-decision-node-motif) — decision_subject, 분기 조건
 4. [Deliverable Taxonomy Motif](#4-deliverable-taxonomy-motif) — type 기반 분류
 5. [Dependencies Motif](#5-dependencies-motif) — requires/provides
@@ -20,9 +20,9 @@
 
 ---
 
-## 1. Phase Structure Motif
+## 1. Workflow Structure Motif
 
-모든 모듈 워크플로우는 동일한 3개 단계를 따릅니다.
+모든 모듈 워크플로우는 lifecycle 단계를 sub-workflow 로 표현한다.
 
 ### Structure
 ```yaml
@@ -34,29 +34,27 @@ module:
   owner: [Owner Email]
   created: [YYYY-MM-DD]
 
-discovery:
-  id: discovery
-  label: 발견 & 계획
-  status: completed | active | pending
-  steps: [Step List]
-  artifacts: [Artifact List]
+workflows:
+  - id: discovery
+    label: 발견 & 계획
+    status: completed | active | pending
+    steps: [Step List]
+    artifacts: [Artifact List]
 
-development:
-  id: development
-  label: 개발 & 구현
-  status: ...
-  steps: [...]
+  - id: development
+    label: 개발 & 구현
+    status: ...
+    steps: [...]
 
-testing:
-  id: testing
-  label: 테스트 & 평가
-  status: ...
-  steps: [...]
-  success_criteria: [3개 이상]
+  - id: testing
+    label: 테스트 & 평가
+    status: ...
+    steps: [...]
+    success_criteria: [3개 이상]
 ```
 
-### Phases Applied
-| Phase | 빈도 | 필수 여부 |
+### Workflows Applied
+| Workflow | 빈도 | 필수 여부 |
 |-------|------|---------|
 | discovery | 6/6 (100%) | **Required** |
 | development | 6/6 (100%) | **Required** |
@@ -78,7 +76,7 @@ testing:
 | `status` | ✓ | `completed` \| `active` \| `pending` |
 | `directories` | optional | input/output/reference/instruction 역할별 경로 |
 | `deliverables` | optional | 이 step의 산출물 목록 |
-| `validation` | optional | 품질 검증 항목 |
+| `eval` | optional | 품질 평가/검증 게이트 |
 | `sub_steps` | optional | Mermaid 내부 subgraph용 상세 단계 |
 
 ### Example
@@ -219,10 +217,10 @@ quality_metrics:
 
 ## 9. Workflow Patterns (별도 문서)
 
-MOTIF는 모든 step/phase에 **동일하게 적용되는 구조 단위**다.  
+MOTIF는 모든 step/workflow에 **동일하게 적용되는 구조 단위**다.
 반면 **Workflow Pattern**은 형태(사이클)는 같지만 내용(예: "edit" 단계)이 워크플로우마다 다른 **더 큰 단위의 재사용 형태**다.
 
-> MOTIF: Phase Structure, Step Definition, Decision Node, Dependencies... — 구조가 고정  
+> MOTIF: Workflow Structure, Step Definition, Decision Node, Dependencies... — 구조가 고정
 > Pattern: Local File Versioning, Git Versioning... — 구조는 고정, 내용은 모듈마다 다름
 
 상세: [workflow-patterns.md](workflow-patterns.md)

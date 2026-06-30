@@ -365,9 +365,9 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", scaffold_cmd, "scaffold-check.sh")
 
-        # Stop / PreCompact — work-memory 자동 로그(auditlog 등)를 훅 안에서 커밋한다.
+        # Stop / PreCompact — work-memory 변경분을 훅 안에서 커밋한다.
         # 훅 커밋은 PostToolUse 를 재트리거하지 않아 auditlog append 무한루프를 피한다.
-        # (구 worklog.py 빈 "세션 종료" 마커는 제거됨.)
+        # worklog 는 workflow TTL node 실행 기록이므로 Stop hook 에서 자동 생성하지 않는다.
         for event, matcher in (("Stop", None), ("PreCompact", "auto")):
             _upsert_hook(hooks_section, event, matcher, commit_cmd, "commit-work-memory.sh")
         # work-memory-check 넛지 — provider 간 공통으로 확인된 SessionStart 에만 둔다.

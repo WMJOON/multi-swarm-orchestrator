@@ -1,5 +1,40 @@
 # 변경 이력
 
+## v0.6.2 (2026-06-30) — Worklog semantic boundary + cloud hand-off
+
+> **worklog를 workflow TTL node 실행 기록으로 재정의하고, Stop hook 자동 생성과 cloud hook side effect 의존을 제거.** `auditlog`는 도구 실행 사실, `worklog`는 workflow `node -> node` 레일 실행, `AD/IN/TS`는 레일 밖 판단과 예외 기록을 담당한다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| worklog 의미 | `worklog`는 세션 종료 요약이나 auditlog 요약이 아니라 workflow TTL node 실행 기록으로 제한. workflow node를 특정할 수 없으면 `AD` 또는 `IN/TS` 후보로 기록. |
+| hook 정책 | Stop/PreCompact는 `commit-work-memory.sh`만 수행. Stop hook은 worklog를 자동 생성하지 않음. `work-memory-check`는 SessionStart(compact/resume)에서 기록 판단 넛지만 제공. |
+| cloud hand-off | Codex cloud 같은 ephemeral runtime에서 project hook side effect나 로컬 커밋을 다음 에이전트 기억 보장으로 보지 않음. 최종 답변, diff, 커밋 가능한 tracked file을 hand-off 기준으로 명시. |
+| repository setup | `mso-repository-setup` hook 생성 메시지와 `init.py` 주석을 `worklog.py`/Stop worklog 중심에서 `commit-work-memory` + 판단 넛지 구조로 정정. |
+| 운영 문서 | `architecture.md`, `getting-started.md`의 hook 흐름, 파일 레이아웃, 수동 hook 테스트 예시에서 자동 worklog 표현 제거. |
+| work-memory guide | `work-memory-judgment.md`에 workflow TTL node를 특정할 수 있을 때만 `worklog`를 쓰고, 레일 밖 작업은 `AD` 또는 `IN/TS`로 기록한다는 판단 모델 추가. |
+| schema 문구 | `schema.yaml`의 WL 설명을 자동 일별 로그가 아니라 workflow TTL node 실행 기록으로 정정. |
+| hook script 주석 | `commit-work-memory.sh`, `work-memory-check.sh` 주석을 수동 worklog/track/insight까지 포함하는 work-memory 변경분 기준으로 정정. |
+| 버전 정렬 | README, changelog, `mso-work-memory`, `mso-repository-setup` 버전을 v0.6.2로 정렬. |
+
+## v0.6.1 (2026-06-30) — Phase-less Workflow Model
+
+> **phase 중간 계층을 workflow 재귀로 흡수하는 구현 완료.** v0.6.0 oracle graph의 `has_subWorkflow` 재귀 계층을 끝까지 밀어 `wf:Phase`/`wf:Validation`/`wf:dependsOn`/`wf:WorkflowRef`를 정본 생성물에서 제거했다.
+
+### Changed
+
+| 항목 | 내용 |
+|------|------|
+| phase-less 모델 | `workflow -> phase -> node` 대신 `workflow --hasNode--> node`와 `workflow --has_subWorkflow--> workflow`로 멤버십과 lifecycle을 표현. |
+| TBox/SHACL | `Phase`, `WorkflowRef`, `dependsOn`, `hasWorkflowRef`, `Validation` 정본 생성을 제거하고 `Workflow`, `hasNode`, `has_subWorkflow`, `inWorkflow`, `Eval` 중심으로 재생성. |
+| YAML import | top-level `workflows[]`를 정본 입력으로 승격. legacy `phases[]`/named phase는 읽기 호환으로 `wf:Workflow`에 투영하고 warning을 낸다. |
+| validation 정리 | legacy `type: validation`은 `wf:Eval` + `oracle_type=metric`으로 투영. 신규 scaffold/docs는 `eval`을 사용. |
+| observability | process unit을 workflow/sub-workflow 중심으로 정리하고 legacy `wf:Phase`는 읽기 호환으로만 포함. |
+| templates/tests | root/module workflow template, generated ABox 예시, workflow-design/graph-observability tests를 phase-less 모델에 맞춰 갱신. |
+
+상세 설계: `planning/mso-v0.6.1-SPEC-phase-less-workflow.md`.
+
 ## v0.6.0 (2026-06-30) — Oracle Graph (self-improvement stratification)
 
 > **workflow self-improvement loop 의 자기참조를 edge 종류(base/oracle)로 차단하는 oracle graph 레이어 추가.** skill = sub-workflow 이므로 self-improvement 를 base workflow 에 직접 넣으면 evolve 행위가 자기 자신으로 되돌아오는 순환이 생긴다. design-time SHACL 이 자기참조를 막고, run-time optimizer governance 가 evolve 확정을 control plane 으로 gate 하는 이중 방어.

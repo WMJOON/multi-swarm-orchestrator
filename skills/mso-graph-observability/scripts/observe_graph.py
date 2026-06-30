@@ -645,6 +645,18 @@ def subjects_of_type(graph: Graph, cls: URIRef) -> list[URIRef]:
     )
 
 
+def process_units(graph: Graph) -> list[URIRef]:
+    # v0.6.1 phase-less: process unit = workflow/sub-workflow.
+    # legacy wf:Phase 는 읽기 호환으로만 포함한다.
+    units = list(subjects_of_type(graph, WF.Phase))
+    seen = set(units)
+    for o in graph.objects(None, WF.has_subWorkflow):
+        if isinstance(o, URIRef) and o not in seen:
+            seen.add(o)
+            units.append(o)
+    return sorted(units, key=str)
+
+
 def first_literal(graph: Graph, subject: URIRef, predicate: URIRef) -> str | None:
     value = graph.value(subject, predicate)
     if isinstance(value, Literal):
@@ -938,7 +950,7 @@ def build_runtime_analysis(root: Path) -> str:
 def workflow_scopes(graph: Graph) -> list[str]:
     scopes = {
         scope
-        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group, WF.WorkflowRef)
+        for cls in (WF.Phase, WF.Step, WF.Decision, WF.Eval, WF.Group)
         for subject in subjects_of_type(graph, cls)
         for scope in [workflow_scope(subject)]
         if scope
@@ -964,7 +976,7 @@ def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
 def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
     node_terms = {
         node
-        for cls in (WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group, WF.WorkflowRef)
+        for cls in (WF.Step, WF.Decision, WF.Eval, WF.Group)
         for node in subjects_of_type(graph, cls)
     }
     return filter_scope(sorted(node_terms, key=str), scope)
@@ -1467,7 +1479,7 @@ def build_process_map(
     graph: Graph,
     data_registry: dict[str, dict[str, str]] | None = None,
 ) -> str:
-    """Phase-level process map: [['scope<br>phase']] subroutine nodes + shared artifact cylinders.
+    """Workflow/sub-workflow process map: [['scope<br>workflow']] subroutine nodes + shared artifact cylinders.
 
     Shows only cross-scope artifacts and machine-native (local_database/event_store/knowledge_store)
     artifacts. Deliverable free-text nodes are intentionally excluded — they have no stable id and
@@ -1475,16 +1487,16 @@ def build_process_map(
     """
     data_registry = data_registry or {}
 
-    # --- Phase → Step reverse mapping (via wf:hasNode) ---
+    # --- Workflow → Node reverse mapping (via wf:hasNode) ---
     step_to_phase: dict[str, str] = {}
-    for phase in subjects_of_type(graph, WF.Phase):
+    for phase in process_units(graph):
         for step in graph.objects(phase, WF.hasNode):
             if isinstance(step, URIRef):
                 step_to_phase[str(step)] = str(phase)
 
-    phases = subjects_of_type(graph, WF.Phase)
+    phases = process_units(graph)
     if not phases:
-        return "_No wf:Phase nodes found in TTL. Add phases to your workflow ABox to generate a process map._"
+        return "_No wf:Workflow process units found in TTL. Add workflows[] to your workflow ABox to generate a process map._"
 
     phase_scope_map: dict[str, str] = {}
     phase_label_map: dict[str, str] = {}
@@ -1498,8 +1510,8 @@ def build_process_map(
         phase_label_map[pstr] = preferred_label(graph, phase) or display_id(phase)
         phase_node_ids[pstr] = mermaid_id("proc", phase)
 
-    # --- Collect artifact refs per phase (aggregate from all nodes in that phase) ---
-    node_types = (WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group)
+    # --- Collect artifact refs per workflow (aggregate from all nodes in that workflow) ---
+    node_types = (WF.Step, WF.Decision, WF.Eval, WF.Group)
     all_nodes = [n for cls in node_types for n in subjects_of_type(graph, cls)]
 
     all_refs: dict[str, dict[str, str]] = {}
@@ -1603,7 +1615,7 @@ def build_process_map(
         return "_No displayable process nodes or shared artifacts found._"
 
     body = "\n".join(lines)
-    return f"> Phase-level process map. Each `[[...]]` node is a workflow phase; cylinders are shared machine-native artifacts.\n\n```mermaid\n{body}\n```"
+    return f"> Workflow/sub-workflow process map. Each `[[...]]` node is a workflow process unit; cylinders are shared machine-native artifacts.\n\n```mermaid\n{body}\n```"
 
 
 def _sort_steps_by_next_chain(graph: Graph, steps: list[URIRef]) -> list[URIRef]:
@@ -1641,14 +1653,14 @@ def build_process_flow(
 ) -> str:
     """Internal flow view for one workflow scope.
 
-    Phases are boxed subgraphs with steps inside. Phase sequence follows URI order
+    Workflows are boxed subgraphs with nodes inside. Workflow sequence follows URI order
     (or wf:order when available). Local-database artifacts are shown as cylinders.
     """
     data_registry = data_registry or {}
 
-    phases = [p for p in subjects_of_type(graph, WF.Phase) if workflow_scope(p) == scope]
+    phases = [p for p in process_units(graph) if workflow_scope(p) == scope]
     if not phases:
-        return f"_No `wf:Phase` nodes found for scope `{scope}`._"
+        return f"_No `wf:Workflow` process units found for scope `{scope}`._"
 
     def phase_sort_key(p: URIRef) -> tuple[int, str]:
         order_val = graph.value(p, WF.order)
@@ -1663,7 +1675,7 @@ def build_process_flow(
 
     phases_sorted = sorted(phases, key=phase_sort_key)
 
-    # --- Phase → Steps ---
+    # --- Workflow → Nodes ---
     phase_steps: dict[str, list[URIRef]] = {}
     step_to_phase: dict[str, str] = {}
     for phase in phases_sorted:
@@ -1677,7 +1689,7 @@ def build_process_flow(
     # --- Artifact collection (machine-native only) ---
     phase_arts: dict[str, dict[str, tuple[dict[str, str], bool, bool]]] = {}
     all_refs: dict[str, dict[str, str]] = {}
-    node_types = (WF.Step, WF.Decision, WF.Eval, WF.Validation, WF.Group)
+    node_types = (WF.Step, WF.Decision, WF.Eval, WF.Group)
     all_scope_nodes = [n for cls in node_types for n in subjects_of_type(graph, cls) if workflow_scope(n) == scope]
     for node in all_scope_nodes:
         pstr = step_to_phase.get(str(node))
@@ -1726,7 +1738,7 @@ def build_process_flow(
                 shape = "rect"
                 if (step, RDF.type, WF.Decision) in graph:
                     shape = "hexagon"
-                elif (step, RDF.type, WF.Eval) in graph or (step, RDF.type, WF.Validation) in graph:
+                elif (step, RDF.type, WF.Eval) in graph:
                     shape = "trapezoid"
                 lines.append(f'    {mermaid_shape(s_nid, mermaid_label(slabel, 44), shape)}')
             for i in range(len(steps) - 1):
@@ -1768,7 +1780,7 @@ def build_process_flow(
     body = "\n".join(lines)
     return (
         f"> Internal flow for `{scope_label(scope)}`. "
-        "Boxed subgraphs = phases; nodes inside = steps. "
+        "Boxed subgraphs = workflows; nodes inside = workflow nodes. "
         "Cylinders = machine-native artifacts.\n\n"
         f"```mermaid\n{body}\n```"
     )
@@ -1955,9 +1967,7 @@ def build_workflow_topology(
             (WF.Step, "step"),
             (WF.Decision, "decision"),
             (WF.Eval, "eval"),
-            (WF.Validation, "validation"),
             (WF.Group, "group"),
-            (WF.WorkflowRef, "workflowRef"),
         ):
             if (term, RDF.type, rdf_type) in graph:
                 suffix = local_name(rdf_type)
@@ -1993,13 +2003,13 @@ def build_workflow_topology(
                 return local_name(rdf_type).lower(), css_class, suffix, shape
         return "node", None, "", "rect"
 
-    phases = filter_scope(subjects_of_type(graph, WF.Phase), scope)
+    phases = filter_scope(process_units(graph), scope)
 
     # Build node→scope reverse map: flat-URI nodes (e.g. node/cd-s-001) have no
     # workflow-id segment, so workflow_scope() returns None for them.
     # Infer scope from the scoped phase that owns the node via wf:hasNode.
     node_to_scope: dict[URIRef, str] = {}
-    for _phase_uri in subjects_of_type(graph, WF.Phase):
+    for _phase_uri in process_units(graph):
         _phase_scope = workflow_scope(_phase_uri)
         if _phase_scope:
             for _node_uri in graph.objects(_phase_uri, WF.hasNode):
@@ -2019,7 +2029,7 @@ def build_workflow_topology(
                 _phase_lbl = preferred_label(graph, phase) or display_id(phase)
                 label = f"{scope_label(_phase_scope)} / {mermaid_label(_phase_lbl, 44)}"
             else:
-                suffix = f"Phase / {status}" if status else "Phase"
+                suffix = f"Workflow / {status}" if status else "Workflow"
                 label = mermaid_node_label(graph, phase, suffix)
             if phase_id not in declared:
                 lines.append(f'  subgraph {phase_id}["{label}"]')
@@ -2033,15 +2043,12 @@ def build_workflow_topology(
                         if view in stream_view_names and node_cls not in {"decision", "eval"}:
                             node_suffix = ""  # artifact-stream: label + id only, no type/status
                         declare(node, node_prefix, node_cls, node_suffix, node_shape)
-                for ref in sorted(graph.objects(phase, WF.hasWorkflowRef), key=str):
-                    if isinstance(ref, URIRef) and in_scope(ref):
-                        declare(ref, "workflowref", "workflowRef", "WorkflowRef")
                 lines.append("  end")
     else:
         for phase in phases:
             status = first_literal(graph, phase, WF.status)
-            phase_cls = f"status_{status}" if status in {"completed", "active", "pending"} else "phase"
-            suffix = f"Phase / {status}" if status else "Phase"
+            phase_cls = f"status_{status}" if status in {"completed", "active", "pending"} else "workflow"
+            suffix = f"Workflow / {status}" if status else "Workflow"
             declare(phase, "phase", phase_cls, suffix)
 
     if include_internal:
@@ -2049,9 +2056,7 @@ def build_workflow_topology(
             (WF.Step, "step"),
             (WF.Decision, "decision"),
             (WF.Eval, "eval"),
-            (WF.Validation, "validation"),
             (WF.Group, "group"),
-            (WF.WorkflowRef, "workflowRef"),
         ]
         for cls, css_class in node_classes:
             for node in subjects_of_type(graph, cls):
@@ -2089,17 +2094,7 @@ def build_workflow_topology(
         suffix = f"Milestone / {status}" if status else "Milestone"
         declare(milestone, "milestone", "milestone", suffix)
 
-    for phase in phases:
-        phase_id = mermaid_id("phase", phase) if include_internal else declare(phase, "phase")
-        if view in stream_view_names:
-            continue  # dependsOn arrows clutter the artifact-stream view
-        for dep in sorted(graph.objects(phase, WF.dependsOn), key=str):
-            if isinstance(dep, URIRef) and (scope is None or workflow_scope(dep) == scope or in_scope(dep)):
-                dep_id = mermaid_id("phase", dep) if include_internal else declare(dep, "phase")
-                edge(dep_id, "-->", "dependsOn", phase_id)
-
-    # Implicit discovery → development → testing ordering for module phases that
-    # have no explicit wf:dependsOn (standard MSO module phase convention).
+    # Implicit discovery → development → testing ordering for lifecycle sub-workflows.
     if include_internal and scope:
         PHASE_ORDER = ["discovery", "development", "testing"]
         ordered: dict[str, URIRef] = {}
@@ -2111,8 +2106,7 @@ def build_workflow_topology(
             src_key, dst_key = PHASE_ORDER[i], PHASE_ORDER[i + 1]
             if src_key in ordered and dst_key in ordered:
                 dst_ph = ordered[dst_key]
-                if not list(graph.objects(dst_ph, WF.dependsOn)):
-                    edge(mermaid_id("phase", ordered[src_key]), "-->", "", mermaid_id("phase", dst_ph))
+                edge(mermaid_id("phase", ordered[src_key]), "-->", "", mermaid_id("phase", dst_ph))
 
     if include_internal:
         # Use in_scope so flat-URI nodes inferred from wf:hasNode are included
@@ -2536,11 +2530,11 @@ def build_workflow_subgraph_index(
     lines = [
         "> Workflow-specific graph views generated from TTL ABox inputs. Each workflow has its own output directory.",
         "",
-        "| Workflow Scope | Repository Graph | Workflow Graph | Artifact Stream Graph | Phases | Nodes | Artifact Nodes |",
+        "| Workflow Scope | Repository Graph | Workflow Graph | Artifact Stream Graph | Workflows | Nodes | Artifact Nodes |",
         "|---|---|---|---|---:|---:|---:|",
     ]
     for scope in scopes:
-        phase_count = len(filter_scope(subjects_of_type(graph, WF.Phase), scope))
+        phase_count = len(filter_scope(process_units(graph), scope))
         node_terms = workflow_node_terms(graph, scope)
         data_count = len(data_keys(graph, scope, data_registry))
         folder = scope_dir_name(scope)

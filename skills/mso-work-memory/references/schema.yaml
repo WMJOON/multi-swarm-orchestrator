@@ -15,13 +15,14 @@ id_patterns:
   PT: "pattern          (insight-record) — PT-NNNN"
   PR: "principle        (insight-record) — PR-NNNN"
   AU: "auditlog         (자동) — AU-YYYYMMDD-HHMMSS-<hash>"
-  WL: "worklog          (일별) — WL-YYYY-MM-DD"
+  WL: "worklog          (workflow TTL node 실행 기록) — WL-YYYY-MM-DD"
 
 id_rules:
   - "타입별 시퀀스, zero-pad 4자리 (예: IN-0001, IN-0042)"
   - "타입 prefix 는 변경 불가 (immutable)"
   - "entry 식별자(primary key)는 record 내부의 `id` 필드다 — 파일 경로가 아니다."
-  - "auditlog/worklog 는 일별·시각별 자동 생성"
+  - "auditlog 는 시각별 자동 생성"
+  - "worklog 는 workflow TTL node 실행 맥락이 있을 때 수동 생성"
 
 # ─── 저장 포맷 (v1.2.0~) ─────────────────────────────────
 # track-record / insight-record 도 auditlog/worklog 처럼 진짜 append-only JSONL 이다.
@@ -35,7 +36,7 @@ id_rules:
 #  같은 트리 안 공존은 DUP-ID 를 유발하므로 wm_migrate.py 로 일괄 전환 후 old 를 archive 한다.)
 storage_format:
   track_insight: "타입별 aggregate append JSONL — <dir>/<type>.jsonl"
-  audit_worklog: "일별/시각별 파일 — <dir>/<id>.jsonl (기존 유지)"
+  audit_worklog: "auditlog=시각별 자동 파일, worklog=workflow node 실행 기록 파일 — <dir>/<id>.jsonl (기존 유지)"
   locator: "primary key = record.id. source_path 는 entry 가 담긴 aggregate 파일(containing log)."
 
 # ─── 타입 정의 (머신리더블 SSOT) ─────────────────────────

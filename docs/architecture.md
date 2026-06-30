@@ -28,7 +28,7 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
               ├── track-record/ (issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting)
               ├── insight-record/ (episodes, patterns, principles)
               ├── auditlog/ (hook 자동 기록)
-              └── worklog/ (hook 자동 기록)
+              └── worklog/ (workflow TTL node 실행 기록)
 ```
 
 ## 스킬 간 의존 관계
@@ -38,7 +38,7 @@ mso-orchestration          ← 단일 진입점 · 트리거 매칭 · 라우팅
 | `mso-scaffold-design` → `mso-workflow-design` | workflow YAML의 `directories.path` 는 index.yaml 등록 경로만 참조 |
 | `mso-workflow-design` → `mso-scaffold-design` | 새 directory role 사용 시 index.yaml에 먼저 등록 |
 | `mso-repository-setup` → 전체 | init 이 가장 먼저 실행. agent-context/ 트리 없이는 다른 스킬 동작 불가 |
-| hook → `mso-work-memory` | auditlog.py·worklog.py 는 work-memory JSONL 스키마를 따름 |
+| hook → `mso-work-memory` | auditlog.py 는 도구 실행을 자동 기록하고, commit-work-memory.sh 는 work-memory 변경분만 커밋 |
 
 ## 데이터 흐름
 
@@ -56,9 +56,13 @@ init.py --hook
         → hooks/auditlog.py
         → auditlog/AU-YYYY-MM-DD.jsonl  (append)
 
-    Stop
-        → hooks/worklog.py
-        → worklog/WL-YYYY-MM-DD.jsonl   (append)
+    Stop / PreCompact
+        → hooks/commit-work-memory.sh
+        → work-memory 변경분만 커밋 (worklog 자동 생성 없음)
+
+    SessionStart(compact/resume)
+        → hooks/work-memory-check.sh
+        → AD/IN/TS/worklog 기록 필요성 넛지
 
 sf_node.py validate index.yaml
     → project 스키마 검증
@@ -67,13 +71,13 @@ sf_node.py validate index.yaml
     → sub_index 계층 재귀 해석 (max depth 3)
 
 wf_node.py validate workflow.yaml
-    → phase / step / decision / validation / group 스키마 검증
+    → workflow / step / decision / eval / group 스키마 검증
     → judge 조건 검증 (HITL/HITLFE → owner 필수 등)
     → node id 계층 전역 unique 검증
     → --scaffold 옵션 시 directories.path cross-check
 
 wf_node.py harness-manifest
-    → validation 노드 수집
+    → harness 보유 eval 노드 수집
     → ci-manifest.json 생성
 
 wm_node.py new <type>
@@ -101,11 +105,10 @@ wm_node.py new <type>
             stdin: Claude Code PostToolUse JSON
             출력: auditlog/AU-YYYY-MM-DD.jsonl (append)
 
-    Stop
-        → hooks/worklog.py
+    Stop / PreCompact
+        → hooks/commit-work-memory.sh
             env: WORKMEM_DIR=<절대경로>
-            stdin: Claude Code Stop JSON
-            출력: worklog/WL-YYYY-MM-DD.jsonl (append)
+            출력: 없음. work-memory 변경분만 커밋.
 ```
 
 ## 파일시스템 레이아웃
@@ -121,7 +124,7 @@ project/
 │   └── work-memory/
 │       ├── schema.yaml                ← entry 스키마 정의
 │       ├── auditlog/                  ← AU-*.jsonl (자동)
-│       ├── worklog/                   ← WL-*.jsonl (자동)
+│       ├── worklog/                   ← WL-*.jsonl (workflow TTL node 실행 기록)
 │       ├── track-record/
 │       │   ├── issue-note/            ← IN-*.jsonl
 │       │   ├── agent-decision/        ← AD-*.jsonl

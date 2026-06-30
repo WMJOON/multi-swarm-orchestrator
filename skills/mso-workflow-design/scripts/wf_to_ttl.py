@@ -8,7 +8,7 @@
   투영한 뒤 두 층위로 검증한다:
 
     1) 로컬 shape (pyshacl)   — references/shapes/workflow-shapes.ttl
-       노드-단위 불변식: status enum, validation=harness+pass_criteria,
+       노드-단위 불변식: status enum, eval=harness/criteria,
        decision=decision_subject, label 비어있지 않음. (스키마 structural_invariants 의 로컬분)
 
     2) feedback loop control (SHACL-SPARQL + rdflib SPARQL)
@@ -20,7 +20,7 @@
   python wf_to_ttl.py serialize <workflow.yaml>          # legacy YAML import: TTL stdout
   python wf_to_ttl.py validate  <workflow.yaml> [--json] # migration gate, 위반 시 exit 1
 
-검증 노드 배선: workflow 의 validation 노드에서
+검증 노드 배선: workflow 의 Eval(metric) 노드에서
   harness: wf_shape_validator   (= `python wf_to_ttl.py validate <this.yaml>`)
 로 가리키면 워크플로 자체 형상이 게이트가 된다(자기 검증).
 """
@@ -71,15 +71,14 @@ def _node_uri(node_id: str, scope: str = "") -> URIRef:
     return WF["node/" + _safe(node_id)]
 
 
-def _phase_uri(phase_id: str, scope: str = "") -> URIRef:
-    # document-scoped: 서브모듈이 표준 lifecycle phase(discovery/development/testing)를
-    # 동명으로 정당하게 공유하므로, root 평탄화 투영 시 doc(module) scope 를 URI 에 넣어
-    # cross-document 충돌(동일 URI 병합 → status/메타 누락)을 막는다. scope 미지정 시 평면.
-    safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(phase_id))
+def _workflow_uri(workflow_id: str, scope: str = "") -> URIRef:
+    # v0.6.1 phase-less: lifecycle/module/oracle container 는 모두 wf:Workflow.
+    # document-scoped: 서브모듈이 discovery/development/testing 같은 lifecycle workflow id 를
+    # 공유할 수 있으므로 root 평탄화 투영 시 doc(module) scope 를 URI 에 넣는다.
+    safe = _safe(workflow_id)
     if scope:
-        sc = "".join(c if (c.isalnum() or c in "-._") else "_" for c in str(scope))
-        return WF["phase/" + sc + "/" + safe]
-    return WF["phase/" + safe]
+        return WF["workflow/" + _safe(scope) + "/" + safe]
+    return WF["workflow/" + safe]
 
 
 def _module_uri(module_id: str) -> URIRef:
@@ -138,8 +137,8 @@ def _project_fields(g: Graph, subj: URIRef, doc: dict, skip: set) -> None:
 _NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows"}
 
 
-def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
-    """phase.steps[] (group 재귀 포함) 의 구조화 노드(type 보유)를 투영."""
+def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> None:
+    """workflow.steps[] (group 재귀 포함) 의 구조화 노드(type 보유)를 투영."""
     ordered_nodes = [
         n for n in wf_node._walk_nodes(nodes or [])
         if isinstance(n, dict) and n.get("type") in _TYPE_CLASS and n.get("id")
@@ -153,12 +152,13 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
         ordered_uris.append(nu)
         g.add((nu, RDF.type, cls))
         g.add((nu, RDF.type, WF.Node))   # 명시 상위타입 — 추론 없이 hasNode range(sh:class wf:Node) 성립
-        if cls in {WF.Step, WF.Group, WF.WorkflowRef}:
+        if cls in {WF.Step, WF.Group}:
             g.add((nu, RDF.type, WF.Task))
         # v0.6.1 phase-less: validation 은 Eval(oracle_type=metric)로 투영 — 자동 pass/fail 게이트
         if ntype == "validation" and not n.get("oracle_type"):
             g.add((nu, WF.oracleType, Literal("metric")))
-        g.add((phase_uri, WF.hasNode, nu))
+        g.add((workflow_uri, WF.hasNode, nu))
+        g.add((nu, WF.inWorkflow, workflow_uri))
         _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/decisionSubject/owner/...
         for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI)
             if isinstance(d, dict) and d.get("path"):
@@ -192,34 +192,32 @@ def _project_nodes(g: Graph, nodes, phase_uri: URIRef, scope: str = "") -> None:
         g.add((current, WF.next, nxt))
 
 
-def _project_workflows(g: Graph, phase_uri: URIRef, phase: dict, parent_wf: URIRef = None) -> None:
-    """phase.workflows[] 투영. module 보유 → 구조화 wf:WorkflowRef 노드,
-    module 없는 doc-ref → wf:refersTo Literal(dual-rep, legacy 템플릿 호환).
-    v0.6.0: module 보유 ref 를 parent workflow → sub-workflow has_subWorkflow 로 resolve."""
-    for ref in (phase.get("workflows") or []):
+def _project_workflows(g: Graph, container_uri: URIRef, workflow: dict, parent_wf: URIRef = None, scope: str = "") -> None:
+    """workflow.workflows[] 투영.
+
+    v0.6.1 정본은 구조화 WorkflowRef 노드를 만들지 않고 부모 workflow 에서 sub-workflow
+    로 바로 has_subWorkflow 를 emit 한다. 파일 ref 는 legacy migration provenance 로 Literal
+    만 보존한다.
+    """
+    for ref in (workflow.get("workflows") or []):
         if not isinstance(ref, dict) or not ref.get("ref"):
             continue
+        sub_id = ref.get("module") or ref.get("id") or str(ref["ref"]).split("#", 1)[-1] or _hash8(str(ref["ref"]))
+        sub_wf = _workflow_uri(str(sub_id))
+        g.add((sub_wf, RDF.type, WF.Workflow))
+        if parent_wf is not None:
+            g.add((parent_wf, WF.has_subWorkflow, sub_wf))
+        g.add((sub_wf, WF.ref, Literal(str(ref["ref"]))))
         if ref.get("module"):
-            wr = URIRef(str(phase_uri) + "_wref_" + _safe(ref["module"]))
-            g.add((phase_uri, WF.hasWorkflowRef, wr))
-            g.add((wr, RDF.type, WF.WorkflowRef))
-            g.add((wr, WF.ref, Literal(str(ref["ref"]))))
-            g.add((wr, WF.module, Literal(str(ref["module"]))))
-            # has_subWorkflow resolve: sub URI = wf:workflow/<module> (sub doc 의
-            # _document_scope=module.id 와 동일 → cross-file merge 시 같은 노드로 결합).
-            if parent_wf is not None:
-                sub_wf = WF["workflow/" + _safe(str(ref["module"]))]
-                g.add((sub_wf, RDF.type, WF.Workflow))
-                g.add((parent_wf, WF.has_subWorkflow, sub_wf))
-            if "harness_propagate" in ref:
-                g.add((wr, WF.harnessPropagate, Literal(bool(ref["harness_propagate"]))))
-        else:
-            g.add((phase_uri, WF.refersTo, Literal(str(ref["ref"]))))
+            g.add((sub_wf, WF.module, Literal(str(ref["module"]))))
+        if "harness_propagate" in ref:
+            g.add((sub_wf, WF.harnessPropagate, Literal(bool(ref["harness_propagate"]))))
+        g.add((container_uri, WF.refersTo, Literal(str(ref["ref"]))))
 
 
-# top-level non-phase 메타 블록(wf_node 의 phase-제외 키 + 소비자 x_* 확장).
+# top-level non-workflow 메타 블록(wf_node 의 workflow-제외 키 + 소비자 x_* 확장).
 # 임의 중첩 구조(scalar/list/dict)를 가질 수 있어 canonical JSON literal 로 무손실 보존.
-# feedback_loops(phase 간 의도적 역방향 loop: testing→development 등)도 여기 포함 —
+# feedback_loops(legacy lifecycle 간 의도적 역방향 loop 등)도 여기 포함 —
 # 별도 산문 블록은 rawJson 으로 보존하고, 실행/의존 edge의 loop 통제는 Eval 개입점으로 검증한다.
 _META_BLOCK_KEYS = ("workflow", "module", "meta", "metadata", "feedback_loops")
 
@@ -320,32 +318,46 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 for _tgt in ([_v] if isinstance(_v, str) else (_v or [])):
                     if _tgt:
                         g.add((wfu, _pred, WF["workflow/" + _safe(str(_tgt))]))
+        # v0.6.1 phase-less: top-level workflows[] = sub-workflow 정본.
+        # workflow --has_subWorkflow--> sub --hasNode--> node.
+        for _sub in (doc.get("workflows") or []):
+            if not isinstance(_sub, dict) or not _sub.get("id"):
+                continue
+            _subu = _workflow_uri(str(_sub["id"]), scope)
+            g.add((_subu, RDF.type, WF.Workflow))
+            if wfu is not None:
+                g.add((wfu, WF.has_subWorkflow, _subu))
+            g.add((_subu, WF.label, Literal(str(_sub.get("label") or _sub.get("name") or _sub["id"]))))
+            _project_fields(g, _subu, _sub, {"id", "name", "label", "steps", "workflows", "dependencies"})
+            _project_nodes(g, _sub.get("steps", []), _subu, str(_sub["id"]))
+            _project_workflows(g, _subu, _sub, _subu, scope)  # nested workflows[](sub ref) → has_subWorkflow
         # ── root 스타일: 최상위 phases: 리스트 ──
         phases = doc.get("phases")
-        # name→label / dependencies→dependsOn / workflows→refersTo 는 특수, 나머지 generic.
+        # legacy phase input: v0.6.1 에서는 Phase 가 아니라 Workflow 로 호환 투영한다.
+        # dependencies 는 정본 edge 가 아니므로 raw field 로도 투영하지 않는다.
         _PHASE_SKIP = {"id", "name", "label", "dependencies", "workflows", "steps", "phases"}
         if isinstance(phases, list):
             for ph in phases:
                 if not isinstance(ph, dict) or not ph.get("id"):
                     continue
-                pu = _phase_uri(ph["id"], scope)
-                g.add((pu, RDF.type, WF.Phase))
+                pu = _workflow_uri(ph["id"], scope)
+                g.add((pu, RDF.type, WF.Workflow))
+                if wfu is not None:
+                    g.add((wfu, WF.has_subWorkflow, pu))
                 g.add((pu, WF.label, Literal(str(ph.get("label") or ph.get("name") or ph["id"]))))
-                for dep in (ph.get("dependencies") or []):
-                    g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
-                _project_workflows(g, pu, ph, wfu)
+                _project_workflows(g, pu, ph, pu, scope)
                 _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultDecisionSubject/showWrapper/artifacts/successCriteria
                 _project_nodes(g, ph.get("steps", []), pu, scope)
         # ── module 스타일: 이름붙은 phase 키(discovery/development/...) ──
         else:
             for phase_key, phase in wf_node._collect_phases(doc):
                 pid = phase.get("id") or phase_key
-                pu = _phase_uri(pid, scope)
-                g.add((pu, RDF.type, WF.Phase))
+                pu = _workflow_uri(pid, scope)
+                g.add((pu, RDF.type, WF.Workflow))
+                if wfu is not None:
+                    g.add((wfu, WF.has_subWorkflow, pu))
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
-                for dep in (phase.get("dependencies") or []):  # module 스타일도 phase dependsOn 지원
-                    g.add((pu, WF.dependsOn, _phase_uri(dep, scope)))
-                _project_workflows(g, pu, phase, wfu)
+                _project_workflows(g, pu, phase, pu, scope)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
                 _project_nodes(g, phase.get("steps", []), pu, scope)
 
@@ -368,7 +380,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
             if isinstance(ms, dict) and ms.get("id") and ms.get("phase_ref"):
                 mu = WF["milestone/" + str(ms["id"])]
                 g.add((mu, RDF.type, WF.Milestone))
-                g.add((mu, WF.milestoneOf, _phase_uri(ms["phase_ref"], scope)))
+                g.add((mu, WF.milestoneOf, _workflow_uri(str(ms["phase_ref"]), scope)))  # v0.6.1: phase_ref → sub-workflow
                 if ms.get("name"):
                     g.add((mu, WF.label, Literal(str(ms["name"]))))
                 if ms.get("date"):
@@ -387,23 +399,11 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
 _UNCONTROLLED_LOOP_QUERY = """
 PREFIX wf: <https://mso.dev/ontology/workflow#>
 SELECT ?x WHERE {
-  {
-    ?x wf:dependsOn+ ?x .
-    FILTER NOT EXISTS {
-      ?x wf:dependsOn* ?phase .
-      ?phase wf:hasNode ?eval .
-      ?eval a wf:Eval .
-      ?phase wf:dependsOn* ?x .
-    }
-  }
-  UNION
-  {
-    ?x (wf:next|wf:hasBranch/wf:gotoNode)+ ?x .
-    FILTER NOT EXISTS {
-      ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?eval .
-      ?eval a wf:Eval .
-      ?eval (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
-    }
+  ?x (wf:next|wf:hasBranch/wf:gotoNode)+ ?x .
+  FILTER NOT EXISTS {
+    ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?eval .
+    ?eval a wf:Eval .
+    ?eval (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
   }
 }
 """
@@ -433,8 +433,14 @@ SELECT ?step ?p WHERE {
 """
 
 
-def _iter_phases(doc):
-    """root-style(phases: 리스트) + module-style(이름붙은 phase 키) 양쪽에서 phase dict 산출."""
+def _iter_workflows(doc):
+    """정본 workflows[] + legacy phase 입력에서 workflow dict 산출."""
+    workflows = doc.get("workflows") if isinstance(doc, dict) else None
+    if isinstance(workflows, list):
+        for wf in workflows:
+            if isinstance(wf, dict):
+                yield wf
+        return
     phases = doc.get("phases") if isinstance(doc, dict) else None
     if isinstance(phases, list):
         for ph in phases:
@@ -457,8 +463,8 @@ def check_scaffold(resolved, index_yaml: Path) -> list[str]:
         jg.add((WF["scaffold/module"], WF.moduleRoot,
                 Literal(unicodedata.normalize("NFC", str(root)))))
     for src, doc in resolved.docs.items():
-        for phase in _iter_phases(doc):
-            for n in wf_node._walk_nodes(phase.get("steps", []) or []):
+        for workflow in _iter_workflows(doc):
+            for n in wf_node._walk_nodes(workflow.get("steps", []) or []):
                 for d in (n.get("directories") or []):
                     p = d.get("path") if isinstance(d, dict) else None
                     if not p:
@@ -472,13 +478,26 @@ def check_scaffold(resolved, index_yaml: Path) -> list[str]:
     return out
 
 
+def find_legacy_phase_inputs(resolved) -> list[str]:
+    """v0.6.1 정본 이전 phase 기반 YAML 입력을 warning 으로 보고."""
+    warnings: list[str] = []
+    for src, doc in resolved.docs.items():
+        if not isinstance(doc, dict):
+            continue
+        if isinstance(doc.get("phases"), list):
+            warnings.append(f"{src.name}: legacy phases[] input — phase-less workflows[] 로 migration 권장")
+        elif wf_node._collect_phases(doc):
+            warnings.append(f"{src.name}: legacy named phase input — phase-less workflows[] 로 migration 권장")
+    return warnings
+
+
 def run_shacl(g: Graph) -> tuple[bool, str]:
     """pyshacl 로 ABox↔TBox 정합 검증. (conforms, report_text).
 
     추론은 끈다(inference="none"). 투영기가 노드를 specific class + wf:Node 로
     명시 타입핑하므로 sh:class 제약이 추론 없이 성립한다. rdfs 추론을 켜면
-    rdfs:range 가 dependsOn 타깃을 자동 Phase 로 타입핑해 range 검증이 무의미해지는
-    OWA 함정을 피한다 — range 위반(잘못된 타깃)을 진짜로 잡으려면 추론을 꺼야 한다.
+    rdfs:range 가 잘못된 타깃을 자동 타입핑해 range 검증이 무의미해지는 OWA 함정을
+    피한다 — range 위반(잘못된 타깃)을 진짜로 잡으려면 추론을 꺼야 한다.
     """
     try:
         from pyshacl import validate as shacl_validate
@@ -496,6 +515,7 @@ def validate(root_yaml: Path, index_yaml: Path | None = None) -> dict:
     tree_issues = [str(i) for i in resolved.issues]
     uncontrolled_loops = find_uncontrolled_loops(g)
     conforms, shacl_text = run_shacl(g)
+    legacy_warnings = find_legacy_phase_inputs(resolved)
     # 교차-스킬(scaffold) 경로 멤버십은 warning — ok 를 뒤집지 않는다(wf_node 와 동일 severity).
     scaffold_warnings = check_scaffold(resolved, index_yaml) if index_yaml else []
     ok = conforms and not uncontrolled_loops and not tree_issues
@@ -507,6 +527,7 @@ def validate(root_yaml: Path, index_yaml: Path | None = None) -> dict:
         "shacl_conforms": conforms,
         "shacl_report": shacl_text if not conforms else "",
         "tree_issues": tree_issues,
+        "legacy_warnings": legacy_warnings,
         "scaffold_warnings": scaffold_warnings,
     }
 
@@ -556,6 +577,10 @@ def main(argv=None) -> int:
             if res.get("scaffold_warnings"):
                 print("⚠ scaffold 교차-스킬(directories.path):")
                 for w in res["scaffold_warnings"]:
+                    print(f"  - {w}")
+            if res.get("legacy_warnings"):
+                print("⚠ legacy phase compatibility:")
+                for w in res["legacy_warnings"]:
                     print(f"  - {w}")
             if res["ok"]:
                 tail = " (scaffold 경고 있음)" if res.get("scaffold_warnings") else ""

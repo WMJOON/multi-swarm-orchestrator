@@ -45,13 +45,13 @@ project/
 python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --check /path/to/project
 ```
 
-### Hook 등록 (auditlog + worklog 자동 기록)
+### Hook 등록 (auditlog 자동 기록 + 기록 판단 넛지)
 
 ```bash
 python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/project
 ```
 
-`.claude/settings.json` 에 `PostToolUse(Bash·Edit·Write → auditlog)` 와 `Stop(→ worklog)` hook이 등록된다.
+`.claude/settings.json` 에 `PostToolUse(Bash·Edit·Write → auditlog)`, `Stop/PreCompact(→ commit-work-memory)`, `SessionStart(compact/resume → work-memory-check)` hook이 등록된다. Stop hook은 worklog를 자동 생성하지 않는다.
 Codex 프로젝트에서는 provider를 명시한다.
 
 ```bash
@@ -59,7 +59,7 @@ python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/pr
 ```
 
 이 경우 `.codex/scripts/`에 hook 스크립트가 복사되고 `.codex/config.toml`과 `.codex/hooks.json`에
-worklog/work-memory-check hook이 등록된다.
+commit-work-memory/work-memory-check hook이 등록된다.
 
 ---
 
@@ -127,16 +127,14 @@ WFTTL=~/.claude/skills/mso-workflow-design/scripts/wf_to_ttl.py
 WFMIG=~/.claude/skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py
 
 # 스키마 확인
-python3 $WF show phase
 python3 $WF show step
 python3 $WF show decision   # judge 5-level 포함
-python3 $WF show validation
+python3 $WF show eval
 
 # 노드 스캐폴드 생성 (stdout → workflow YAML 에 붙여넣기)
-python3 $WF scaffold phase --id "P01.discovery"
 python3 $WF scaffold step --id "s-001"
-python3 $WF scaffold decision --id "d-001" --judge HITL
-python3 $WF scaffold validation --id "v-001"
+python3 $WF scaffold decision --id "d-001" --decision-subject user
+python3 $WF scaffold eval --id "e-001"
 
 # workflow YAML 검증
 python3 $WF validate agent-context/workflow/workflow-00.yaml
@@ -145,7 +143,7 @@ python3 $WF validate agent-context/workflow/workflow-00.yaml
 python3 $WF validate agent-context/workflow/workflow-00.yaml \
   --scaffold agent-context/index/index.yaml
 
-# harness manifest 생성 (validation 노드 → CI)
+# harness manifest 생성 (harness 보유 metric eval 노드 → CI)
 python3 $WF harness-manifest agent-context/workflow/workflow-00.yaml \
   --out ci-manifest.json
 
@@ -216,7 +214,7 @@ python3 $WM graph IN-0001 --depth 2 --direction both
 | pattern | PT | insight-record/patterns/ |
 | principle | PR | insight-record/principles/ |
 | auditlog | AU | auditlog/ (hook 자동) |
-| worklog | WL | worklog/ (hook 자동) |
+| worklog | WL | worklog/ (workflow TTL node 실행 기록) |
 
 ---
 
@@ -230,12 +228,10 @@ echo '{"tool_name":"Bash","tool_input":{"command":"git status"},"session_id":"te
   | WORKMEM_DIR=./agent-context/work-memory \
     python3 ~/.claude/skills/mso-work-memory/hooks/auditlog.py
 
-# worklog hook 수동 실행
-echo '{"session_id":"test","hook_event_name":"Stop"}' \
-  | WORKMEM_DIR=./agent-context/work-memory \
-    python3 ~/.claude/skills/mso-work-memory/hooks/worklog.py
+# Stop/PreCompact hook 수동 실행 (worklog 자동 생성 없음)
+WORKMEM_DIR=./agent-context/work-memory \
+  bash ~/.claude/skills/mso-work-memory/hooks/commit-work-memory.sh
 
 # 생성 확인
 ls agent-context/work-memory/auditlog/
-ls agent-context/work-memory/worklog/
 ```

@@ -26,27 +26,19 @@ wf:Eval a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Eval"@ko ;
     rdfs:comment "산출물 평가 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의 품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다. feedback loop 안에 Eval gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. 단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 Eval이 아니라 decision_subject=user 인 Decision이다. Eval은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다. 여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target이다. 관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval, Eval --requests_revision--> remediation agentTask, Eval --approves--> next agentTask/end, remediation agentTask --target--> [[tool]] 흐름으로 표현한다. agentTask가 실행 도구를 위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Eval gate는 분리한다 후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다 tool/process target Eval의 order_target은 routing Decision이 아니라 개선 Step을 가리킨다 legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"@ko .
 wf:Group a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Group"@ko ;
     rdfs:comment "여러 노드를 Mermaid subgraph로 묶는 컨테이너. | invariants: id 는 워크플로우 내 unique steps 비어있지 않음"@ko .
-wf:Phase a owl:Class ; rdfs:label "Phase"@ko ;
-    rdfs:comment "워크플로우의 단계(phase) 컨테이너. | invariants: id 비어있지 않음 status ∈ {completed, active, pending} steps 또는 workflows 둘 중 하나는 존재해야 함 (둘 다 비면 ERROR) workflows[] 각 항목은 workflow_ref.schema.yaml 의 invariant 를 따름"@ko .
 wf:Step a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Step"@ko ;
     rdfs:comment "실행 작업 노드. I/O는 선택적. | invariants: id 는 워크플로우 내 unique label 비어있지 않음 instruction 비어있지 않음 (지시격 — 실행 지시. SHACL StepShape 강제) directories[].path 는 scaffold(index.yaml) 에 등록된 경로여야 함 (cross-skill invariant) Eval.orderTarget 이 가리키는 개선 Step 은 필요 시 target_artifact 로 개선 대상을 명시한다"@ko .
-wf:WorkflowRef a owl:Class ; rdfs:label "WorkflowRef"@ko ;
-    rdfs:comment "계층 workflow 참조. root workflow YAML 의 `phase.workflows[]` 또는 모듈 workflow YAML 의 `sub_workflow:` 필드에서 사용. sub workflow 의 phase/group id 를 anchor 로 가리켜 subgraph 형태로 통합한다. | invariants: ref 비어있지 않음 module 비어있지 않음 ref 의 file path 는 scaffold module:{module}.path 의 자손이어야 함 (cross-skill invariant) ref 의 anchor (있을 경우) 는 sub 파일 내 phase/group id 와 일치해야 함 module 필드 값은 ref 파일 자체가 선언한 module id 와 동일해야 함"@ko .
 
 # ─── Property (schema fields) ──────────────────────────────────────────────────
-wf:artifacts a owl:DatatypeProperty ; rdfs:label "artifacts"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:criteria a owl:DatatypeProperty ; rdfs:label "criteria"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:decisionCriteria a owl:DatatypeProperty ; rdfs:label "decisionCriteria"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:decisionSubject a owl:DatatypeProperty ; rdfs:label "decisionSubject"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:defaultDecisionSubject a owl:DatatypeProperty ; rdfs:label "defaultDecisionSubject"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:deliverables a owl:DatatypeProperty ; rdfs:label "deliverables"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
-wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Phase"@ko .
+wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:evaluator a owl:DatatypeProperty ; rdfs:label "evaluator"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:goto a owl:DatatypeProperty ; rdfs:label "goto"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
-wf:harnessPropagate a owl:DatatypeProperty ; rdfs:label "harnessPropagate"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:boolean .
 wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
-wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Eval, Group, Phase, Step"@ko .
-wf:module a owl:DatatypeProperty ; rdfs:label "module"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
+wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Eval, Group, Step"@ko .
 wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:oracle a owl:DatatypeProperty ; rdfs:label "oracle"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
@@ -54,13 +46,9 @@ wf:oracleType a owl:DatatypeProperty ; rdfs:label "oracleType"@ko ; rdfs:domain 
 wf:orderArtifact a owl:DatatypeProperty ; rdfs:label "orderArtifact"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:orderTarget a owl:DatatypeProperty ; rdfs:label "orderTarget"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:parallel a owl:DatatypeProperty ; rdfs:label "parallel"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
-wf:ref a owl:DatatypeProperty ; rdfs:label "ref"@ko ; rdfs:domain wf:WorkflowRef ; rdfs:range xsd:string .
-wf:showWrapper a owl:DatatypeProperty ; rdfs:label "showWrapper"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:boolean .
 wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval, Group, Phase, Step"@ko .
+wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval, Group, Step"@ko .
 wf:subSteps a owl:DatatypeProperty ; rdfs:label "subSteps"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
-wf:successCriteria a owl:DatatypeProperty ; rdfs:label "successCriteria"@ko ; rdfs:domain wf:Phase ; rdfs:range xsd:string .
 wf:targetArtifact a owl:DatatypeProperty ; rdfs:label "targetArtifact"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Eval, Step"@ko .
 wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval"@ko .
 wf:usesTool a owl:DatatypeProperty ; rdfs:label "usesTool"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
@@ -72,22 +60,22 @@ wf:Task a owl:Class ; rdfs:label "Task"@ko ;
 wf:Module    a owl:Class ; rdfs:label "Module"@ko ;
     rdfs:comment "critical_dependencies 의 from/to 단위. (schema 없음)"@ko .
 wf:Milestone a owl:Class ; rdfs:label "Milestone"@ko ;
-    rdfs:comment "특정 Phase 를 가리키는 마일스톤. (schema 없음)"@ko .
+    rdfs:comment "특정 Workflow/sub-workflow 를 가리키는 마일스톤. (schema 없음)"@ko .
 
-wf:dependsOn a owl:ObjectProperty ; rdfs:label "dependsOn"@ko ;
-    rdfs:domain wf:Phase ; rdfs:range wf:Phase ;
-    rdfs:comment "root 템플릿 phases[].dependencies. 순환은 가능하나 산출물 재귀 소비 루프에는 Eval 개입점이 필요하다. (phase.schema 엔 없음)"@ko .
 wf:criticalDep a owl:ObjectProperty ; rdfs:label "criticalDep"@ko ;
     rdfs:domain wf:Module ; rdfs:range wf:Module ;
     rdfs:comment "critical_dependencies from→to. 구조 의존 관측 edge."@ko .
 wf:milestoneOf a owl:ObjectProperty ; rdfs:label "milestoneOf"@ko ;
-    rdfs:domain wf:Milestone ; rdfs:range wf:Phase .
+    rdfs:domain wf:Milestone ; rdfs:range wf:Workflow .
 wf:hasNode a owl:ObjectProperty ; rdfs:label "hasNode"@ko ;
-    rdfs:domain wf:Phase ; rdfs:range wf:Node ;
-    rdfs:comment "phase.steps[] 평탄화 에지."@ko .
+    rdfs:domain wf:Workflow ; rdfs:range wf:Node ;
+    rdfs:comment "workflow.steps[] 평탄화 에지. v0.6.1 phase-less 정본 membership."@ko .
+wf:inWorkflow a owl:ObjectProperty ; rdfs:label "inWorkflow"@ko ;
+    rdfs:domain wf:Node ; rdfs:range wf:Workflow ;
+    rdfs:comment "hasNode 의 역방향 membership. self-ref 및 관측 쿼리 편의를 위해 emit."@ko .
 wf:next a owl:ObjectProperty ; rdfs:label "next"@ko ;
     rdfs:domain wf:Node ; rdfs:range wf:Node ;
-    rdfs:comment "process edge. phase.steps[] 의 기본 순차 실행 에지. decision branch goto 가 없을 때도 이 edge가 다음 실행 노드를 나타낸다."@ko .
+    rdfs:comment "process edge. workflow.steps[] 의 기본 순차 실행 에지. decision branch goto 가 없을 때도 이 edge가 다음 실행 노드를 나타낸다."@ko .
 wf:directory a owl:ObjectProperty ; rdfs:label "directory"@ko ;
     rdfs:domain wf:Node ;
     rdfs:comment "step.directories[] 항목. dirRole + dirPath 필수. wf:dirNote 선택. validate_abox.py 검증 대상."@ko .
@@ -121,17 +109,13 @@ wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
 wf:gotoNode a owl:ObjectProperty ; rdfs:label "gotoNode"@ko ;
     rdfs:domain wf:Branch ; rdfs:range wf:Node ;
     rdfs:comment "process edge. branch.goto 문자열을 같은 workflow scope의 Node URI로 해석한 조건부 실행 에지."@ko .
-wf:hasWorkflowRef a owl:ObjectProperty ; rdfs:label "hasWorkflowRef"@ko ;
-    rdfs:domain wf:Phase ; rdfs:range wf:WorkflowRef ;
-    rdfs:comment "phase.workflows[] 중 module 보유 항목 → WorkflowRef 노드(구조화). module 없는 doc-ref 는 wf:refersTo Literal 로 유지(dual-rep)."@ko .
-
 # ─── Oracle graph layer (v0.6.0) — workflow 통일 + self-improvement edge ──────
 # [[system]] = wf:Workflow. 레이어(base/oracle)는 edge 종류로 파생(노드 type 없음).
 wf:Workflow a owl:Class ; rdfs:label "Workflow"@ko ;
-    rdfs:comment "graph/sub-graph 단위. sub-workflow(object)·oracle-workflow(meta)=대칭 sub-graph, 역할은 edge 로 파생. tool=leaf executedBy 바인딩. v0.6.0 oracle graph 의 evolve/exercise/target 레인지."@ko .
+    rdfs:comment "graph/sub-graph 단위. v0.6.1 phase-less 정본 컨테이너. sub-workflow(object)·oracle-workflow(meta)=대칭 sub-graph, 역할은 edge 로 파생."@ko .
 wf:has_subWorkflow a owl:ObjectProperty ; rdfs:label "has_subWorkflow"@ko ;
     rdfs:domain wf:Workflow ; rdfs:range wf:Workflow ;
-    rdfs:comment "workflow 계층 (v0.6.0): 부모 workflow → sub-workflow. 형제는 disjoint(파티션 — SubWorkflowPartitionShape: 노드당 부모 ≤1). evolves stratification 의 조상 체인. hasWorkflowRef(ref file#anchor string) 를 resolve 한 직접 edge."@ko .
+    rdfs:comment "workflow 계층 (v0.6.1): 부모 workflow → sub-workflow. lifecycle·모듈·oracle 계층을 모두 이 단일 재귀 edge 로 표현한다."@ko .
 wf:delegatesTo a owl:ObjectProperty ; rdfs:label "delegatesTo"@ko ;
     rdfs:domain wf:Task ; rdfs:range wf:Workflow ;
     rdfs:comment "base(수단화): task 가 workflow 에 업무 위임·실행."@ko .
@@ -173,7 +157,7 @@ wf:SuccessCriterion a owl:Class ; rdfs:label "SuccessCriterion"@ko ;
 wf:CriticalDependency a owl:Class ; rdfs:label "CriticalDependency"@ko ;
     rdfs:comment "critical_dependencies[] 항목(서술 포함). from/to 는 wf:criticalDep 에지로도 투영(dual-rep). (schema 없음)"@ko .
 wf:MetaBlock a owl:Class ; rdfs:label "MetaBlock"@ko ;
-    rdfs:comment "top-level non-phase 메타 블록(workflow/module/meta/metadata + 소비자 x_* 확장). 임의 중첩 구조를 canonical JSON literal(rawJson)로 무손실 보존. (schema 없음)"@ko .
+    rdfs:comment "top-level non-workflow 메타 블록(workflow/module/meta/metadata + 소비자 x_* 확장). 임의 중첩 구조를 canonical JSON literal(rawJson)로 무손실 보존. (schema 없음)"@ko .
 
 wf:blockKey a owl:DatatypeProperty ; rdfs:label "blockKey"@ko ; rdfs:domain wf:MetaBlock ; rdfs:range xsd:string ;
     rdfs:comment "메타 블록의 원본 top-level 키(workflow/module/meta/x_msm 등)."@ko .

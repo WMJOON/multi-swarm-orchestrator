@@ -1,124 +1,91 @@
 project:
   name: AI Chatbot 1.0 - Root Workflow
   id: workflow-00
-  version: "1.0.0"
-  description: >
-    한 프로젝트의 root-workflow(프로젝트 루트). 그 프로젝트의 모듈 sub-workflow 들을
-    조율하고 의존성을 관리한다. (전 프로젝트를 가로지르는 global 층은 UUG 영역.)
+  version: 1.0.0
+  description: "프로젝트 root workflow. 모듈 sub-workflow, artifact supply chain, eval gate를 조율한다."
   owner: owner@example.com
   created: 2026-05-21
-
-phases:
-  - id: phase-01-discovery
-    name: 발견 & 계획 (Discovery & Planning)
-    description: 모듈별 요구사항 분석, 범위 정의, 리소스 할당
-    status: completed
-    dependencies: []
-    workflows:
-      - ref: 01.ingestion/01.ingestion-workflow-00.yaml#discovery
-      - ref: 02.policy-engine/02.policy-engine-workflow-00.yaml#discovery
-      - ref: 03.data-masking/03.data-masking-workflow-00.yaml#discovery
-      - ref: 04.vendor-x/04.vendor-x-workflow-00.yaml#discovery
-      - ref: 10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#discovery
-
-  - id: phase-02-development
-    name: 개발 & 구현 (Development & Implementation)
-    description: 각 모듈의 핵심 기능 개발 및 구현
-    status: completed
-    dependencies: [phase-01-discovery]
-    parallel: true
-    workflows:
-      - ref: 01.ingestion/01.ingestion-workflow-00.yaml#development
-      - ref: 02.policy-engine/02.policy-engine-workflow-00.yaml#development
-      - ref: 03.data-masking/03.data-masking-workflow-00.yaml#development
-      - ref: 04.vendor-x/04.vendor-x-workflow-00.yaml#development
-      - ref: 10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#development
-
-  - id: phase-03-testing
-    name: 테스트 & 평가 (Testing & Evaluation)
-    description: 각 모듈의 품질 검증, 성능 벤치마크, 통합 테스트
-    status: active
-    dependencies: [phase-02-development]
-    parallel: true
-    workflows:
-      - ref: 01.ingestion/01.ingestion-workflow-00.yaml#testing
-      - ref: 02.policy-engine/02.policy-engine-workflow-00.yaml#testing
-      - ref: 03.data-masking/03.data-masking-workflow-00.yaml#testing
-      - ref: 04.vendor-x/04.vendor-x-workflow-00.yaml#testing
-      - ref: 10.RAG-Corpus-Dataset/10.RAG-Corpus-Dataset-workflow-00.yaml#testing
-
-  - id: phase-04-documentation
-    name: 문서화 & 전달 (Documentation & Delivery)
-    description: 최종 산출물 문서화, 사용자 가이드, 인계 문서 작성
-    status: completed
-    dependencies: [phase-03-testing]
-    workflows:
-      - ref: docs/01-ingestion.md
-      - ref: docs/02-chatbot-policy.md
-      - ref: docs/03-data-masking.md
-      - ref: docs/04-vendor-x-rag-eval.md
-      - ref: docs/10-rag-corpus-dataset.md
-
-  - id: phase-05-delivery
-    name: 인계 & 배포 (Handoff & Deployment)
-    description: 최종 검수, 벤더 인계, 운영 인수인계
-    status: pending
-    dependencies: [phase-04-documentation]
-    workflows:
-      - ref: 04.vendor-x/2026-05-13 docs/analysis-report.md
 
 milestones:
   - id: m-core-modules-ready
     name: 모든 핵심 모듈 완성
     date: 2026-05-21
     status: completed
-    phase_ref: phase-02-development
-
+    phase_ref: development
   - id: m-testing-complete
     name: 모든 모듈 테스트 완료
     date: 2026-05-22
     status: pending
-    phase_ref: phase-03-testing
-
-  - id: m-final-handoff
-    name: 최종 인계 완료
-    date: 2026-05-31
-    status: pending
-    phase_ref: phase-05-delivery
+    phase_ref: testing
 
 key_decisions:
   - decision: RAG 평가 엔진을 GitHub submodule로 관리
-    rationale: 독립적인 버전 관리, VendorX 협업 용이성
-    impact_modules: [04.vendor-x]
-
-  - decision: 모듈별 상세 문서화 (Level 1 ~ Level 4)
-    rationale: 다양한 사용자 유형(관리자, 개발자, 데이터 사이언티스트)을 위한 진행적 공개
-    impact_modules: [all]
-
-  - decision: 점진적 읽기 경로 (README → index.yaml → docs/ → CLAUDE.md)
-    rationale: 온보딩 시간 단축, 필요 정보 빠른 접근
-    impact_modules: [documentation]
+    rationale: 독립적인 버전 관리와 외부 협업 경계를 분리하기 위함
+    impact_modules:
+      - rag-eval
 
 critical_dependencies:
-  - from: 02.policy-engine
-    to: 01.ingestion
+  - from: policy-engine
+    to: ingestion
     description: 정책 수립을 위한 상담 데이터 분석 필요
 
-  - from: 03.data-masking
-    to: 01.ingestion
-    description: PII 마스킹 테스트셋 구축을 위한 실제 상담 데이터 필요
-
-  - from: 04.vendor-x
-    to: 10.RAG-Corpus-Dataset
-    description: RAG 평가 엔진의 테스트셋 필요
-
-  - from: 04.vendor-x
-    to: 02.policy-engine
-    description: 라우팅 정책이 RAG 평가 평가 기준에 포함됨
-
 success_criteria:
-  - all_modules_documented: "모든 모듈 docs/ 문서 작성 완료"
-  - test_coverage_rag_eval: "RAG 평가 엔진 테스트셋 3,955 QA 이상"
-  - masking_accuracy: "PII 마스킹 정확도 95% 이상"
-  - policy_validation: "정책 프레임워크 v1.0 검증 완료"
-  - stakeholder_approval: "VendorX 벤더 협업 완료 및 승인"
+  - all_modules_documented: 모든 모듈 docs/ 문서 작성 완료
+  - stakeholder_approval: 벤더 협업 완료 및 승인
+
+workflows:
+  - id: discovery
+    name: 발견 & 계획
+    description: 모듈별 요구사항 분석, 범위 정의, 리소스 할당
+    status: completed
+    steps:
+      - type: step
+        id: discovery-s-001
+        label: 요구사항 수집
+        instruction: 이해관계자 요구사항과 입력 artifact를 수집한다.
+        status: completed
+        deliverables:
+          - planning/requirements.md
+
+  - id: development
+    name: 개발 & 구현
+    description: 각 모듈의 핵심 기능 개발 및 구현
+    status: active
+    steps:
+      - type: step
+        id: development-s-001
+        label: 핵심 모듈 구현
+        instruction: 설계된 workflow에 따라 핵심 모듈 산출물을 구현한다.
+        status: active
+        directories:
+          - role: input
+            path: src/
+          - role: output
+            path: generated/
+        deliverables:
+          - generated/module-output.md
+
+      - type: eval
+        id: development-e-001
+        label: 구현 품질 평가
+        status: pending
+        oracle_type: metric
+        harness: unit-test
+        criteria:
+          - unit tests pass
+        on_fail: block
+
+  - id: testing
+    name: 테스트 & 평가
+    description: 통합 테스트와 최종 평가
+    status: pending
+    steps:
+      - type: eval
+        id: testing-e-001
+        label: 최종 통합 평가
+        status: pending
+        oracle_type: metric
+        harness: integration-test
+        criteria:
+          - integration tests pass
+        on_fail: manual_review

@@ -1,6 +1,6 @@
 ---
 name: mso-work-memory
-version: "0.6.0"
+version: "0.6.2"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 7종 entry (issue-note, agent-decision,
@@ -42,7 +42,7 @@ agent-context/work-memory/
 │   └── work-memory.abox.ttl     # JSONL에서 생성한 관계 검증/관측용 projection
 ├── auditlog/                   # 자동 hook
 │   └── AU-YYYY-MM-DD.jsonl
-├── worklog/                    # 일상 작업 일지 (수동 — wm_node.py new)
+├── worklog/                    # workflow TTL node 실행 기록 (수동 — wm_node.py new)
 │   └── WL-YYYY-MM-DD.jsonl
 │
 ├── track-record/               # ── 이슈 1건 라이프사이클 (타입별 aggregate) ──
@@ -76,7 +76,7 @@ agent-context/work-memory/
 | **PT** | pattern | insight | EP 여러 개 누적 후 반복 발견 |
 | **PR** | principle | insight | PT 안정화 후 응축된 원칙 |
 | AU | auditlog | (자동) | hook이 append |
-| WL | worklog | (자동/수동) | 일자별 |
+| WL | worklog | (수동) | workflow TTL node 실행 결과 기록 시 |
 
 ## 라이프사이클 그래프
 
@@ -179,11 +179,15 @@ python wm_node.py reindex
 
 ## 기록 판단 넛지 (work-memory-check.sh)
 
-`auditlog` 는 PostToolUse 자동 로깅이고 `worklog` 는 수동 엔트리(wm_node.py)다 — `track-record/insight-record entry 를 언제 남길지`에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 비차단 넛지를 띄운다.
+`auditlog` 는 PostToolUse 자동 로깅이고 `worklog` 는 workflow TTL 의 `node -> node` 실행 레일을 따라 수행한 작업을 수동으로 남기는 엔트리다. `worklog` 는 세션 종료 요약이나 auditlog 요약이 아니며, workflow node 를 명시할 수 있을 때만 작성한다. workflow 레일이 없거나 벗어난 작업은 undefined 케이스로 보고, 먼저 AD(왜 레일 밖 판단을 했는지) 또는 IN/TS(문제와 해결)를 남긴 뒤 workflow TTL 갱신 후보로 환류한다.
+
+`track-record/insight-record entry 를 언제 남길지`에 대한 판단 트리거는 별도다. `hooks/work-memory-check.sh` 가 비차단 넛지를 띄운다.
 
 > **전달 의미론이 핵심이다.** Provider별 훅 stdout 의미론이 다르므로 `work-memory-check.sh`는 컨텍스트 도달이 확인된 `SessionStart(compact/resume)` 에서만 plain stdout 으로 넛지를 전달한다. `Stop`·`PreCompact`·`SessionEnd` 에서는 출력이 사용자에게 잡음처럼 보이거나 모델에 도달하지 않을 수 있으므로 check hook을 등록하지 않는다.
 >
-> **`Stop`·`PreCompact` 는 `commit-work-memory.sh` 로 work-memory 자동 로그를 커밋한다.** 훅 안에서 커밋하면 PostToolUse(auditlog) 를 재트리거하지 않아 auditlog append 무한루프가 생기지 않는다. 과거의 `worklog.py`(매 Stop 마다 "세션 종료" 빈 마커만 append) 는 제거됐다 — append 만 되고 커밋되지 않아 untracked 가 쌓이는 원인이었다.
+> **`Stop`·`PreCompact` 는 `commit-work-memory.sh` 로 work-memory 변경분을 커밋한다.** 훅 안에서 커밋하면 PostToolUse(auditlog) 를 재트리거하지 않아 auditlog append 무한루프를 피한다. Stop hook 은 `worklog` 를 생성하지 않는다. `worklog` 작성 여부를 판단하는 행위는 에이전트의 AD 성격이며, workflow TTL node 실행 맥락이 있을 때만 별도 CLI로 남긴다.
+>
+> **Cloud runtime 주의.** Codex cloud 같은 ephemeral 환경에서는 setup script와 agent phase가 분리되고, project hook 실행·로컬 커밋 side effect가 다음 작업 기억으로 보장되지 않을 수 있다. cloud hand-off는 최종 답변/diff/커밋 가능한 tracked file에 남는 기록을 기준으로 하며, hook은 보조 수단으로만 본다.
 
 1. **track 넛지** *(SessionStart)* — "결정 가치 있는" 변경(`WM_WORTHY_PATHS`, 기본=오케스트레이션 레이어)이 work-memory 최신 기록보다 앞서고 기록 대기가 없으면 → UD/AD/IN/TS 작성 권유.
 2. **IN/TS 넛지** *(SessionStart)* — fix/revert 성격의 커밋(WM 최신 기록 이후)이 있는데 IN/TS 기록 대기가 없으면 → IN+TS 회고 공동 기록 권유. track 넛지(WORTHY_PATHS)와 **독립** — 버그는 오케스트레이션 경로 밖 평범한 소스에서도 나므로 fix 커밋 단독으로 판단한다.

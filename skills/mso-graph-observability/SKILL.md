@@ -136,8 +136,8 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 
 ## Notes
 
-- `wf:dependsOn`과 `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
-- `wf:hasNode`, `wf:hasWorkflowRef`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 Branch node나 `hasBranch` edge로 렌더링하지 않고, `decision -.->|on:<condition>| target` 조건부 process edge로 직접 표현한다.
+- `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
+- `wf:hasNode`와 `wf:has_subWorkflow`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 Branch node나 `hasBranch` edge로 렌더링하지 않고, `decision -.->|on:<condition>| target` 조건부 process edge로 직접 표현한다.
 - `wf:Eval` 노드의 `wf:onFail`은 `-.->|on: fail|` 엣지로 렌더링하고, `validated_by`/`requests_revision`/`approves`/`report` eval 엣지는 별도 eval-edge pass에서 모든 view에 공통으로 렌더링한다.
 - `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨긴다. workflow view의 `next` spine은 공유 Data id의 producer/consumer 관계에서 먼저 파생하고, stream 정보가 부족할 때만 `wf:next`를 fallback으로 사용한다.
 - `wf:directory`는 Artifact node로 파생한다. 현재는 `data_type=local_file`, `location=index:<artifact-id>`, `locator=<dirPath>`로 표시한다. index에 없으면 raw local_file fallback key를 쓴다. `role: input/reference`는 `artifact --upstream--> task`, `role: output`은 `task --downstream--> artifact`, `role: input_output`은 양방향 stream edge로 표현한다. `implementation`/`tool_internal`/`internal`처럼 consume/produce 의미가 없는 role은 관측 stream에서 제외한다.
