@@ -60,7 +60,8 @@ def test_workflow_topology_renders_execution_edges():
 
     assert "-->|next|" in markdown
     assert "-.->|on: rejected|" in markdown
-    assert "subgraph legacy_phase_phase_demo_p_" in markdown
+    assert "subgraph workflow_phase_demo_p_" in markdown
+    assert "legacy_phase" not in markdown
     assert "-->|hasNode|" not in markdown
     assert "-->|hasBranch|" not in markdown
     assert "Branch" not in markdown

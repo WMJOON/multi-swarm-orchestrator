@@ -1921,8 +1921,7 @@ def build_workflow_topology(
         return node_id
 
     def process_unit_id(term: URIRef) -> str:
-        prefix = "legacy_phase" if (term, RDF.type, WF.Phase) in graph else "workflow"
-        return mermaid_id(prefix, term)
+        return mermaid_id("workflow", term)
 
     def rendered_outgoing_targets(term: URIRef) -> set[str]:
         targets: set[str] = set()
