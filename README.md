@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.6.2
+# Multi-Swarm Orchestrator (MSO) v0.6.3
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,6 +13,14 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
+### v0.6.3 (2026-06-30) — Stop reminder throttle
+
+Stop hook이 매 턴 사용자에게 같은 안내를 반복하는 문제를 줄이기 위해 `stop-check.sh` 상태 관리기를 추가했다. 첫 Stop에서는 reminder를 출력하고 `.claude/state/stop-check.state`를 남기며, 바로 다음 Stop에서는 조용히 종료하고 state를 지운다.
+
+- **적용 범위**: 사용자에게 보이는 Stop reminder 출력만 억제한다.
+- **비적용 범위**: `commit-work-memory.sh`는 계속 실행한다. work-memory 변경분 커밋 백스톱을 억제하지 않는다.
+- **로컬 상태**: `.claude/state/`는 gitignore 대상이다.
+
 ### v0.6.2 (2026-06-30) — Worklog semantic boundary + cloud hand-off
 
 `worklog` 의미를 Stop hook 자동 세션 로그가 아니라 **workflow TTL `node -> node` 실행 기록**으로 고정했다. `auditlog`는 도구 실행 사실, `worklog`는 workflow 레일을 따라 수행한 작업, `AD/IN/TS`는 레일 밖 판단과 예외 기록을 담당한다.
@@ -20,9 +28,9 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 - **worklog 경계**: workflow node를 명시할 수 있을 때만 `worklog`를 작성한다. node 맥락이 없으면 `AD` 또는 `IN/TS` 후보로 기록하고 workflow TTL 갱신 후보로 환류한다.
 - **hook 정책**: Stop/PreCompact는 `commit-work-memory.sh`만 수행한다. Stop hook은 worklog를 자동 생성하지 않는다. `work-memory-check`는 SessionStart(compact/resume)에서 기록 판단을 상기시킨다.
 - **cloud hand-off**: Codex cloud 같은 ephemeral 환경에서는 hook side effect를 다음 에이전트 기억 보장으로 보지 않는다. cloud hand-off는 최종 답변, diff, 커밋 가능한 tracked file에 남는 기록을 기준으로 한다.
-- **version ladder**: v0.6.1은 phase-less workflow 모델 구현 완료 패치다. v0.6.2는 그 위의 work-memory/hook/cloud hand-off 운영 의미 정리 패치다.
+- **version ladder**: v0.6.1은 phase-less workflow 모델 구현 완료 패치다. v0.6.2는 work-memory/hook/cloud hand-off 운영 의미 정리 패치고, v0.6.3은 Stop reminder 출력 throttle 패치다.
 
-상세 변경은 [docs/changelog.md](docs/changelog.md)의 v0.6.2 항목을 본다.
+상세 변경은 [docs/changelog.md](docs/changelog.md)의 v0.6.3 항목을 본다.
 
 ## Core Philosophy
 

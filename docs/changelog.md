@@ -1,5 +1,19 @@
 # 변경 이력
 
+## v0.6.3 (2026-06-30) — Stop reminder throttle
+
+> **Stop hook이 매 턴 사용자에게 같은 안내를 반복하는 문제를 상태 파일로 완화.** reminder 출력은 1회 표시 뒤 다음 Stop 1회를 억제하지만, work-memory 자동 커밋 백스톱은 계속 실행한다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| stop-check hook | `mso-work-memory/hooks/stop-check.sh` 추가. `.claude/state/stop-check.state`를 사용해 첫 Stop 출력 후 다음 Stop 1회를 무출력으로 통과시키고 state를 삭제. |
+| setup copy-form | `mso-repository-setup init.py --hook --provider claude`가 `stop-check.sh`를 `.claude/scripts/`로 복사하고 Stop hook에 등록. |
+| state gitignore | setup 대상 `.gitignore`에 `.claude/state/` 추가. 상태 파일은 local runtime artifact로 유지. |
+| hook 경계 | throttle은 사용자 reminder 출력에만 적용. `commit-work-memory.sh`는 Stop/PreCompact에서 계속 실행해 work-memory 변경분 커밋 백스톱을 유지. |
+| 버전 정렬 | README, changelog, `mso-work-memory`, `mso-repository-setup` 버전을 v0.6.3으로 정렬. |
+
 ## v0.6.2 (2026-06-30) — Worklog semantic boundary + cloud hand-off
 
 > **worklog를 workflow TTL node 실행 기록으로 재정의하고, Stop hook 자동 생성과 cloud hook side effect 의존을 제거.** `auditlog`는 도구 실행 사실, `worklog`는 workflow `node -> node` 레일 실행, `AD/IN/TS`는 레일 밖 판단과 예외 기록을 담당한다.

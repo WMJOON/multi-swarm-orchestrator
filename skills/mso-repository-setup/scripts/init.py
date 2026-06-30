@@ -18,7 +18,7 @@ init.py — MSO Repository Setup CLI
         ├── track-record/                             # <type>.jsonl  예: user-decision.jsonl
         └── insight-record/                           # <type>.jsonl  예: episode.jsonl, pattern.jsonl
 
-  <target>/.gitignore  (agent-context/work-memory/.zvec/ 등록)
+  <target>/.gitignore  (agent-context/work-memory/.zvec/, .claude/state/ 등록)
   <target>/.claude/settings.json  (--hook 시 Claude Code hook 등록)
   <target>/.codex/hooks.json      (--hook --provider codex 시 Codex hook 등록, compatibility)
   <target>/.codex/config.toml     (--hook --provider codex 시 Codex hook 등록)
@@ -49,6 +49,9 @@ GITIGNORE_LINES = [
     "",
     "# MSO work-memory zvec index (regenerable)",
     "agent-context/work-memory/.zvec/",
+    "",
+    "# MSO hook runtime state (local)",
+    ".claude/state/",
 ]
 
 
@@ -255,7 +258,7 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh"]
+WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh"]
 SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 
 
@@ -357,6 +360,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     auditlog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/auditlog.py"
     commit_cmd = f"{prefix}{workmem_env} bash {pd}/{provider_dir_name}/scripts/commit-work-memory.sh"
     check_cmd = f"{prefix}{worthy_env}{workmem_env} bash {pd}/{provider_dir_name}/scripts/work-memory-check.sh"
+    stop_check_cmd = f"{prefix}bash {pd}/{provider_dir_name}/scripts/stop-check.sh"
     scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
 
     # Claude Code supports tool-level PostToolUse audit logging. Codex hook examples
@@ -364,6 +368,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     if provider == "claude":
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", scaffold_cmd, "scaffold-check.sh")
+        _upsert_hook(hooks_section, "Stop", None, stop_check_cmd, "stop-check.sh")
 
         # Stop / PreCompact — work-memory 변경분을 훅 안에서 커밋한다.
         # 훅 커밋은 PostToolUse 를 재트리거하지 않아 auditlog append 무한루프를 피한다.
@@ -388,7 +393,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop·PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
     else:
         print(f"  + .codex/config.toml 갱신 (Stop·PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
         print(f"  + .codex/hooks.json 갱신 (empty compatibility)")

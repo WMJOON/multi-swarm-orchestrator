@@ -1,6 +1,6 @@
 ---
 name: mso-work-memory
-version: "0.6.2"
+version: "0.6.3"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 7종 entry (issue-note, agent-decision,
@@ -186,6 +186,8 @@ python wm_node.py reindex
 > **전달 의미론이 핵심이다.** Provider별 훅 stdout 의미론이 다르므로 `work-memory-check.sh`는 컨텍스트 도달이 확인된 `SessionStart(compact/resume)` 에서만 plain stdout 으로 넛지를 전달한다. `Stop`·`PreCompact`·`SessionEnd` 에서는 출력이 사용자에게 잡음처럼 보이거나 모델에 도달하지 않을 수 있으므로 check hook을 등록하지 않는다.
 >
 > **`Stop`·`PreCompact` 는 `commit-work-memory.sh` 로 work-memory 변경분을 커밋한다.** 훅 안에서 커밋하면 PostToolUse(auditlog) 를 재트리거하지 않아 auditlog append 무한루프를 피한다. Stop hook 은 `worklog` 를 생성하지 않는다. `worklog` 작성 여부를 판단하는 행위는 에이전트의 AD 성격이며, workflow TTL node 실행 맥락이 있을 때만 별도 CLI로 남긴다.
+>
+> **v0.6.3 Stop reminder throttle.** Claude Stop 안내처럼 사용자에게 보이는 reminder는 `stop-check.sh` 로 상태 파일을 두고 1회 출력 뒤 다음 Stop 1회를 억제한다. 상태 파일은 `.claude/state/stop-check.state` 이며 `.gitignore` 대상이다. 이 억제는 reminder 출력에만 적용하고, `commit-work-memory.sh` 백스톱은 그대로 실행한다.
 >
 > **Cloud runtime 주의.** Codex cloud 같은 ephemeral 환경에서는 setup script와 agent phase가 분리되고, project hook 실행·로컬 커밋 side effect가 다음 작업 기억으로 보장되지 않을 수 있다. cloud hand-off는 최종 답변/diff/커밋 가능한 tracked file에 남는 기록을 기준으로 하며, hook은 보조 수단으로만 본다.
 
