@@ -71,6 +71,25 @@ def test_workflow_topology_renders_execution_edges():
     assert '{{"Gate<br>id: d<br>Decision"}}' in markdown
 
 
+def test_oracle_view_normalizes_phase_target_ids_to_workflow():
+    graph = Graph()
+    wf = observe_graph.WF
+    eval_node = wf["node/demo/eval"]
+    phase = wf["phase/demo/p"]
+
+    graph.add((eval_node, RDF.type, wf.Eval))
+    graph.add((eval_node, RDFS.label, Literal("Eval")))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Phase")))
+    graph.add((eval_node, wf.target, phase))
+
+    markdown = observe_graph.build_oracle_view(graph)
+
+    assert "--o|target|" in markdown
+    assert "o_workflow_phase_demo_p_" in markdown
+    assert "o_phase" not in markdown
+
+
 def test_repository_topology_hides_internal_node_flow():
     graph = Graph()
     wf = observe_graph.WF

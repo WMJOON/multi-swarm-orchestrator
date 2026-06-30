@@ -1009,8 +1009,13 @@ def build_oracle_view(graph: Graph) -> str:
     lines = ["```mermaid", "flowchart TD"]
     seen: set[str] = set()
 
+    def oracle_id(term: URIRef) -> str:
+        if (term, RDF.type, WF.Workflow) in graph or (term, RDF.type, WF.Phase) in graph:
+            return mermaid_id("o_workflow", term)
+        return mermaid_id("o", term)
+
     def emit(s: URIRef, label: str, o: URIRef, arrow: str = "-->") -> None:
-        sid, oid = mermaid_id("o", s), mermaid_id("o", o)
+        sid, oid = oracle_id(s), oracle_id(o)
         for term, nid in ((s, sid), (o, oid)):
             if nid not in seen:
                 seen.add(nid)
