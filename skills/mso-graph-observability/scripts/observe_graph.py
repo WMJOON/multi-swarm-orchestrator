@@ -2251,14 +2251,17 @@ def build_workflow_topology(
         if show_workflow_spine and process_nodes:
             start_id = declare_boundary("start")
             end_id = declare_boundary("end")
-            if stream_task_edges:
-                spine_sources = {source for source, _ in stream_task_edges}
-                spine_targets = {target for _, target in stream_task_edges}
-                entry_nodes = {node for node in spine_sources - spine_targets if node not in control_incoming}
-                exit_nodes = {node for node in spine_targets - spine_sources if node not in control_outgoing}
-            else:
-                entry_nodes = {node for node in process_nodes if node not in control_incoming}
-                exit_nodes = {node for node in process_nodes if node not in control_outgoing}
+            rendered_incoming = set(control_incoming)
+            rendered_outgoing = set(control_outgoing)
+            for source, target in stream_task_edges:
+                rendered_outgoing.add(source)
+                rendered_incoming.add(target)
+            rendered_outgoing.update(
+                node for node in process_nodes
+                if (node, RDF.type, WF.Eval) in graph
+            )
+            entry_nodes = {node for node in process_nodes if node not in rendered_incoming}
+            exit_nodes = {node for node in process_nodes if node not in rendered_outgoing}
 
             for node in sorted(entry_nodes, key=str):
                 node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
