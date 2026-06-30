@@ -598,6 +598,29 @@ def mermaid_id(prefix: str, term: URIRef | Literal | str) -> str:
     return f"{prefix}_{cleaned}_{digest}"
 
 
+def process_unit_id_key(term: URIRef | Literal | str) -> str:
+    for prefix in ("workflow/", "phase/"):
+        parts = scoped_local_parts(term, prefix)
+        if len(parts) >= 2:
+            scope = parts[0]
+            unit = "_".join(parts[1:])
+            unit = re.sub(r"^phase[-_]*", "", unit)
+            return "_".join(part for part in (scope, unit) if part)
+    return display_id(term)
+
+
+def process_unit_mermaid_id(prefix: str, term: URIRef | Literal | str) -> str:
+    digest = hashlib.sha1(str(term).encode("utf-8")).hexdigest()[:10]
+    cleaned = re.sub(r"[^A-Za-z0-9_]", "_", process_unit_id_key(term))[:40].strip("_")
+    if not cleaned:
+        cleaned = "workflow"
+    return f"{prefix}_{cleaned}_{digest}"
+
+
+def is_process_unit(graph: Graph, term: URIRef) -> bool:
+    return (term, RDF.type, WF.Workflow) in graph or (term, RDF.type, WF.Phase) in graph
+
+
 def mermaid_label(text: str, max_len: int = 72) -> str:
     compact = re.sub(r"\s+", " ", text).strip()
     if len(compact) > max_len:
@@ -1010,8 +1033,8 @@ def build_oracle_view(graph: Graph) -> str:
     seen: set[str] = set()
 
     def oracle_id(term: URIRef) -> str:
-        if (term, RDF.type, WF.Workflow) in graph or (term, RDF.type, WF.Phase) in graph:
-            return mermaid_id("o_workflow", term)
+        if is_process_unit(graph, term):
+            return process_unit_mermaid_id("o_workflow", term)
         return mermaid_id("o", term)
 
     def emit(s: URIRef, label: str, o: URIRef, arrow: str = "-->") -> None:
@@ -1534,7 +1557,7 @@ def build_process_map(
         pstr = str(phase)
         phase_scope_map[pstr] = scope
         phase_label_map[pstr] = preferred_label(graph, phase) or display_id(phase)
-        phase_node_ids[pstr] = mermaid_id("proc", phase)
+        phase_node_ids[pstr] = process_unit_mermaid_id("proc", phase)
 
     # --- Collect artifact refs per workflow (aggregate from all nodes in that workflow) ---
     node_types = (WF.Step, WF.Decision, WF.Eval, WF.Group)
@@ -1853,9 +1876,16 @@ def build_workflow_topology(
         suffix: str = "",
         shape: str = "rect",
     ) -> str:
-        node_id = mermaid_id(prefix, term)
+        node_id = (
+            process_unit_mermaid_id(prefix, term)
+            if prefix == "workflow" and is_process_unit(graph, term)
+            else mermaid_id(prefix, term)
+        )
         if node_id not in declared:
-            lines.append(f"  {mermaid_node(graph, term, prefix, suffix, shape)}")
+            if prefix == "workflow" and is_process_unit(graph, term):
+                lines.append(f"  {mermaid_shape(node_id, mermaid_node_label(graph, term, suffix), shape)}")
+            else:
+                lines.append(f"  {mermaid_node(graph, term, prefix, suffix, shape)}")
             if cls:
                 lines.append(f"  class {node_id} {cls}")
                 if cls == "decision":
@@ -1926,7 +1956,7 @@ def build_workflow_topology(
         return node_id
 
     def process_unit_id(term: URIRef) -> str:
-        return mermaid_id("workflow", term)
+        return process_unit_mermaid_id("workflow", term)
 
     def rendered_outgoing_targets(term: URIRef) -> set[str]:
         targets: set[str] = set()

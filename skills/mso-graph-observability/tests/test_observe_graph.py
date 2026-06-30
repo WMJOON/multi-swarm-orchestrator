@@ -60,8 +60,9 @@ def test_workflow_topology_renders_execution_edges():
 
     assert "-->|next|" in markdown
     assert "-.->|on: rejected|" in markdown
-    assert "subgraph workflow_phase_demo_p_" in markdown
+    assert "subgraph workflow_demo_p_" in markdown
     assert "legacy_phase" not in markdown
+    assert "workflow_phase" not in markdown
     assert "-->|hasNode|" not in markdown
     assert "-->|hasBranch|" not in markdown
     assert "Branch" not in markdown
@@ -86,8 +87,9 @@ def test_oracle_view_normalizes_phase_target_ids_to_workflow():
     markdown = observe_graph.build_oracle_view(graph)
 
     assert "--o|target|" in markdown
-    assert "o_workflow_phase_demo_p_" in markdown
+    assert "o_workflow_demo_p_" in markdown
     assert "o_phase" not in markdown
+    assert "o_workflow_phase" not in markdown
 
 
 def test_repository_topology_hides_internal_node_flow():
