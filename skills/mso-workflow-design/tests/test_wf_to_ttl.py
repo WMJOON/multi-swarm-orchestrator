@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pyshacl import validate as shacl_validate
 
 _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
@@ -58,7 +59,7 @@ def test_node_feedback_loop_without_eval_fails(tmp_path):
     doc = {
         "workflows": [
             {"id": "a", "name": "A", "status": "active", "steps": [
-                {"type": "step", "id": "s-01", "label": "작업", "status": "active"},
+                {"type": "step", "id": "s-01", "label": "작업", "instruction": "작업을 수행한다", "status": "active"},
                 {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
                  "decision_subject": "agent", "branches": [{"on": "again", "goto": "s-01"}]},
             ]},
@@ -70,14 +71,73 @@ def test_node_feedback_loop_without_eval_fails(tmp_path):
     assert any(u.endswith(("node/a/s-01", "node/a/d-01")) for u in res["uncontrolled_loops"])
 
 
+def test_node_feedback_loop_with_user_decision_gate_conforms(tmp_path):
+    """HITL/user decision gate는 feedback loop의 제어점으로 인정한다."""
+    doc = {
+        "workflows": [
+            {"id": "a", "name": "A", "status": "active", "steps": [
+                {"type": "step", "id": "s-01", "label": "수정", "instruction": "반려 내용을 수정한다", "status": "active"},
+                {"type": "decision", "id": "d-01", "label": "승인", "status": "active",
+                 "decision_subject": "user", "branches": [{"on": "rejected", "goto": "s-01"}]},
+            ]},
+        ]
+    }
+    res = wf_to_ttl.validate(_write(tmp_path, "user-loop-controlled.yaml", doc))
+    assert res["ok"], res
+    assert res["uncontrolled_loops"] == []
+
+
+def test_node_feedback_loop_with_validation_decision_gate_conforms(tmp_path):
+    """TTL-only workflow에서 Decision+Validation gate는 Eval이 아니어도 루프를 제어한다."""
+    ttl = tmp_path / "validation-decision-loop.ttl"
+    ttl.write_text(
+        """
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+
+<https://mso.dev/ontology/workflow#workflow/a> a wf:Workflow ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/a/s-01>, <https://mso.dev/ontology/workflow#node/a/v-01> .
+
+<https://mso.dev/ontology/workflow#node/a/s-01> a wf:Step, wf:Task, wf:Node ;
+    wf:label "수정" ;
+    wf:instruction "검증 실패 내용을 수정한다" ;
+    wf:status "active" ;
+    wf:next <https://mso.dev/ontology/workflow#node/a/v-01> .
+
+<https://mso.dev/ontology/workflow#node/a/v-01> a wf:Decision, wf:Validation, wf:Node ;
+    wf:decisionSubject "agent" ;
+    wf:label "검증" ;
+    wf:status "active" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/a/v-01_branch_failed_s-01> .
+
+<https://mso.dev/ontology/workflow#node/a/v-01_branch_failed_s-01> a wf:Branch ;
+    wf:on "failed" ;
+    wf:goto "s-01" ;
+    wf:gotoNode <https://mso.dev/ontology/workflow#node/a/s-01> .
+""",
+        encoding="utf-8",
+    )
+    conforms, _, text = shacl_validate(
+        str(ttl),
+        shacl_graph=str(wf_to_ttl.SHAPES),
+        ont_graph=str(wf_to_ttl.TBOX),
+        inference="rdfs",
+        abort_on_first=False,
+    )
+    assert conforms, text
+
+
 def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
     """순환은 허용하되 loop 안에 별도 Eval gate 가 있어야 한다."""
     doc = {
         "workflows": [
             {"id": "a", "name": "A", "status": "active", "steps": [
-                {"type": "step", "id": "s-01", "label": "작업", "status": "active"},
+                {"type": "step", "id": "s-01", "label": "작업", "instruction": "작업을 수행한다", "status": "active"},
                 {"type": "eval", "id": "e-01", "label": "품질 평가", "status": "active",
-                 "oracle_type": "metric", "criteria": ["accepted"]},
+                 "oracle_type": "metric", "criteria": ["accepted"], "target": "a",
+                 "target_artifact": "out/",
+                 "branches": [{"on": "fail", "goto": "s-fix"}, {"on": "pass"}]},
+                {"type": "step", "id": "s-fix", "label": "개선 반영", "status": "active",
+                 "instruction": "평가 결과를 작업 workflow에 반영한다", "evolves": "a"},
                 {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
                  "decision_subject": "agent", "branches": [{"on": "again", "goto": "s-01"}]},
             ]},
@@ -86,6 +146,22 @@ def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
     res = wf_to_ttl.validate(_write(tmp_path, "controlled.yaml", doc))
     assert res["ok"], res
     assert res["uncontrolled_loops"] == []
+
+
+def test_decision_branch_target_does_not_get_auto_next(tmp_path):
+    """branch가 있는 Decision은 같은 방향의 sequential wf:next를 자동 생성하지 않는다."""
+    doc = {"workflows": [{
+        "id": "a", "name": "A", "status": "active", "steps": [
+            {"type": "step", "id": "s-01", "label": "작업", "status": "active"},
+            {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
+             "decision_subject": "agent", "branches": [{"on": "ok", "goto": "s-02"}]},
+            {"type": "step", "id": "s-02", "label": "후속", "status": "active"},
+        ],
+    }]}
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "decision-branch.yaml", doc))
+    decision = wf_to_ttl._node_uri("d-01", "a")
+    target = wf_to_ttl._node_uri("s-02", "a")
+    assert (decision, wf_to_ttl.WF.next, target) not in g
 
 
 def test_critical_dep_cycle_is_observed_not_rejected(tmp_path):
@@ -115,10 +191,19 @@ def test_validation_projects_to_eval_metric(tmp_path):
     doc = {
         "phases": [{
             "id": "t", "name": "T", "status": "active",
-            "steps": [{
-                "type": "validation", "id": "t-v-01", "label": "스키마 검증",
-                "status": "active", "criteria": ["schema valid"],
-            }],
+            "steps": [
+                {
+                    "type": "validation", "id": "t-v-01", "label": "스키마 검증",
+                    "status": "active", "criteria": ["schema valid"], "target": "t",
+                    "target_artifact": "schema.yaml",
+                    "branches": [{"on": "fail", "goto": "t-s-01"}, {"on": "pass"}],
+                },
+                {
+                    "type": "step", "id": "t-s-01", "label": "스키마 개선",
+                    "instruction": "검증 결과를 바탕으로 workflow schema를 개선한다",
+                    "status": "active", "evolves": "t",
+                },
+            ],
         }]
     }
     res = wf_to_ttl.validate(_write(tmp_path, "okv.yaml", doc))
@@ -215,6 +300,7 @@ def test_task_and_eval_roles_projected_from_legacy_oracle_alias(tmp_path):
                 "label": "품질 평가",
                 "status": "active",
                 "oracle_type": "agent",
+                "target": "p",
                 "criteria": ["quality score passes"],
             },
         ],
@@ -231,6 +317,41 @@ def test_task_and_eval_roles_projected_from_legacy_oracle_alias(tmp_path):
     assert str(next(g.objects(eval_node, wf_to_ttl.WF.oracleType))) == "agent"
 
 
+def test_event_node_projects_as_node_not_task(tmp_path):
+    """scheduler 같은 진입 이벤트는 wf:Event + wf:Node 이며 wf:Task가 아니다."""
+    doc = {"workflow": {"id": "wf"}, "phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "event",
+                "id": "e-01",
+                "label": "정기 실행 스케줄러",
+                "status": "active",
+                "event_kind": "scheduler",
+                "source": ".github/workflows/weekly.yml",
+            },
+            {
+                "type": "step",
+                "id": "s-01",
+                "label": "생성",
+                "instruction": "산출물을 만든다",
+                "status": "active",
+            },
+        ],
+    }]}
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "event.yaml", doc))
+    event = wf_to_ttl._node_uri("e-01", "wf")
+    step = wf_to_ttl._node_uri("s-01", "wf")
+
+    assert (event, wf_to_ttl.RDF.type, wf_to_ttl.WF.Event) in g
+    assert (event, wf_to_ttl.RDF.type, wf_to_ttl.WF.Node) in g
+    assert (event, wf_to_ttl.RDF.type, wf_to_ttl.WF.Task) not in g
+    assert str(next(g.objects(event, wf_to_ttl.WF.eventKind))) == "scheduler"
+    assert (event, wf_to_ttl.WF.next, step) in g
+
+
 def test_eval_node_type_projected(tmp_path):
     """v0.5.0 현행 YAML eval 노드는 wf:Eval로 투영된다."""
     doc = {"phases": [{
@@ -243,6 +364,7 @@ def test_eval_node_type_projected(tmp_path):
             "label": "품질 평가",
             "status": "active",
             "oracle_type": "metric",
+            "target": "p",
             "criteria": ["score >= 0.8"],
             "target_artifact": "out/",
             "order_target": "s-02",
@@ -253,9 +375,64 @@ def test_eval_node_type_projected(tmp_path):
     eval_node = wf_to_ttl._node_uri("e-01")
 
     assert (eval_node, wf_to_ttl.RDF.type, wf_to_ttl.WF.Eval) in g
+    assert (eval_node, wf_to_ttl.WF.target, wf_to_ttl._workflow_uri("p")) in g
     assert str(next(g.objects(eval_node, wf_to_ttl.WF.targetArtifact))) == "out/"
     assert str(next(g.objects(eval_node, wf_to_ttl.WF.orderTarget))) == "s-02"
     assert str(next(g.objects(eval_node, wf_to_ttl.WF.orderArtifact))) == "out/report.csv"
+
+
+def test_eval_without_workflow_target_measured_artifact_and_evolution_fails_shape(tmp_path):
+    """모든 Eval은 target workflow와 측정 artifact를 선언해야 한다."""
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [{
+            "type": "eval",
+            "id": "e-01",
+            "label": "품질 평가",
+            "status": "active",
+            "oracle_type": "metric",
+            "criteria": ["score >= 0.8"],
+        }],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "eval-missing-measurement.yaml", doc))
+    assert res["ok"] is False
+    assert res["shacl_conforms"] is False
+    assert "Eval은 평가 대상 workflow를 wf:target으로 선언해야 함" in res["shacl_report"]
+    assert "Eval은 측정 대상 artifact를 wf:targetArtifact로 선언해야 함" in res["shacl_report"]
+
+
+def test_eval_without_downstream_evolves_target_fails_shape(tmp_path):
+    """Eval 이후 task는 Eval target workflow를 wf:evolves로 선언해야 한다."""
+    doc = {"phases": [{
+        "id": "p",
+        "name": "P",
+        "status": "active",
+        "steps": [
+            {
+                "type": "eval",
+                "id": "e-01",
+                "label": "품질 평가",
+                "status": "active",
+                "oracle_type": "metric",
+                "target": "p",
+                "target_artifact": "out/",
+                "criteria": ["score >= 0.8"],
+                "branches": [{"on": "fail", "goto": "s-fix"}, {"on": "pass"}],
+            },
+            {
+                "type": "step",
+                "id": "s-fix",
+                "label": "개선 반영",
+                "status": "active",
+            },
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "eval-missing-evolves.yaml", doc))
+    assert res["ok"] is False
+    assert res["shacl_conforms"] is False
+    assert "Eval은 wf:next 대신 on=fail branch로 Task에 진입하고, 그 Task가 wf:target workflow를 wf:evolves로 선언해야 함" in res["shacl_report"]
 
 
 def test_node_feedback_loop_without_eval_fails(tmp_path):
@@ -271,6 +448,7 @@ def test_node_feedback_loop_without_eval_fails(tmp_path):
                 "label": "생성",
                 "instruction": "산출물을 만든다",
                 "status": "active",
+                "evolves": "p",
             },
             {
                 "type": "decision",
@@ -278,7 +456,7 @@ def test_node_feedback_loop_without_eval_fails(tmp_path):
                 "label": "자동 재시도",
                 "status": "active",
                 "decision_subject": "agent",
-                "branches": [{"on": "failed", "goto": "s-01"}],
+                "branches": [{"on": "fail", "goto": "s-01"}, {"on": "pass"}],
             },
         ],
     }]}
@@ -299,6 +477,7 @@ def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
                 "label": "생성",
                 "instruction": "산출물을 만든다",
                 "status": "active",
+                "evolves": "p",
             },
             {
                 "type": "oracle",
@@ -306,8 +485,10 @@ def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
                 "label": "품질 평가",
                 "status": "active",
                 "oracle_type": "metric",
+                "target": "p",
+                "target_artifact": "out/",
                 "criteria": ["score >= 0.8"],
-                "branches": [{"on": "failed", "goto": "s-01"}],
+                "branches": [{"on": "fail", "goto": "s-01"}, {"on": "pass"}],
             },
         ],
     }]}
@@ -338,9 +519,11 @@ def test_eval_tool_revision_target_must_be_remediation_step(tmp_path):
                 "label": "엔진 평가",
                 "status": "active",
                 "oracle_type": "user",
+                "target": "p",
                 "criteria": ["labels table 기반으로 엔진 개선 여부 판단"],
                 "target_artifact": "[[nlu engine process]]",
                 "order_target": "d-route",
+                "branches": [{"on": "fail", "goto": "d-route"}, {"on": "pass"}],
             },
             {
                 "type": "decision",
@@ -381,9 +564,11 @@ def test_eval_tool_revision_target_accepts_targeted_remediation_step(tmp_path):
                 "label": "엔진 평가",
                 "status": "active",
                 "oracle_type": "user",
+                "target": "p",
                 "criteria": ["labels table 기반으로 엔진 개선 여부 판단"],
                 "target_artifact": "[[nlu engine process]]",
                 "order_target": "s-fix",
+                "branches": [{"on": "fail", "goto": "s-fix"}, {"on": "pass"}],
             },
             {
                 "type": "step",
@@ -392,6 +577,7 @@ def test_eval_tool_revision_target_accepts_targeted_remediation_step(tmp_path):
                 "instruction": "평가 결과에 따라 프롬프트 또는 라벨링 처리 로직을 개선한다",
                 "status": "active",
                 "target_artifact": "[[nlu engine process]]",
+                "evolves": "p",
             },
         ],
     }]}
@@ -498,6 +684,26 @@ def test_good_decision_subject_conforms(tmp_path):
     assert res["ok"], res
 
 
+def test_decision_next_duplicate_with_branch_target_fails_shape(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {"type": "decision", "id": "p-d-01", "label": "분기",
+             "status": "active", "decision_subject": "agent",
+             "branches": [{"on": "ok", "goto": "p-s-01"}]},
+            {"type": "step", "id": "p-s-01", "label": "후속", "status": "active"},
+        ],
+    }]}
+    p = _write(tmp_path, "duplicate-decision-next.yaml", doc)
+    g, _ = wf_to_ttl.build_graph(p)
+    decision = wf_to_ttl._node_uri("p-d-01")
+    target = wf_to_ttl._node_uri("p-s-01")
+    g.add((decision, wf_to_ttl.WF.next, target))
+    conforms, report = wf_to_ttl.run_shacl(g)
+    assert conforms is False
+    assert "Decision의 wf:next가 branch gotoNode와 같으면 중복이므로 제거해야 함" in report
+
+
 def test_decision_missing_subject_fails(tmp_path):
     """decision_subject 누락은 위반."""
     doc = {"phases": [{
@@ -578,6 +784,7 @@ def test_eval_tool_target_requires_produced_artifact(tmp_path):
         "steps": [{
             "type": "eval", "id": "p-e-01", "label": "도구 검수",
             "status": "active", "oracle_type": "user",
+            "target": "p",
             "target_artifact": "[[nlu engine process]]",
             "criteria": ["tool 산출 품질 확인"],
         }],
@@ -602,8 +809,15 @@ def test_eval_tool_target_with_produced_artifact_conforms(tmp_path):
             {
                 "type": "eval", "id": "p-e-01", "label": "도구 검수",
                 "status": "active", "oracle_type": "user",
+                "target": "p",
                 "target_artifact": "[[nlu engine process]]",
                 "criteria": ["tool 산출 품질 확인"],
+                "branches": [{"on": "fail", "goto": "p-s-02"}, {"on": "pass"}],
+            },
+            {
+                "type": "step", "id": "p-s-02", "label": "도구 개선 반영",
+                "status": "active", "instruction": "평가 결과를 바탕으로 도구 실행 workflow를 개선한다",
+                "evolves": "p",
             },
         ],
     }]}

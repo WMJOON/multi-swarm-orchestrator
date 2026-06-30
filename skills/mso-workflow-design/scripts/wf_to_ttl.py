@@ -13,8 +13,9 @@
 
     2) feedback loop control (SHACL-SPARQL + rdflib SPARQL)
        순환 자체는 허용한다. 다만 산출물이 재귀적으로 소비되는 loop 안에
-       별도 Eval gate가 없으면 uncontrolled feedback loop로 본다. Decision gate는
-       process branch 제어점이며, Eval gate는 산출물 품질/정합 평가점이다.
+       Eval gate, Validation decision gate, user Decision gate 중 하나가 없으면
+       uncontrolled feedback loop로 본다. agent Decision gate만 있는 루프는 여전히
+       산출물 품질/정합 평가점이 아니므로 통제점으로 보지 않는다.
 
 사용:
   python wf_to_ttl.py serialize <workflow.yaml>          # legacy YAML import: TTL stdout
@@ -48,6 +49,7 @@ _TYPE_CLASS = {
     "decision": WF.Decision,
     "validation": WF.Eval,  # v0.6.1 phase-less: Validation 폐지 → Eval(oracle_type=metric)
     "eval": WF.Eval,
+    "event": WF.Event,
     "oracle": WF.Eval,  # legacy YAML alias
     "group": WF.Group,
 }
@@ -134,7 +136,7 @@ def _project_fields(g: Graph, subj: URIRef, doc: dict, skip: set) -> None:
                 # list-of-dict (branches/directories) → 호출부 특수 처리
 
 
-_NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows"}
+_NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows", "target", "target_workflow", "evolves", "evolves_workflow"}
 
 
 def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> None:
@@ -157,6 +159,29 @@ def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> No
         # v0.6.1 phase-less: validation 은 Eval(oracle_type=metric)로 투영 — 자동 pass/fail 게이트
         if ntype == "validation" and not n.get("oracle_type"):
             g.add((nu, WF.oracleType, Literal("metric")))
+        target_workflow = n.get("target") or n.get("target_workflow")
+        if cls == WF.Eval and target_workflow:
+            target_text = str(target_workflow)
+            current_workflow_id = str(workflow_uri).rstrip("/").rsplit("/", 1)[-1]
+            if target_text.startswith(("http://", "https://")):
+                target_uri = URIRef(target_text)
+            elif target_text in {".", "self"} or _safe(target_text) == current_workflow_id:
+                target_uri = workflow_uri
+            else:
+                target_uri = _workflow_uri(target_text, scope)
+            g.add((nu, WF.target, target_uri))
+        evolves_workflow = n.get("evolves") or n.get("evolves_workflow")
+        if evolves_workflow:
+            current_workflow_id = str(workflow_uri).rstrip("/").rsplit("/", 1)[-1]
+            for item in evolves_workflow if isinstance(evolves_workflow, list) else [evolves_workflow]:
+                evolves_text = str(item)
+                if evolves_text.startswith(("http://", "https://")):
+                    evolves_uri = URIRef(evolves_text)
+                elif evolves_text in {".", "self"} or _safe(evolves_text) == current_workflow_id:
+                    evolves_uri = workflow_uri
+                else:
+                    evolves_uri = _workflow_uri(evolves_text, scope)
+                g.add((nu, WF.evolves, evolves_uri))
         g.add((workflow_uri, WF.hasNode, nu))
         g.add((nu, WF.inWorkflow, workflow_uri))
         _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/decisionSubject/owner/...
@@ -188,7 +213,18 @@ def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> No
             if b.get("label"):
                 g.add((bn, WF.label, Literal(str(b["label"]))))
 
-    for current, nxt in zip(ordered_uris, ordered_uris[1:]):
+    for current_node, current, nxt in zip(nodes, ordered_uris, ordered_uris[1:]):
+        current_type = str(current_node.get("type", "")).lower() if isinstance(current_node, dict) else ""
+        if current_type in {"eval", "oracle", "validation"} and current_node.get("branches"):
+            continue
+        if current_type == "decision" and current_node.get("branches"):
+            branch_targets = {
+                _node_uri(str(branch.get("goto")), scope)
+                for branch in current_node.get("branches", [])
+                if isinstance(branch, dict) and branch.get("goto")
+            }
+            if nxt in branch_targets:
+                continue
         g.add((current, WF.next, nxt))
 
 
@@ -401,16 +437,20 @@ PREFIX wf: <https://mso.dev/ontology/workflow#>
 SELECT ?x WHERE {
   ?x (wf:next|wf:hasBranch/wf:gotoNode)+ ?x .
   FILTER NOT EXISTS {
-    ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?eval .
-    ?eval a wf:Eval .
-    ?eval (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
+    ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?gate .
+    { ?gate a wf:Eval . }
+    UNION
+    { ?gate a wf:Validation . }
+    UNION
+    { ?gate a wf:Decision ; wf:decisionSubject "user" . }
+    ?gate (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
   }
 }
 """
 
 
 def find_uncontrolled_loops(g: Graph) -> list[str]:
-    """Eval 개입점 없이 닫힌 feedback loop 목록."""
+    """Eval/Validation/user Decision 제어점 없이 닫힌 feedback loop 목록."""
     seen = []
     for row in g.query(_UNCONTROLLED_LOOP_QUERY):
         uri = str(row[0])

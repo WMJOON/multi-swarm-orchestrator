@@ -1,7 +1,7 @@
 ---
 name: mso-orchestration
-version: "0.5.1"
-description: "MSO 스킬 팩 라우터. v0.5.0: workflow/artifact/eval graph 역할을 분리하고, §11 NLU 재편에 따라 utterance→intent 는 UUG, MSO 는 intent→action 및 MSO runtime 신호만 담당한다. MSO는 workflow/work-memory의 소유자이며 MSM(가칭)의 ontology KB를 소비한다."
+version: "0.6.4"
+description: "MSO 스킬 팩 라우터. v0.5.0: workflow/artifact/eval graph 역할을 분리하고, §11 NLU 재편에 따라 utterance→intent 는 UUG, MSO 는 intent→action 및 MSO runtime 신호만 담당한다."
 triggers:
   - "mso 시작"
   - "MSO init"
@@ -48,13 +48,6 @@ triggers:
 MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 적절한 sub-skill 로 안내한다.
 
 본 스킬은 **로직을 갖지 않는다** — 흐름 정의·라우팅만. 도메인 동작은 모두 sub-skill 위임.
-
-## Boundary Update
-
-- **MSO**: repository workflow, task rail, slot spec, dispatch, work-memory/decision memory를 소유한다.
-- **MSM(가칭)**: ontology knowledge base를 제공하고 AI의 추론 경로를 제약하는 구조 지식을 만든다. MSO workflow는 필요 시 이 ontology를 소비한다.
-- **UUG**: MSO/MSM 사용 편의 레이어다. 반복 이벤트와 사용자 선호를 바탕으로 entity-filling proposal을 만들 수 있지만, MSO workflow의 slot spec이나 MSM ontology 정본을 직접 수정하지 않는다.
-- User decision drift와 bias correction은 work-memory/UUG preference projection의 관측 신호로 남기고, workflow/ontology 정본 변경은 각 소유 레이어의 HITL/decision 절차를 거친다.
 
 ## Flow (전체 라이프사이클)
 

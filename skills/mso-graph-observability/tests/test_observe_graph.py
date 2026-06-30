@@ -60,7 +60,7 @@ def test_workflow_topology_renders_execution_edges():
 
     assert "-->|next|" in markdown
     assert "-.->|on: rejected|" in markdown
-    assert "subgraph phase_phase_demo_p_" in markdown
+    assert "subgraph legacy_phase_phase_demo_p_" in markdown
     assert "-->|hasNode|" not in markdown
     assert "-->|hasBranch|" not in markdown
     assert "Branch" not in markdown
@@ -133,7 +133,7 @@ def test_workflow_subgraph_renders_dataflow_nodes():
         "boundary_start_demo_start_" in line and "-->|next|" in line and "step_node_demo_producer_" in line
         for line in markdown.splitlines()
     )
-    assert any(
+    assert not any(
         "step_node_demo_producer_" in line and "-->|next|" in line and "step_node_demo_consumer_" in line
         for line in markdown.splitlines()
     )
@@ -288,10 +288,9 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
     assert "[[nlu engine process]]<br>TOOL" in markdown
     assert "-->|target|" in markdown
     assert "labeling.db#labels<br>TABLE" in markdown
-    assert "-.->|validated_by|" in markdown
+    assert "-.->|measured_by|" in markdown
     assert "eval_node_demo_eval_" in markdown
     assert "step_node_demo_fix_" in markdown
-    assert "-->|approves|" in markdown
     assert "-->|requests_revision|" in markdown
     assert any(
         "step_node_demo_fix_" in line and "-->|target|" in line and "data_local_file___nlu_engine_process_" in line
@@ -307,7 +306,7 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
     )
 
 
-def test_eval_without_next_approves_end_boundary():
+def test_eval_without_next_does_not_invent_approval_edge():
     graph = Graph()
     wf = observe_graph.WF
     eval_node = wf["node/demo/eval"]
@@ -324,8 +323,12 @@ def test_eval_without_next_approves_end_boundary():
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
 
     assert "boundary_end_demo_end_" in markdown
-    assert any(
-        "eval_node_demo_eval_" in line and "-->|approves|" in line and "boundary_end_demo_end_" in line
+    assert not any(
+        "eval_node_demo_eval_" in line and "-->|approves|" in line
+        for line in markdown.splitlines()
+    )
+    assert not any(
+        "eval_node_demo_eval_" in line and "-->|next|" in line and "boundary_end_demo_end_" in line
         for line in markdown.splitlines()
     )
 

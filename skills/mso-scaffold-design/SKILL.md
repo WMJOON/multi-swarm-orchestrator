@@ -1,6 +1,6 @@
 ---
 name: mso-scaffold-design
-version: "0.5.1"
+version: "0.6.4"
 description: >
   Repository Scaffolding(directory/reference/data source/convention)을 규정한다.
   프로젝트 루트의 `index.yaml` 을 정본(SSOT)으로 두고, 모듈·서브디렉토리·

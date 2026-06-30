@@ -1,6 +1,6 @@
 ---
 name: mso-graph-observability
-version: "0.5.1"
+version: "0.6.4"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 ---
 
@@ -16,7 +16,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - workflow topology 입력은 TTL ABox뿐이다. YAML은 legacy migration 입력일 뿐 Mermaid topology 생성 입력으로 쓰지 않는다.
 - 관측 결과는 기본적으로 `agent-context/observability/graph/` 아래에 둔다. workflow별 뷰는 `graph/<workflow-scope>/` 폴더로 묶는다.
 - 시각적으로 보는 1차 대상은 workflow graph다.
-- workflow별 관측 뷰는 세 가지로 분리한다. `artifact-stream`은 `artifact --consumes--> task --produces--> artifact` supply chain을, `workflow`는 그 stream에서 파생한 `((start)) --next--> task --next--> ((end))` task spine을, `integrated`는 둘을 한 화면에 함께 보여준다.
+- workflow별 관측 뷰는 세 가지로 분리한다. `artifact-stream`은 `artifact --consumes--> task --produces--> artifact` supply chain을, `workflow`는 TTL의 `wf:next`/`wf:gotoNode` control edge만으로 `((start)) --next--> node --next--> ((end))` spine을 렌더링하며, `integrated`는 둘을 한 화면에 함께 보여준다.
 - TTL 원본의 node/edge shape를 수정하지 않는다. 누락·과잉·bypass 후보는 `artifact-stream-report.md`와 runtime analysis 같은 개선 리포트로 제안한다.
 - work-memory/runtime analysis에서 반복 실패·결정 drift·artifact consumer 누락을 발견하면 graph Markdown을 고치지 않는다. 해당 signal을 evidence로 삼아 workflow TTL ABox를 갱신하고 graph를 재생성한다.
 - 같은 target Artifact id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
@@ -31,7 +31,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 - 디렉토리는 workflow topology와 Artifact 소비 관계에서 파생되는 구현 경계다. 디렉토리를 먼저 만들지 않고, 소비자가 없는 Artifact boundary는 줄이거나 합치는 후보로 본다.
 - Mermaid shape는 GitHub Markdown 호환성을 우선한다. task는 `["label"]`, document는 `@{ shape: doc }`, machine-native artifact는 cylinder, media는 stadium, decision은 `{{"label"}}`, eval(평가 게이트)은 `[/"label"\]` trapezoid로 렌더링한다.
 - eval 노드(`wf:Eval`)는 평가를 수행하는 주체(oracle)를 레이블에 `oracle: {value}` 형태로 표시한다. `wf:oracle` 선언이 없으면 `wf:oracleType`을 사용한다.
-- eval 엣지는 `artifact -.->|validated_by| eval`, `eval -->|target| tool`, `eval -->|requests_revision| remediation step`, `eval -->|approves| next/end`, `eval -.->|report| artifact`로 표시된다. `targetArtifact`가 tool이면 해당 tool이 생산한 artifact가 `validated_by` 대상이다. eval이 개선을 요청한 remediation step도 `step -->|target| tool`로 개선 대상을 표시한다. eval 엣지는 workflow view와 artifact-stream view 양쪽에 모두 표시된다.
+- eval 엣지는 `eval --o|target| workflow`, `artifact -.->|measured_by| eval`, `eval -.->|on: fail| task`, `task -->|evolves| workflow`, `eval -.->|on: pass| end`, `eval -.->|report| artifact`로 표시된다. `targetArtifact`가 tool이면 해당 tool이 생산한 artifact도 `measured_by` 대상이다. eval이 개선을 요청한 remediation step도 `step -->|target| tool`로 개선 대상을 표시한다. eval 진행 엣지는 `wf:next`가 아니라 fail/pass branch로 표시한다.
 - `usesTool`이 있는 agentTask의 artifact stream은 tool 위임 효율을 볼 수 있도록 `artifact --consumes--> tool --produces--> artifact`로 렌더링하고, agentTask는 workflow edge인 `delegates_to`로 tool에 연결한다. `consumes`/`produces`는 1:1 제약이 아니며, 같은 table artifact가 동시에 consumed/produced될 수 있다. tool 내부 스크립트·구현 디렉토리는 `implementation`/`tool_internal`/`internal` role로 두고 artifact stream edge로 렌더링하지 않는다.
 - Mermaid label에는 사람이 읽는 제목과 함께 stable id를 `id: <node-id>` 형태로 표시한다. workflow node는 TTL URI의 local id(`psd-s-034` 등)를, Artifact node는 index artifact id(`content.draft` 등)를 우선 사용하고 미등록 Artifact만 `local_file:<path>`/짧은 `deliverable:<hash>` key를 쓴다.
 - work-memory, auditlog, worklog, intent turns는 별도 분석 리포트로 다룬다.
@@ -138,11 +138,11 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 
 - `wf:criticalDep`은 dependency 의미를 살려 `dependency target --> dependent` 방향으로 표현한다.
 - `wf:hasNode`와 `wf:has_subWorkflow`는 workflow별 sub-graph에서 Mermaid `subgraph` containment로 표현하고 predicate edge로 노출하지 않는다. `wf:hasBranch`는 Branch node나 `hasBranch` edge로 렌더링하지 않고, `decision -.->|on:<condition>| target` 조건부 process edge로 직접 표현한다.
-- `wf:Eval` 노드의 `wf:onFail`은 `-.->|on: fail|` 엣지로 렌더링하고, `validated_by`/`requests_revision`/`approves`/`report` eval 엣지는 별도 eval-edge pass에서 모든 view에 공통으로 렌더링한다.
-- `wf:next`와 `wf:gotoNode`는 repository 전체 topology에서는 숨긴다. workflow view의 `next` spine은 공유 Data id의 producer/consumer 관계에서 먼저 파생하고, stream 정보가 부족할 때만 `wf:next`를 fallback으로 사용한다.
+- `wf:Eval` 노드의 `wf:hasBranch`는 `-.->|on: fail|`/`-.->|on: pass|` 엣지로 렌더링하고, pass branch에 `gotoNode`가 없으면 boundary end로 연결한다. `measured_by`/`requests_revision`/`report`/`evolves` eval 관련 엣지는 별도 eval-edge pass에서 모든 view에 공통으로 렌더링한다.
+- `wf:next`와 `wf:gotoNode`는 TTL control edge다. workflow view의 `next` spine은 이 두 edge만 렌더링한다. `wf:has_subWorkflow`나 lifecycle 이름(discovery/development/testing)은 계층/이름일 뿐 실행 순서 edge로 그리지 않는다.
 - `wf:directory`는 Artifact node로 파생한다. 현재는 `data_type=local_file`, `location=index:<artifact-id>`, `locator=<dirPath>`로 표시한다. index에 없으면 raw local_file fallback key를 쓴다. `role: input/reference`는 `artifact --upstream--> task`, `role: output`은 `task --downstream--> artifact`, `role: input_output`은 양방향 stream edge로 표현한다. `implementation`/`tool_internal`/`internal`처럼 consume/produce 의미가 없는 role은 관측 stream에서 제외한다.
 - `wf:deliverables`는 downstream Artifact node로 표시한다. 현재는 `data_type=local_file`, `location=declared deliverable`, `detail=<deliverable>`로 렌더링하고 detail 기반으로 `artifact_type`을 추론한다. 이후 schema가 확장되면 `artifact_type`을 TTL metadata로 명시할 수 있다.
 - workflow scope별 graph는 `graph/<scope>/` 폴더에 분리한다. 한 scope 안에는 `repository-graph.md`, `workflow-graph.md`, `artifact-stream-graph.md` 세 뷰를 둔다.
-- sub-graph 분리는 scoped URI(`phase/<workflow>/<phase>`, `node/<workflow>/<node>`)를 기준으로 한다. unscoped legacy TTL은 repository graph에는 보이지만 workflow별 sub-graph에는 포함되지 않는다.
+- sub-graph 분리는 scoped URI(`workflow/<workflow>/<sub-workflow>`, `node/<workflow>/<node>`)를 기준으로 한다. legacy `phase/<workflow>/<phase>` URI는 호환 입력으로만 읽는다. unscoped legacy TTL은 repository graph에는 보이지만 workflow별 sub-graph에는 포함되지 않는다.
 - 대규모 ontology에서는 `property-map.md`가 커질 수 있으므로 CLI 내부에서 보기 좋은 상한을 둔다.
 - legacy workflow YAML이나 TTL 내부 YAML 참조가 있을 때 exporter는 fallback하지 않는다. 관측 그래프에 없는 workflow는 SSOT drift로 보고 TTL 마이그레이션을 먼저 요구하며, migration이 끝난 YAML과 YAML ref는 제거 대상으로 보고한다.

@@ -23,7 +23,9 @@ wf:Branch a owl:Class ; rdfs:label "Branch"@ko ;
 wf:Decision a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Decision"@ko ;
     rdfs:comment "분기/판단 노드. workflow graph 는 task/decision 노드와 process edge 로 구성된다. decision 은 단일 class 이며, 판단 주체는 decision_subject property(user|agent)로 표현한다. HITL/HITLFE/HOTL/HOOTL 같은 운영 수준은 workflow 경로에 user decision 또는 user eval 이 개입하는지로 파생한다. 산출물 품질평가/판단 주체는 별도의 eval gate로 표현한다. | invariants: id 는 워크플로우 내 unique decision_subject ∈ {user, agent} Decision gate와 Eval gate는 분리한다 agent decision 은 branches[].on 에 routing case 를 명시한다 agent decision 은 decision_criteria 또는 threshold/pass_criteria/success_criteria 중 하나로 판단 기준을 남긴다"@ko .
 wf:Eval a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Eval"@ko ;
-    rdfs:comment "산출물 평가 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의 품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다. feedback loop 안에 Eval gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. 단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 Eval이 아니라 decision_subject=user 인 Decision이다. Eval은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다. 여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target이다. 관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval, Eval --requests_revision--> remediation agentTask, Eval --approves--> next agentTask/end, remediation agentTask --target--> [[tool]] 흐름으로 표현한다. agentTask가 실행 도구를 위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Eval gate는 분리한다 후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다 tool/process target Eval의 order_target은 routing Decision이 아니라 개선 Step을 가리킨다 legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"@ko .
+    rdfs:comment "산출물 평가 게이트. Decision gate와 분리한다. Decision gate는 process branch/진행 판단을 담당하고, Eval gate는 산출물의 품질·정합·수용 가능성을 평가한다. 평가 주체는 oracle/oracle_type으로 표현한다. feedback loop 안에 Eval gate가 없으면 산출물이 재귀적으로 소비되며 drift가 누적될 수 있다. 단순히 여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 Eval이 아니라 decision_subject=user 인 Decision이다. Eval은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다. 여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의 tool use를 가리키는 artifact-like target이다. 관측 그래프에서는 artifact/tool-produced artifact --measured_by--> Eval, Eval --target--> [[workflow]], Eval --on:fail--> remediation agentTask, remediation agentTask --evolves--> [[workflow]], Eval --on:pass--> end 흐름으로 표현한다. agentTask가 실행 도구를 위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다. | invariants: id 는 워크플로우 내 unique oracle_type ∈ {user, agent, metric} criteria 최소 1개 이상 Decision gate와 Eval gate는 분리한다 후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다 tool/process target Eval의 order_target은 routing Decision이 아니라 개선 Step을 가리킨다 Eval은 wf:next를 직접 쓰지 않고 branches로 진행한다 Eval on=fail branch는 Eval target workflow를 evolves로 선언한 개선 Task를 가리킨다 Eval on=pass branch는 goto 없이 terminal end로 끝난다 legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"@ko .
+wf:Event a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Event"@ko ;
+    rdfs:comment "외부 또는 시간 기반 트리거 노드. scheduler/webhook/manual trigger처럼 실행을 시작시키는 사건을 TTL SSOT에 명시한다. Event는 실행 Task가 아니라 wf:Node이며, 관측기는 이 노드를 렌더링만 한다. | invariants: Event는 workflow 진입 신호이며 Task가 아니다 스케줄러/CI 진입점은 관측기가 index에서 추론하지 않고 TTL ABox의 Event 노드로 선언한다 Event 이후 실행 노드는 wf:next 또는 wf:hasBranch/wf:gotoNode로 연결한다"@ko .
 wf:Group a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Group"@ko ;
     rdfs:comment "여러 노드를 Mermaid subgraph로 묶는 컨테이너. | invariants: id 는 워크플로우 내 unique steps 비어있지 않음"@ko .
 wf:Step a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Step"@ko ;
@@ -34,11 +36,12 @@ wf:criteria a owl:DatatypeProperty ; rdfs:label "criteria"@ko ; rdfs:domain wf:E
 wf:decisionCriteria a owl:DatatypeProperty ; rdfs:label "decisionCriteria"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:decisionSubject a owl:DatatypeProperty ; rdfs:label "decisionSubject"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:deliverables a owl:DatatypeProperty ; rdfs:label "deliverables"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
-wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Event"@ko .
 wf:evaluator a owl:DatatypeProperty ; rdfs:label "evaluator"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:eventKind a owl:DatatypeProperty ; rdfs:label "eventKind"@ko ; rdfs:domain wf:Event ; rdfs:range xsd:string .
 wf:goto a owl:DatatypeProperty ; rdfs:label "goto"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
-wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Eval, Group, Step"@ko .
+wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Eval, Event, Group, Step"@ko .
 wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
 wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:oracle a owl:DatatypeProperty ; rdfs:label "oracle"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
@@ -46,8 +49,10 @@ wf:oracleType a owl:DatatypeProperty ; rdfs:label "oracleType"@ko ; rdfs:domain 
 wf:orderArtifact a owl:DatatypeProperty ; rdfs:label "orderArtifact"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:orderTarget a owl:DatatypeProperty ; rdfs:label "orderTarget"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:schedule a owl:DatatypeProperty ; rdfs:label "schedule"@ko ; rdfs:domain wf:Event ; rdfs:range xsd:string .
 wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
-wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval, Group, Step"@ko .
+wf:source a owl:DatatypeProperty ; rdfs:label "source"@ko ; rdfs:domain wf:Event ; rdfs:range xsd:string .
+wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval, Event, Group, Step"@ko .
 wf:subSteps a owl:DatatypeProperty ; rdfs:label "subSteps"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:targetArtifact a owl:DatatypeProperty ; rdfs:label "targetArtifact"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Eval, Step"@ko .
 wf:threshold a owl:DatatypeProperty ; rdfs:label "threshold"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Decision, Eval"@ko .
@@ -123,8 +128,8 @@ wf:exercises a owl:ObjectProperty ; rdfs:label "exercises"@ko ;
     rdfs:range wf:Workflow ;
     rdfs:comment "oracle(대상): 평가 목적 실행. 대상 불변이라 self-ref 무관."@ko .
 wf:evolves a owl:ObjectProperty ; rdfs:label "evolves"@ko ;
-    rdfs:domain wf:Workflow ; rdfs:range wf:Workflow ;
-    rdfs:comment "oracle-workflow → 대상 workflow 개선/변경. C·W disjoint 강제(EvolvesStratificationShape: 자기/조상/자손 evolve 금지)."@ko .
+    rdfs:range wf:Workflow ;
+    rdfs:comment "개선/변경 edge. Workflow가 oracle-workflow로서 대상을 evolve하거나, Eval 이후 Task가 대상 workflow를 evolve한다. Task→Workflow 개선 흐름은 EvalEvolutionFlowShape가 강제한다."@ko .
 wf:target a owl:ObjectProperty ; rdfs:label "target"@ko ;
     rdfs:domain wf:Eval ; rdfs:range wf:Workflow ;
     rdfs:comment "oracle: eval 이 가리키는 평가 대상 workflow(참조)."@ko .

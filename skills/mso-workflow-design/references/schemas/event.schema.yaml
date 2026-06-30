@@ -1,0 +1,53 @@
+type: event
+description: |
+  외부 또는 시간 기반 트리거 노드. scheduler/webhook/manual trigger처럼
+  실행을 시작시키는 사건을 TTL SSOT에 명시한다. Event는 실행 Task가 아니라
+  wf:Node이며, 관측기는 이 노드를 렌더링만 한다.
+
+fields:
+  type:
+    required: true
+    type: literal
+    value: event
+
+  id:
+    required: true
+    type: string
+    immutable: true
+    description: |
+      노드 고유 식별자. 권장 패턴: '{module-abbr}-e-{NNN}'.
+
+  label:
+    required: true
+    type: string
+    description: "사람이 읽는 트리거 설명. 예: '정기 브리프 스케줄러'."
+
+  status:
+    required: true
+    type: enum
+    values: [completed, active, pending]
+
+  event_kind:
+    required: true
+    type: enum
+    values: [scheduler, webhook, manual, external]
+    description: "트리거 종류. scheduler는 cron/CI schedule 기반 진입점을 뜻한다."
+
+  source:
+    required: false
+    type: string
+    description: "트리거를 발생시키는 시스템 또는 파일. 예: '.github/workflows/weekly.yml'."
+
+  schedule:
+    required: false
+    type: string
+    description: "스케줄 설명 또는 cron 표현식. 프로젝트 자유 텍스트."
+
+  description:
+    required: false
+    type: string
+
+structural_invariants:
+  - "Event는 workflow 진입 신호이며 Task가 아니다"
+  - "스케줄러/CI 진입점은 관측기가 index에서 추론하지 않고 TTL ABox의 Event 노드로 선언한다"
+  - "Event 이후 실행 노드는 wf:next 또는 wf:hasBranch/wf:gotoNode로 연결한다"

@@ -10,10 +10,10 @@ description: |
   corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 쓴다.
   여기서 [[process]]/[[processing artifact]]는 workflow control node가 아니라 agentTask의
   tool use를 가리키는 artifact-like target이다.
-  관측 그래프에서는 Eval --target--> [[tool]], tool-produced artifact --validated_by--> Eval,
-  Eval --requests_revision--> remediation agentTask, Eval --approves--> next agentTask/end,
-  remediation agentTask --target--> [[tool]] 흐름으로 표현한다. agentTask가 실행 도구를
-  위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다.
+  관측 그래프에서는 artifact/tool-produced artifact --measured_by--> Eval,
+  Eval --target--> [[workflow]], Eval --on:fail--> remediation agentTask,
+  remediation agentTask --evolves--> [[workflow]], Eval --on:pass--> end 흐름으로 표현한다.
+  agentTask가 실행 도구를 위임하는 경우만 agentTask --delegates_to--> [[tool]] 로 별도 표시한다.
 
 fields:
   type:
@@ -89,17 +89,19 @@ fields:
     type: enum
     values: [block, retry, manual_review]
     default: block
-    description: "평가 실패 시 동작."
+    description: "legacy policy hint. topology는 branches의 on=fail/on=pass로 선언한다."
 
   branches:
     required: false
     type: list
-    description: "평가 결과별 이동. 생략 시 sequential next."
+    description: |
+      평가 결과별 이동. on=fail은 Eval target workflow를 wf:evolves로 선언한 개선 Task로
+      이동해야 하며, on=pass는 goto 없이 terminal end로 끝나야 한다.
     items:
       on:
         required: true
         type: string
-        description: "passed, failed, flagged 등 평가 결과."
+        description: "fail 또는 pass. failed/passed legacy spelling은 import compatibility 용도."
       goto:
         required: false
         type: string
@@ -114,4 +116,7 @@ structural_invariants:
   - "Decision gate와 Eval gate는 분리한다"
   - "후보 artifact 선택/재생산 판단은 Eval 이 아니라 decision_subject=user Decision 으로 표현한다"
   - "tool/process target Eval의 order_target은 routing Decision이 아니라 개선 Step을 가리킨다"
+  - "Eval은 wf:next를 직접 쓰지 않고 branches로 진행한다"
+  - "Eval on=fail branch는 Eval target workflow를 evolves로 선언한 개선 Task를 가리킨다"
+  - "Eval on=pass branch는 goto 없이 terminal end로 끝난다"
   - "legacy YAML type: oracle 은 import 시 wf:Eval 로 투영한다"

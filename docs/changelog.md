@@ -1,5 +1,20 @@
 # 변경 이력
 
+## v0.6.4 (2026-07-01) — Decision/Validation loop gates
+
+> **Eval을 산출물 평가/evolve gate로 좁히고, 결정적 검증·HITL 승인 루프는 Decision gate로 표현.** TTL ABox가 SSOT인 상황에서 `wf:Decision + wf:Validation` 검증 게이트와 `decisionSubject="user"` 승인 게이트를 loop control shape가 인식하도록 정리했다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| loop control shape | `wf:next`/branch 순환의 제어점을 `wf:Eval`뿐 아니라 `wf:Validation` gate, `decisionSubject="user"`인 `wf:Decision` gate까지 인정. agent Decision만 있는 재귀 루프는 계속 실패. |
+| workflow validator | `wf_to_ttl.py` 내부 feedback-loop detector를 SHACL과 같은 정책으로 정렬. |
+| eval shape guard | Eval은 직접 `wf:next`를 쓰지 않고 fail/pass branch를 사용하며, fail branch downstream Task가 Eval target workflow를 `wf:evolves`로 선언해야 한다는 v0.6.3 이후 정책 유지. |
+| regression tests | user Decision loop, TTL-only `Decision + Validation` loop, Eval-controlled loop, uncontrolled agent Decision loop 테스트를 분리해 회귀 방지. |
+| observability contract | TTL 관측에서 deterministic validation gate는 Eval이 아니라 Decision으로 렌더링될 수 있음을 명확화. |
+| 버전 정렬 | README, changelog, 모든 MSO skill frontmatter 버전을 v0.6.4로 정렬. |
+
 ## v0.6.3 (2026-06-30) — Stop reminder throttle
 
 > **Stop hook이 매 턴 사용자에게 같은 안내를 반복하는 문제를 상태 파일로 완화.** reminder 출력은 1회 표시 뒤 다음 Stop 1회를 억제하지만, work-memory 자동 커밋 백스톱은 계속 실행한다.

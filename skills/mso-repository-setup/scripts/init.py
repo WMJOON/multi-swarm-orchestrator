@@ -148,14 +148,14 @@ required_fields:
   tags: "list[str]"
   created_at: "ISO 8601"
 types:
-  issue-note: {prefix: IN, dir: track-record/issue-note}
-  agent-decision: {prefix: AD, dir: track-record/agent-decision}
-  alternatives-record: {prefix: AR, dir: track-record/alternatives-record}
-  user-decision: {prefix: UD, dir: track-record/user-decision}
-  trouble-shooting: {prefix: TS, dir: track-record/trouble-shooting}
-  episode: {prefix: EP, dir: insight-record/episodes}
-  pattern: {prefix: PT, dir: insight-record/patterns}
-  principle: {prefix: PR, dir: insight-record/principles}
+  issue-note: {prefix: IN, dir: track-record}
+  agent-decision: {prefix: AD, dir: track-record}
+  alternatives-record: {prefix: AR, dir: track-record}
+  user-decision: {prefix: UD, dir: track-record}
+  trouble-shooting: {prefix: TS, dir: track-record}
+  episode: {prefix: EP, dir: insight-record}
+  pattern: {prefix: PT, dir: insight-record}
+  principle: {prefix: PR, dir: insight-record}
   auditlog: {prefix: AU, dir: auditlog}
   worklog: {prefix: WL, dir: worklog}
 relation_types:

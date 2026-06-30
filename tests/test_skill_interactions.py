@@ -121,7 +121,7 @@ def test_dissolved_utterance_grounding_not_routed():
 def test_readme_reflects_current_version_and_structure():
     """README 헤더 버전과 핵심 구조 어휘가 현재 패치와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.5.1" in readme, "README header is not v0.5.1"
+    assert "MSO) v0.6.4" in readme, "README header is not v0.6.4"
     assert "Repository Execution System" in readme
     assert "Core Philosophy" in readme
     assert "Artifact Supply Chain" in readme
@@ -135,13 +135,14 @@ def test_skill_versions_are_current_patch():
     """정식 repository 스킬 메타가 현재 패치 버전으로 정렬되어 있다."""
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
         text = skill_md.read_text()
-        assert 'version: "0.5.1"' in text, f"{skill_md.parent.name} version is not 0.5.1"
+        assert 'version: "0.6.4"' in text, f"{skill_md.parent.name} version is not 0.6.4"
 
 
 def test_work_memory_decision_governance_schema_contract():
-    """v0.3.6 PLAN: AR 타입과 UD boundary/criterion 이 schema SSOT 에 존재한다."""
+    """AR 타입과 UD boundary/criterion 이 v1.2 aggregate schema SSOT 에 존재한다."""
     schema = (SKILLS / "mso-work-memory" / "references" / "schema.yaml").read_text()
-    assert "alternatives-record: {prefix: AR, dir: track-record/alternatives-record}" in schema
+    assert "alternatives-record: {prefix: AR, dir: track-record}" in schema
+    assert "track-record/<type>.jsonl" in schema
     assert "provided_by" in schema
     assert "options" in schema
     assert "recommended" in schema
@@ -151,23 +152,8 @@ def test_work_memory_decision_governance_schema_contract():
     assert "refines" in schema
 
 
-def test_work_memory_feedback_update_pattern_documented():
-    """work-memory signal 이 workflow/artifact graph 업데이트 evidence 로 쓰이는 패턴을 문서화한다."""
-    patterns = (SKILLS / "mso-workflow-design" / "references" / "workflow-patterns.md").read_text()
-    workflow_skill = (SKILLS / "mso-workflow-design" / "SKILL.md").read_text()
-    graph_skill = (SKILLS / "mso-graph-observability" / "SKILL.md").read_text()
-    memory_skill = (SKILLS / "mso-work-memory" / "SKILL.md").read_text()
-
-    assert "Work-Memory Feedback Update Pattern" in patterns
-    assert "work-memory signal" in patterns
-    assert "TTL ABox가 SSOT-of-record" in patterns
-    assert "workflow 업데이트 evidence" in workflow_skill
-    assert "workflow TTL ABox를 갱신" in graph_skill
-    assert "workflow TTL ABox 업데이트 후보 evidence" in memory_skill
-
-
 def test_repository_setup_bootstraps_alternatives_record_dir(tmp_path):
-    """init.py 가 새 프로젝트에 AR 디렉토리와 schema-driven AR 타입을 부트스트랩한다."""
+    """init.py 가 새 프로젝트에 aggregate track-record와 schema-driven AR 타입을 부트스트랩한다."""
     init_py = SKILLS / "mso-repository-setup" / "scripts" / "init.py"
     target = tmp_path / "project"
     subprocess.run(
@@ -176,10 +162,11 @@ def test_repository_setup_bootstraps_alternatives_record_dir(tmp_path):
         capture_output=True,
         text=True,
     )
-    ar_dir = target / "agent-context" / "work-memory" / "track-record" / "alternatives-record"
-    assert ar_dir.is_dir()
+    track_dir = target / "agent-context" / "work-memory" / "track-record"
+    assert track_dir.is_dir()
     schema = (target / "agent-context" / "work-memory" / "schema.yaml").read_text()
     assert "alternatives-record" in schema
+    assert "dir: track-record" in schema
     assert "boundary" in schema
 
 

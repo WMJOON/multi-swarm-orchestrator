@@ -48,10 +48,22 @@ workflows:
         label: "[CUSTOMIZE] 구현 품질 검증"
         status: pending
         oracle_type: metric
+        target: development
+        target_artifact: "[REQUIRED] output/artifact.md"
         harness: "[OPTIONAL] test runner id"
         criteria:
           - "[REQUIRED] 품질 기준"
-        on_fail: block
+        branches:
+          - on: fail
+            goto: development-s-002
+          - on: pass
+
+      - type: step
+        id: development-s-002
+        label: "[CUSTOMIZE] 구현 개선 반영"
+        instruction: "평가 결과를 바탕으로 development workflow의 산출물을 개선한다"
+        status: pending
+        evolves: development
 
   - id: testing
     name: 테스트 & 평가
@@ -63,11 +75,23 @@ workflows:
         label: "[CUSTOMIZE] 최종 평가"
         status: pending
         oracle_type: metric
+        target: testing
+        target_artifact: "[REQUIRED] output/artifact.md"
         harness: "[REQUIRED] validation runner id"
         criteria:
           - "[REQUIRED] 성공 기준 1"
           - "[OPTIONAL] 성공 기준 2"
-        on_fail: manual_review
+        branches:
+          - on: fail
+            goto: testing-s-001
+          - on: pass
+
+      - type: step
+        id: testing-s-001
+        label: "[CUSTOMIZE] 테스트 개선 반영"
+        instruction: "평가 결과를 바탕으로 testing workflow의 검증 절차를 개선한다"
+        status: pending
+        evolves: testing
 
 deliverables:
   - type: documentation
