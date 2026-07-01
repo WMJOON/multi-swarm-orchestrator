@@ -139,8 +139,15 @@ def _project_fields(g: Graph, subj: URIRef, doc: dict, skip: set) -> None:
 _NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows", "target", "target_workflow", "evolves", "evolves_workflow"}
 
 
-def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> None:
+def _project_nodes(
+    g: Graph,
+    nodes,
+    workflow_uri: URIRef,
+    scope: str = "",
+    target_scope: str | None = None,
+) -> None:
     """workflow.steps[] (group 재귀 포함) 의 구조화 노드(type 보유)를 투영."""
+    workflow_target_scope = scope if target_scope is None else target_scope
     ordered_nodes = [
         n for n in wf_node._walk_nodes(nodes or [])
         if isinstance(n, dict) and n.get("type") in _TYPE_CLASS and n.get("id")
@@ -168,7 +175,7 @@ def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> No
             elif target_text in {".", "self"} or _safe(target_text) == current_workflow_id:
                 target_uri = workflow_uri
             else:
-                target_uri = _workflow_uri(target_text, scope)
+                target_uri = _workflow_uri(target_text, workflow_target_scope)
             g.add((nu, WF.target, target_uri))
         evolves_workflow = n.get("evolves") or n.get("evolves_workflow")
         if evolves_workflow:
@@ -180,7 +187,7 @@ def _project_nodes(g: Graph, nodes, workflow_uri: URIRef, scope: str = "") -> No
                 elif evolves_text in {".", "self"} or _safe(evolves_text) == current_workflow_id:
                     evolves_uri = workflow_uri
                 else:
-                    evolves_uri = _workflow_uri(evolves_text, scope)
+                    evolves_uri = _workflow_uri(evolves_text, workflow_target_scope)
                 g.add((nu, WF.evolves, evolves_uri))
         g.add((workflow_uri, WF.hasNode, nu))
         g.add((nu, WF.inWorkflow, workflow_uri))
@@ -365,7 +372,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 g.add((wfu, WF.has_subWorkflow, _subu))
             g.add((_subu, WF.label, Literal(str(_sub.get("label") or _sub.get("name") or _sub["id"]))))
             _project_fields(g, _subu, _sub, {"id", "name", "label", "steps", "workflows", "dependencies"})
-            _project_nodes(g, _sub.get("steps", []), _subu, str(_sub["id"]))
+            _project_nodes(g, _sub.get("steps", []), _subu, str(_sub["id"]), scope)
             _project_workflows(g, _subu, _sub, _subu, scope)  # nested workflows[](sub ref) → has_subWorkflow
         # ── root 스타일: 최상위 phases: 리스트 ──
         phases = doc.get("phases")
@@ -383,7 +390,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 g.add((pu, WF.label, Literal(str(ph.get("label") or ph.get("name") or ph["id"]))))
                 _project_workflows(g, pu, ph, pu, scope)
                 _project_fields(g, pu, ph, _PHASE_SKIP)  # status/defaultDecisionSubject/showWrapper/artifacts/successCriteria
-                _project_nodes(g, ph.get("steps", []), pu, scope)
+                _project_nodes(g, ph.get("steps", []), pu, scope, scope)
         # ── module 스타일: 이름붙은 phase 키(discovery/development/...) ──
         else:
             for phase_key, phase in wf_node._collect_phases(doc):
@@ -395,7 +402,7 @@ def build_graph(root_yaml: Path) -> tuple[Graph, "wf_node.ResolvedWorkflow"]:
                 g.add((pu, WF.label, Literal(str(phase.get("label") or phase.get("name") or pid))))
                 _project_workflows(g, pu, phase, pu, scope)
                 _project_fields(g, pu, phase, _PHASE_SKIP)
-                _project_nodes(g, phase.get("steps", []), pu, scope)
+                _project_nodes(g, phase.get("steps", []), pu, scope, scope)
 
         # ── critical_dependencies: from→to 에지(Module) + 서술 보존용 노드(dual-rep) ──
         for cd in (doc.get("critical_dependencies") or []):
@@ -457,6 +464,87 @@ def find_uncontrolled_loops(g: Graph) -> list[str]:
         if uri not in seen:
             seen.append(uri)
     return seen
+
+
+def _local_name(uri: URIRef) -> str:
+    text = str(uri).rstrip("/")
+    return text.rsplit("/", 1)[-1]
+
+
+def _is_tool_locator(value: str) -> bool:
+    text = value.strip()
+    return text.startswith("[[") and text.endswith("]]")
+
+
+def _directory_role_produces(role: str) -> bool:
+    role_norm = role.lower().replace("-", "_")
+    return "output" in role_norm or role_norm in {"staging", "generated", "write"}
+
+
+def _artifact_key(value: str) -> str:
+    return str(value).strip()
+
+
+def _node_produced_artifacts(g: Graph, node: URIRef) -> set[str]:
+    produced: set[str] = set()
+    for value in g.objects(node, WF.deliverables):
+        if isinstance(value, Literal):
+            text = _artifact_key(str(value))
+            if text:
+                produced.add(text)
+    for directory in g.objects(node, WF.directory):
+        path_value = g.value(directory, WF.dirPath)
+        if not isinstance(path_value, Literal):
+            continue
+        role_value = g.value(directory, WF.dirRole)
+        role = str(role_value) if isinstance(role_value, Literal) else "reference"
+        if not _directory_role_produces(role):
+            continue
+        path = _artifact_key(str(path_value))
+        if path:
+            produced.add(path)
+    return produced
+
+
+def find_eval_target_artifact_mismatches(g: Graph) -> list[str]:
+    """Eval targetArtifact must name an artifact produced by the target workflow.
+
+    Tool locators (`[[tool]]`) keep their legacy tool-target shape: the tool must
+    be used by a target workflow node that produces outputs. Plain artifact
+    locators are stricter and must match a deliverable/output directory produced
+    by a wf:hasNode child of the target workflow.
+    """
+    issues: list[str] = []
+    process_types = {WF.Task, WF.Step, WF.Group, WF.Decision}
+    for eval_node in sorted(g.subjects(RDF.type, WF.Eval), key=str):
+        artifacts = [
+            _artifact_key(str(value))
+            for value in g.objects(eval_node, WF.targetArtifact)
+            if isinstance(value, Literal) and _artifact_key(str(value))
+        ]
+        plain_artifacts = [artifact for artifact in artifacts if not _is_tool_locator(artifact)]
+        if not plain_artifacts:
+            continue
+        for target_workflow in sorted(g.objects(eval_node, WF.target), key=str):
+            if not isinstance(target_workflow, URIRef):
+                continue
+            produced: set[str] = set()
+            for node in g.objects(target_workflow, WF.hasNode):
+                if not isinstance(node, URIRef):
+                    continue
+                if not any((node, RDF.type, node_type) in g for node_type in process_types):
+                    continue
+                produced.update(_node_produced_artifacts(g, node))
+            for artifact in plain_artifacts:
+                if artifact not in produced:
+                    available = ", ".join(sorted(produced)) or "(none)"
+                    issues.append(
+                        "eval targetArtifact shape: "
+                        f"{_local_name(eval_node)} targets {_local_name(target_workflow)} "
+                        f"but '{artifact}' is not produced by that workflow's task/decision nodes; "
+                        f"available={available}"
+                    )
+    return issues
 
 
 # 교차-스킬: workflow directories[].path ∈ scaffold(index) 등록 경로(모듈 fs 루트 자손).
@@ -554,16 +642,18 @@ def validate(root_yaml: Path, index_yaml: Path | None = None) -> dict:
     g, resolved = build_graph(root_yaml)
     tree_issues = [str(i) for i in resolved.issues]
     uncontrolled_loops = find_uncontrolled_loops(g)
+    eval_artifact_mismatches = find_eval_target_artifact_mismatches(g)
     conforms, shacl_text = run_shacl(g)
     legacy_warnings = find_legacy_phase_inputs(resolved)
     # 교차-스킬(scaffold) 경로 멤버십은 warning — ok 를 뒤집지 않는다(wf_node 와 동일 severity).
     scaffold_warnings = check_scaffold(resolved, index_yaml) if index_yaml else []
-    ok = conforms and not uncontrolled_loops and not tree_issues
+    ok = conforms and not uncontrolled_loops and not eval_artifact_mismatches and not tree_issues
     return {
         "ok": ok,
         "triples": len(g),
         "uncontrolled_loops": uncontrolled_loops,
         "cycles": uncontrolled_loops,
+        "eval_target_artifact_mismatches": eval_artifact_mismatches,
         "shacl_conforms": conforms,
         "shacl_report": shacl_text if not conforms else "",
         "tree_issues": tree_issues,
@@ -611,6 +701,10 @@ def main(argv=None) -> int:
                 print("✗ uncontrolled feedback loop (Eval 개입점 없음):")
                 for c in res["uncontrolled_loops"]:
                     print(f"  - {c}")
+            if res.get("eval_target_artifact_mismatches"):
+                print("✗ Eval targetArtifact shape 위반:")
+                for i in res["eval_target_artifact_mismatches"]:
+                    print(f"  - {i}")
             if not res["shacl_conforms"]:
                 print("✗ SHACL 로컬 shape 위반:")
                 print(res["shacl_report"])

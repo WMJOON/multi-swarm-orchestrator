@@ -97,7 +97,7 @@ workflows:
         label: 최종 통합 평가
         status: pending
         oracle_type: metric
-        target: testing
+        target: development
         target_artifact: generated/module-output.md
         harness: integration-test
         criteria:
@@ -110,6 +110,6 @@ workflows:
       - type: step
         id: testing-s-001
         label: 테스트 개선 반영
-        instruction: 통합 평가 결과를 바탕으로 testing workflow의 검증 조건과 실행 절차를 개선한다.
+        instruction: 통합 평가 결과를 바탕으로 development workflow의 구현 산출물을 개선한다.
         status: pending
-        evolves: testing
+        evolves: development

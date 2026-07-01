@@ -328,6 +328,39 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
     )
 
 
+def test_eval_target_artifact_reuses_target_workflow_produced_deliverable():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/gby-s-006"]
+    eval_node = wf["node/demo/gby-o-001"]
+    workflow = wf["phase/demo/settle"]
+    deliverable = "campaign SETTLED (trajectory 로그 append, 원장 대사 완료)"
+
+    graph.add((workflow, RDF.type, wf.Phase))
+    graph.add((workflow, RDFS.label, Literal("Settlement")))
+    for node, cls, label in (
+        (producer, wf.Step, "정산 완료 처리"),
+        (eval_node, wf.Eval, "Settlement Oracle"),
+    ):
+        graph.add((node, RDF.type, cls))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((workflow, wf.hasNode, node))
+    graph.add((producer, wf.deliverables, Literal(deliverable)))
+    graph.add((eval_node, wf.target, workflow))
+    graph.add((eval_node, wf.targetArtifact, Literal(deliverable)))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+    produced_ref = observe_graph.deliverable_data_ref(deliverable)
+    produced_node_id = observe_graph.data_id(produced_ref["id"])
+
+    assert any(
+        f"{produced_node_id} -.->|measured_by| eval_node_demo_gby_o_001_" in line
+        for line in markdown.splitlines()
+    )
+    assert "data_local_file_campaign_SETTLED_" not in markdown
+
+
 def test_eval_without_next_does_not_invent_approval_edge():
     graph = Graph()
     wf = observe_graph.WF

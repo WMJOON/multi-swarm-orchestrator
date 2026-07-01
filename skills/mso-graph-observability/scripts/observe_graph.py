@@ -1258,6 +1258,38 @@ def deliverable_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str
     return data_items
 
 
+def produced_artifact_ref_for_workflow(
+    graph: Graph,
+    workflow: URIRef,
+    artifact: str,
+    data_registry: dict[str, dict[str, str]],
+) -> dict[str, str] | None:
+    """Return the produced artifact ref in `workflow` that matches `artifact`.
+
+    Eval targetArtifact on a workflow must point at an artifact produced by one
+    of the target workflow's task/decision nodes. Reusing the producer ref keeps
+    produces and measured_by edges attached to one Mermaid data node.
+    """
+    artifact_text = literal_text(Literal(artifact))
+    artifact_locator = normalize_locator(artifact_text)
+    process_types = {WF.Task, WF.Step, WF.Group, WF.Decision}
+    for node in sorted(graph.objects(workflow, WF.hasNode), key=str):
+        if not isinstance(node, URIRef):
+            continue
+        if not any((node, RDF.type, node_type) in graph for node_type in process_types):
+            continue
+        for deliverable, _ in deliverable_data_for_node(graph, node):
+            if literal_text(Literal(deliverable)) == artifact_text:
+                return deliverable_data_ref(deliverable)
+        for role, path, _ in directory_data_for_node(graph, node):
+            produces, _, _ = data_edge_labels(role)
+            if not produces:
+                continue
+            if normalize_locator(path) == artifact_locator:
+                return data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+    return None
+
+
 def has_supply_chain(graph: Graph, node: URIRef) -> bool:
     """artifact-stream 뷰에 표시할 공급망 연결이 있는지 확인.
     wf:directory 또는 wf:deliverables 또는 eval targetArtifact 중 하나라도 있으면 True."""
@@ -2400,15 +2432,29 @@ def build_workflow_topology(
 
                 art_str = first_literal(graph, target_node, WF.targetArtifact)
                 if art_str:
-                    ref = data_ref_for_locator(data_registry, data_type="local_file", locator=art_str)
-                    art_ref = ref if ref else {
-                        "id": f"local_file:{art_str}", "data_type": "local_file",
-                        "location": art_str, "locator": art_str, "artifact_type": "document",
-                    }
+                    art_ref = None
+                    if is_eval_node:
+                        for target_workflow in sorted(graph.objects(target_node, WF.target), key=str):
+                            if not isinstance(target_workflow, URIRef):
+                                continue
+                            if scope is not None and workflow_scope(target_workflow) != scope:
+                                continue
+                            art_ref = produced_artifact_ref_for_workflow(
+                                graph, target_workflow, art_str, data_registry
+                            )
+                            if art_ref:
+                                break
+                    if not art_ref:
+                        ref = data_ref_for_locator(data_registry, data_type="local_file", locator=art_str)
+                        art_ref = ref if ref else {
+                            "id": f"local_file:{art_str}", "data_type": "local_file",
+                            "location": art_str, "locator": art_str, "artifact_type": "document",
+                        }
                     art_nid = data_id(art_ref["id"])
                     if art_nid not in declared:
                         art_label_str = data_label(
                             art_ref["data_type"], art_ref.get("location", art_str),
+                            detail=art_ref.get("detail"),
                             locator=art_ref.get("locator", art_str),
                             node_id=art_ref["id"],
                             artifact_type=art_ref.get("artifact_type", "document"),

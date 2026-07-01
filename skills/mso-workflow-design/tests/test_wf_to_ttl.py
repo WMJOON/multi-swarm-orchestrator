@@ -193,6 +193,11 @@ def test_validation_projects_to_eval_metric(tmp_path):
             "id": "t", "name": "T", "status": "active",
             "steps": [
                 {
+                    "type": "step", "id": "t-s-00", "label": "스키마 산출",
+                    "instruction": "검증 대상 schema artifact를 생산한다",
+                    "status": "active", "deliverables": ["schema.yaml"],
+                },
+                {
                     "type": "validation", "id": "t-v-01", "label": "스키마 검증",
                     "status": "active", "criteria": ["schema valid"], "target": "t",
                     "target_artifact": "schema.yaml",
@@ -448,6 +453,7 @@ def test_node_feedback_loop_without_eval_fails(tmp_path):
                 "label": "생성",
                 "instruction": "산출물을 만든다",
                 "status": "active",
+                "directories": [{"role": "output", "path": "out/"}],
                 "evolves": "p",
             },
             {
@@ -477,6 +483,7 @@ def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
                 "label": "생성",
                 "instruction": "산출물을 만든다",
                 "status": "active",
+                "directories": [{"role": "output", "path": "out/"}],
                 "evolves": "p",
             },
             {
@@ -822,6 +829,66 @@ def test_eval_tool_target_with_produced_artifact_conforms(tmp_path):
         ],
     }]}
     res = wf_to_ttl.validate(_write(tmp_path, "good_eval_tool.yaml", doc))
+    assert res["ok"], res
+
+
+def test_eval_target_artifact_must_be_produced_by_target_workflow(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {
+                "type": "step", "id": "p-s-01", "label": "정산",
+                "status": "active", "instruction": "정산 산출물을 생산한다",
+                "deliverables": ["campaign SETTLED (trajectory 로그 append, 원장 대사 완료)"],
+            },
+            {
+                "type": "eval", "id": "p-o-01", "label": "정산 Oracle",
+                "status": "active", "oracle_type": "metric",
+                "target": "p",
+                "target_artifact": "campaign SETTLED trajectory and ledger reconciliation",
+                "criteria": ["정산 상태와 원장 대사 결과가 일치해야 한다"],
+                "branches": [{"on": "fail", "goto": "p-s-02"}, {"on": "pass"}],
+            },
+            {
+                "type": "step", "id": "p-s-02", "label": "재정산",
+                "status": "active", "instruction": "정산 workflow를 보정한다",
+                "evolves": "p",
+            },
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "bad_eval_artifact.yaml", doc))
+    assert res["ok"] is False
+    assert res["eval_target_artifact_mismatches"]
+    assert "eval targetArtifact shape" in res["eval_target_artifact_mismatches"][0]
+    assert "campaign SETTLED (trajectory 로그 append, 원장 대사 완료)" in res["eval_target_artifact_mismatches"][0]
+
+
+def test_eval_target_artifact_can_measure_target_workflow_deliverable(tmp_path):
+    deliverable = "campaign SETTLED (trajectory 로그 append, 원장 대사 완료)"
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {
+                "type": "step", "id": "p-s-01", "label": "정산",
+                "status": "active", "instruction": "정산 산출물을 생산한다",
+                "deliverables": [deliverable],
+            },
+            {
+                "type": "eval", "id": "p-o-01", "label": "정산 Oracle",
+                "status": "active", "oracle_type": "metric",
+                "target": "p",
+                "target_artifact": deliverable,
+                "criteria": ["정산 상태와 원장 대사 결과가 일치해야 한다"],
+                "branches": [{"on": "fail", "goto": "p-s-02"}, {"on": "pass"}],
+            },
+            {
+                "type": "step", "id": "p-s-02", "label": "재정산",
+                "status": "active", "instruction": "정산 workflow를 보정한다",
+                "evolves": "p",
+            },
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "good_eval_artifact.yaml", doc))
     assert res["ok"], res
 
 
