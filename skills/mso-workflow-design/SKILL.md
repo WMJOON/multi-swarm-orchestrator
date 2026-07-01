@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-design
-version: "0.6.5"
+version: "0.6.6"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
@@ -118,8 +118,7 @@ mkdir -p agent-context/workflow
 | Workflow Structure | 하나 이상의 workflow/sub-workflow (id 어휘는 프로젝트 — MSO 권장: discovery/development/testing) |
 | Step Definition | `type: step` — `id`, `label`, `status`, `directories` (optional), `deliverables` |
 | **Decision Gate** | **`type: decision` — process branch/진행 판단. 단일 `Decision` class에 `decision_subject` property(user/agent)로 판단 주체를 표현** |
-| **Validation Decision Gate** | **TTL ABox에서 deterministic process/state 검증은 `wf:Decision + wf:Validation`으로 표현 가능. legacy YAML `type: validation`은 import compatibility로 `wf:Eval`에 투영하지만, TTL 정본에서는 산출물 평가/evolve가 아니면 Eval로 승격하지 않는다.** |
-| **Eval Gate** | **`type: eval` — 산출물 평가 게이트. `oracle_type` ∈ {user/agent/metric}, `criteria` 필수. feedback loop의 drift 개입점. legacy YAML의 `type: oracle`은 import 시 `wf:Eval`로 투영** |
+| **Eval Gate** | **`type: eval` — 산출물 측정·평가·검증 게이트. `oracle_type` ∈ {user/agent/metric}, `criteria` 필수. feedback loop의 drift 개입점. legacy YAML의 `type: validation`/`type: oracle`은 import 시 `wf:Eval`로 투영** |
 | Deliverable Taxonomy | `type`, `location`, `status` |
 | Dependencies | `requires` (입력), `provides` (출력) |
 | Success Criteria | 측정 가능한 기준 (강제 개수는 프로젝트 컨벤션) |
@@ -129,14 +128,14 @@ mkdir -p agent-context/workflow
 
 | 항목 | `decision` | `eval` |
 |------|----------|----------|
-| 의미 | process branch/진행 판단 | 산출물 판단/품질평가 권위 |
+| 의미 | 선택/판단/라우팅/process branch | 산출물 측정/평가/검증 권위 |
 | 필수 필드 | `decision_subject`, `branches[].on` | `oracle_type`, `criteria` |
-| 역할 | process branch subject | user/agent/metric eval gate. 자동 검증은 `oracle_type=metric` + `harness` |
-| loop 통제 | `decision_subject=user`인 HITL 루프와 `wf:Validation`이 붙은 deterministic gate는 loop 제어점. agent decision만 있는 재귀 루프는 통제점 아님 | feedback/evolve loop의 개입점 |
+| 역할 | process branch subject. 후보 선택, 승인 여부, 라우팅 판단 | user/agent/metric eval gate. 산출물 검증은 `oracle_type=metric` + `harness` |
+| loop 통제 | `decision_subject=user`인 HITL 루프와 criteria가 붙은 agent Decision은 process loop 제어점. 산출물 검증 루프의 제어점은 Eval | feedback/evolve loop의 개입점 |
 
 `decision_subject=agent`인 decision은 사람이 매번 승인하지 않으므로 판단 기준을 property로 남긴다. 우선순위는 `decision_criteria` → `threshold` → `pass_criteria` → `success_criteria`이며, 관측 그래프에서는 branch edge label에 조건으로 표시한다. HITL/HITLFE/HOTL/HOOTL은 node property가 아니라, 경로 안에 user decision 또는 user eval이 있는지로 파생하는 repository 운영 분류다.
 
-여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 `Eval`이 아니라 `decision_subject=user`인 `Decision`이다. 결정적 상태 검증(예: threshold, allow-list, spend limit, reconciliation)은 산출물 evolve 평가가 아니면 `Decision + Validation`으로 둔다. `Eval`은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때만 사용한다. 이때 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 tool use를 가리키는 artifact-like target으로 다룬다. 관측 그래프에서는 `artifact -.->|measured_by| Eval`, `Eval --target--> [[workflow]]`, `Eval -.->|on: fail| remediation agentTask`, `remediation agentTask --evolves--> [[workflow]]`, `Eval -.->|on: pass| end`, `Eval -.->|report| artifact` 형태로 표현한다. agentTask가 실행 도구를 위임할 때만 `agentTask --delegates_to--> [[tool]]` 를 별도 표시한다.
+여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 `Eval`이 아니라 `decision_subject=user` 또는 `decision_subject=agent`인 `Decision`이다. `Decision`은 선택과 판단, 라우팅을 담당한다. 산출물의 품질·정합·수용 가능성·스키마 적합성처럼 산출물을 측정/평가/검증하는 경우는 `Eval`이다. `Eval`은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때 사용한다. 이때 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 tool use를 가리키는 artifact-like target으로 다룬다. 관측 그래프에서는 `artifact -.->|measured_by| Eval`, `Eval --target--> [[workflow]]`, `Eval -.->|on: fail| remediation agentTask`, `remediation agentTask --evolves--> [[workflow]]`, `Eval -.->|on: pass| end`, `Eval -.->|report| artifact` 형태로 표현한다. agentTask가 실행 도구를 위임할 때만 `agentTask --delegates_to--> [[tool]]` 를 별도 표시한다.
 
 workflow 최적화 관점에서 tool 위임이 토큰 효율과 생산성을 높이는지 볼 수 있어야 한다. 따라서 `usesTool`이 있는 agentTask의 artifact 소비/생산 edge는 tool 중심으로 렌더링한다: `artifact --consumes--> tool --produces--> artifact`. agentTask는 workflow edge인 `--delegates_to--> tool`로 남겨 누가 tool에 위임하는지 설명한다. DB는 가능하면 table 단위 artifact(`table:<name>` 또는 sqlite locator `path.db#table`)로 노출한다. `consumes`/`produces`는 1개로 제한하지 않는다. 예를 들어 NLU engine tool은 `labels` table을 읽고 쓰면서 다른 table도 소비할 수 있다. tool 내부 스크립트는 artifact가 아니라 구현이므로 `implementation`/`tool_internal`/`internal` role로 두고 stream edge에서 제외한다.
 
@@ -146,7 +145,7 @@ Eval 노드는 반드시 평가 대상 workflow(`wf:target`), 측정 대상 arti
 
 | 방향 | TTL 프로퍼티 | 의미 |
 |------|------------|------|
-| **measured_by** | `wf:Eval.wf:targetArtifact` 또는 target tool의 produced artifact | artifact/tool 산출물이 어떤 Eval에 의해 측정되는지 표시 |
+| **measured_by** | `wf:Eval.wf:targetArtifact` 또는 target tool의 produced artifact | artifact/tool 산출물이 어떤 Eval에 의해 측정되는지 표시. plain artifact locator는 Eval의 target workflow 안에 있는 `Task`/`Decision` 노드가 `wf:produces`/`wf:deliverables`/output directory로 생산한 artifact여야 한다. |
 | **target** | `wf:Eval.wf:target` | Eval이 평가 대상으로 삼는 `wf:Workflow` |
 | **target** | `wf:Step.wf:targetArtifact`가 tool일 때 | Eval이 요청한 개선 task가 수정·조정 대상으로 삼는 tool/process |
 | **on: fail / on: pass** | `wf:Eval.wf:hasBranch/wf:on`, `wf:Eval.wf:hasBranch/wf:gotoNode` | fail branch는 downstream remediation/optimization Task로, pass branch는 terminal end로 진행 |
@@ -154,7 +153,7 @@ Eval 노드는 반드시 평가 대상 workflow(`wf:target`), 측정 대상 arti
 | **delegates_to** | non-Eval node의 `wf:usesTool` | agentTask가 위임하는 tool/capability |
 | **report** | `wf:orderArtifact` | 평가 결과 report/manifest artifact |
 
-SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Task --evolves--> target Workflow`, `Eval --on:pass--> end`, `Eval` 직접 `wf:next` 금지를 강제한다 (`.abox.ttl` 저장 시 PostToolUse hook 자동 실행).
+SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Task --evolves--> target Workflow`, `Eval --on:pass--> end`, `Eval` 직접 `wf:next` 금지를 강제한다. Eval target은 자기 자신이 속한 workflow가 될 수 없고, measured artifact는 target workflow의 `Task`/`Decision`이 생산한 artifact여야 한다. Decision은 `wf:hasBranch` 2개 이상이 필수이며, branch와 같은 방향의 `wf:next` 중복은 금지한다 (`.abox.ttl` 저장 시 PostToolUse hook 자동 실행).
 `observe_graph.py --root .` 도 동일 hook에서 자동 실행되어 subgraph/artifact-stream-views 등 observability 산출물을 재생성한다.
 
 **Slot-filling Eval**: `wf:hasSlot` + `wf:EntitySlot` 을 선언하면 slot-filling 방식으로 동작한다. 모든 슬롯(`slotFilled=true`)이 충족될 때 `wf:orderArtifact`를 생성하고 `orderTarget` step에 전달한다. 이 경우 `orderArtifact`도 필수다.
@@ -265,6 +264,12 @@ python skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-cont
 python skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-context/workflow --check
 ```
 
+legacy YAML 내부의 `phases`→`workflows`, `type: validation`→`type: eval` 정리는 별도 마이그레이션 스크립트로 선행한다:
+
+```bash
+python skills/mso-workflow-design/scripts/migrate_phases_to_workflows.py agent-context/workflow --apply
+```
+
 각 workflow TTL ABox는 독립 그래프로 관측되며, repository 전체 graph와 workflow별 sub-graph가 `mso-graph-observability`에서 생성된다.
 마이그레이션 검증이 끝난 legacy YAML은 repository workflow topology에 남기지 않는다.
 
@@ -336,12 +341,12 @@ python migrate_workflows_to_ttl.py agent-context/workflow --check  # CI drift ga
 
 > **방향 (TTL-only)**: TTL ABox 가 SSOT-of-record. `wf_to_ttl.py`는 migration backend로만 남는다. 일반 운영자는 `migrate_workflows_to_ttl.py`를 사용하고, migration 이후에는 TTL만 수정한다.
 
-검증은 두 엔진으로 분담한다. 순환 자체는 금지하지 않는다. 다만 산출물이 재귀적으로 소비되는 loop 안에 `eval`, `Validation decision`, 또는 `user decision` 제어점이 없으면 uncontrolled feedback loop로 본다. `decision` gate는 진행/분기를 제어하고, `Validation decision`은 결정적 상태 검증 루프를 제어한다. 산출물 품질·정합·수용 가능성의 평가는 `eval` gate가 담당한다:
+검증은 두 엔진으로 분담한다. 순환 자체는 금지하지 않는다. 다만 산출물이 재귀적으로 소비되는 loop 안에 `eval`, `user decision`, 또는 criteria-bearing `agent decision` 제어점이 없으면 uncontrolled feedback loop로 본다. `decision` gate는 선택/판단/라우팅을 제어하고, 산출물 품질·정합·수용 가능성의 측정/평가/검증은 `eval` gate가 담당한다:
 
 | 검사 | 엔진 | 잡는 것 |
 |------|------|--------|
 | **로컬/정합 shape** | pyshacl (추론 off) | status·decision_subject enum, eval=oracle_type+criteria, decision=decision_subject, label 존재, hasNode/has_subWorkflow/next/gotoNode/criticalDep/milestoneOf **range-class**(dangling ref 포함) |
-| **Feedback loop control** | SHACL-SPARQL + rdflib SPARQL | `wf:next`/`wf:gotoNode` 순환 중 `wf:Eval`, `wf:Validation`, 또는 `decisionSubject=user` Decision gate가 없는 loop를 오류로 판정. |
+| **Feedback loop control** | SHACL-SPARQL + rdflib SPARQL | `wf:next`/`wf:gotoNode` 순환 중 `wf:Eval`, `decisionSubject=user` Decision, 또는 deterministic criteria(`decisionCriteria`/`threshold`/`passCriteria`/`harness`)가 있는 Decision gate가 없는 loop를 오류로 판정. |
 | **교차-스킬**(`--index`) | SPARQL containment join (`STRSTARTS`) | `directories[].path` 가 scaffold(index) 모듈 fs 루트의 자손인지 — 미등록 경로는 warning. scaffold 해소는 `wf_node._resolve_scaffold` **재사용**(중복 로직 안 만듦). 기존 wf_node 내장 사본은 2단계에서 제거 대상. |
 
 | 노드 속성 핵심 | 의미 |
@@ -367,7 +372,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py --root .
 ```
 
 생성되는 핵심 산출물:
-- `workflow-topology.md` — repository 전체 workflow graph. phase/module/milestone 수준의 topology를 보여주며, 내부 node 실행 흐름은 workflow별 sub-graph에서만 펼친다.
+- `workflow-topology.md` — repository 전체 workflow graph. workflow/module/milestone 수준의 topology를 보여주며, 내부 node 실행 흐름은 workflow별 sub-graph에서만 펼친다.
 - `workflow-subgraph-index.md` — workflow scope별 sub-graph 인덱스
 - `workflow-subgraphs/<scope>.md` — 특정 workflow 하나만 보는 Mermaid sub-graph
 - `workflow-ssot-report.md` — legacy YAML 잔존 여부, 제거 후보, migration blocker 보고
@@ -392,8 +397,10 @@ workflow self-improvement loop 의 자기참조를 **edge 종류로 base/oracle 
 workflow:
   id: oracle-wf
   exercises: target-wf    # 평가 목적 실행 (대상 불변)
-phases:
-  - id: ph
+workflows:
+  - id: oracle-subworkflow
+    name: Oracle Subworkflow
+    status: active
     steps:
       - type: eval
         id: e-001
@@ -405,10 +412,10 @@ phases:
         instruction: 평가 결과를 대상 workflow에 반영한다
         evolves: target-wf
     workflows:            # has_subWorkflow 로 resolve (module 기준)
-      - { ref: "sub.yaml#ph", module: sub-wf }
+      - { ref: "sub.yaml#workflow-id", module: sub-wf }
 ```
 
-`node.evolves`/`workflow.exercises` 는 `wf:workflow/<id>` URI 로, `phases[].workflows[].module` 은 `has_subWorkflow` edge 로 emit 된다.
+`node.evolves`/`workflow.exercises` 는 `wf:workflow/<id>` URI 로, `workflows[].workflows[].module` 은 `has_subWorkflow` edge 로 emit 된다. legacy `phases[].workflows[]`는 migration compatibility로만 읽는다.
 
 ### SHACL Invariant (자동 검출)
 
@@ -457,7 +464,8 @@ dependencies:
 - [ ] 각 노드에 `id` 명시 (워크플로우 **계층 전역** unique)
 - [ ] 각 노드에 `label` 명시
 - [ ] 분기·판단 지점은 `type: decision` 노드로 분리
-- [ ] 자동 검증 게이트(스키마 검증·테스트 러너·KPI 체크 등)는 `type: eval`, `oracle_type: metric` 노드로 분리
+- [ ] 선택/판단/라우팅 지점은 `type: decision`, `decision_subject`, `branches`로 분리
+- [ ] 산출물 측정·평가·검증과 개선 루프는 `type: eval`, `oracle_type`, `criteria`, `target`, `target_artifact`, fail/pass branch로 분리
 - [ ] 각 decision 에 `decision_subject` ∈ {user, agent} 명시
 - [ ] user decision → `owner`/`description`에 운영자가 선택할 branch/진행 판단 항목 명시 (권장)
 - [ ] agent decision → `decision_criteria` 또는 `threshold`로 판단 기준 명시 (권장)

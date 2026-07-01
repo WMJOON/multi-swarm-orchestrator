@@ -43,12 +43,12 @@ wf:goto a owl:DatatypeProperty ; rdfs:label "goto"@ko ; rdfs:domain wf:Branch ; 
 wf:instruction a owl:DatatypeProperty ; rdfs:label "instruction"@ko ; rdfs:domain wf:Step ; rdfs:range xsd:string .
 wf:label a owl:DatatypeProperty ; rdfs:label "label"@ko ; rdfs:range xsd:string ; rdfs:comment "used by: Branch, Decision, Eval, Event, Group, Step"@ko .
 wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ; rdfs:domain wf:Branch ; rdfs:range xsd:string .
-wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
+wf:onFail a owl:DatatypeProperty ; rdfs:label "onFail"@ko ; rdfs:range xsd:string .
 wf:oracle a owl:DatatypeProperty ; rdfs:label "oracle"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:oracleType a owl:DatatypeProperty ; rdfs:label "oracleType"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:orderArtifact a owl:DatatypeProperty ; rdfs:label "orderArtifact"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
 wf:orderTarget a owl:DatatypeProperty ; rdfs:label "orderTarget"@ko ; rdfs:domain wf:Eval ; rdfs:range xsd:string .
-wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
+wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:range xsd:string .
 wf:schedule a owl:DatatypeProperty ; rdfs:label "schedule"@ko ; rdfs:domain wf:Event ; rdfs:range xsd:string .
 wf:sla a owl:DatatypeProperty ; rdfs:label "sla"@ko ; rdfs:domain wf:Decision ; rdfs:range xsd:string .
 wf:source a owl:DatatypeProperty ; rdfs:label "source"@ko ; rdfs:domain wf:Event ; rdfs:range xsd:string .
@@ -109,8 +109,8 @@ wf:slotFilled a owl:DatatypeProperty ; rdfs:label "slotFilled"@ko ;
 
 # ─── 구조화 링크 (컨테이너 관계 — schema 필드 아님) ──────────────────────────────
 wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
-    rdfs:domain wf:Decision ; rdfs:range wf:Branch ;
-    rdfs:comment "decision.branches[] → Branch 노드(라운드트립)."@ko .
+    rdfs:domain wf:Node ; rdfs:range wf:Branch ;
+    rdfs:comment "decision/eval branches[] → Branch 노드(라운드트립). Decision/Eval별 분기 규칙은 SHACL shape이 강제한다."@ko .
 wf:gotoNode a owl:ObjectProperty ; rdfs:label "gotoNode"@ko ;
     rdfs:domain wf:Branch ; rdfs:range wf:Node ;
     rdfs:comment "process edge. branch.goto 문자열을 같은 workflow scope의 Node URI로 해석한 조건부 실행 에지."@ko .
@@ -140,11 +140,11 @@ wf:target a owl:ObjectProperty ; rdfs:label "target"@ko ;
 wf:Artifact a owl:Class ; rdfs:label "Artifact"@ko ;
     rdfs:comment "공급망 산출물 노드. produces/consumes/check/measures 의 대상. 기존 targetArtifact(string)와 병존 — 노드 식별이 필요한 supply-chain/orphan 분석용."@ko .
 wf:produces a owl:ObjectProperty ; rdfs:label "produces"@ko ;
-    rdfs:domain wf:Workflow ; rdfs:range wf:Artifact ;
-    rdfs:comment "base(공급망): workflow 가 artifact 생산."@ko .
+    rdfs:domain wf:Node ; rdfs:range wf:Artifact ;
+    rdfs:comment "base(공급망): 실행 노드가 artifact 생산. Eval은 생산자가 아니라 측정 게이트이므로 produces 대상에서 제외한다."@ko .
 wf:consumes a owl:ObjectProperty ; rdfs:label "consumes"@ko ;
-    rdfs:domain wf:Artifact ; rdfs:range wf:Workflow ;
-    rdfs:comment "base(공급망): artifact 가 workflow 입력으로 소비됨."@ko .
+    rdfs:domain wf:Artifact ; rdfs:range wf:Node ;
+    rdfs:comment "base(공급망): artifact 가 실행/판단 노드 입력으로 소비됨. Eval 입력은 consumes가 아니라 measures로 표현한다."@ko .
 wf:check a owl:ObjectProperty ; rdfs:label "check"@ko ;
     rdfs:domain wf:Artifact ; rdfs:range wf:Task ;
     rdfs:comment "base(spine): artifact 가 task 입력으로 진입."@ko .

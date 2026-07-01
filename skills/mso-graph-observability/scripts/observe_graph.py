@@ -1020,7 +1020,7 @@ def filter_scope(terms: Iterable[URIRef], scope: str | None) -> list[URIRef]:
 def workflow_node_terms(graph: Graph, scope: str | None = None) -> list[URIRef]:
     node_terms = {
         node
-        for cls in (WF.Step, WF.Decision, WF.Eval, WF.Event, WF.Group)
+        for cls in (WF.Step, WF.Decision, WF.Eval, WF.Event, WF.Validation, WF.Group)
         for node in subjects_of_type(graph, cls)
     }
     return filter_scope(sorted(node_terms, key=str), scope)
@@ -1063,6 +1063,19 @@ def data_id(key: str) -> str:
     return f"data_{cleaned}_{digest}"
 
 
+def display_name_for_artifact(name: str, artifact_type: str) -> str:
+    if artifact_type != "tool":
+        return name
+    stripped = name.strip()
+    bracketed = re.fullmatch(r"\[\[\s*(.*?)\s*\]\]", stripped)
+    if bracketed:
+        return bracketed.group(1).strip()
+    for prefix in ("tool:", "process:"):
+        if stripped.lower().startswith(prefix):
+            return stripped[len(prefix):].strip()
+    return stripped
+
+
 def data_label(
     data_type: str,
     location: str,
@@ -1085,6 +1098,7 @@ def data_label(
         db_path, table_name = name.rsplit("#", 1)
         db_name = db_path.rstrip("/").rsplit("/", 1)[-1] or db_path
         name = f"{db_name}#{table_name}"
+    name = display_name_for_artifact(name, artifact_type)
     parts = [mermaid_label(name, 52), type_label]
     return "<br>".join(p for p in parts if p)
 
@@ -1212,6 +1226,14 @@ def data_ref_for_locator(
     }
 
 
+def tool_data_ref(data_registry: dict[str, dict[str, str]], tool_locator: str) -> dict[str, str]:
+    ref = data_ref_for_locator(data_registry, data_type="local_file", locator=tool_locator).copy()
+    ref["artifact_type"] = "tool"
+    ref["resource_kind"] = "file"
+    ref["primary_consumer"] = ARTIFACT_PRIMARY_CONSUMERS.get("tool", "-")
+    return ref
+
+
 def deliverable_data_ref(deliverable: str) -> dict[str, str]:
     digest = hashlib.sha1(deliverable.encode("utf-8")).hexdigest()[:10]
     key = f"deliverable:{digest}"
@@ -1231,6 +1253,33 @@ def deliverable_data_ref(deliverable: str) -> dict[str, str]:
         "location": "declared deliverable",
         "locator": "",
         "detail": deliverable,
+    }
+
+
+def artifact_node_data_ref(graph: Graph, artifact: URIRef) -> dict[str, str]:
+    detail = preferred_label(graph, artifact)
+    if detail:
+        ref = deliverable_data_ref(detail)
+        ref["location"] = "declared artifact"
+        return ref
+    artifact_key = str(artifact).split("#", 1)[-1] if "#" in str(artifact) else str(artifact)
+    key = f"artifact:{artifact_key}"
+    artifact_type = infer_artifact_type(
+        data_type="local_file",
+        locator="",
+        artifact_id=key,
+        detail=detail,
+    )
+    return {
+        "key": key,
+        "id": key,
+        "data_type": "local_file",
+        "artifact_type": artifact_type,
+        "resource_kind": "data" if artifact_type in MACHINE_NATIVE_ARTIFACTS else "file",
+        "primary_consumer": ARTIFACT_PRIMARY_CONSUMERS.get(artifact_type, "-"),
+        "location": "declared artifact",
+        "locator": "",
+        "detail": detail,
     }
 
 
@@ -1278,6 +1327,11 @@ def produced_artifact_ref_for_workflow(
             continue
         if not any((node, RDF.type, node_type) in graph for node_type in process_types):
             continue
+        for produced_artifact in graph.objects(node, WF.produces):
+            if not isinstance(produced_artifact, URIRef):
+                continue
+            if preferred_label(graph, produced_artifact) == artifact_text:
+                return artifact_node_data_ref(graph, produced_artifact)
         for deliverable, _ in deliverable_data_for_node(graph, node):
             if literal_text(Literal(deliverable)) == artifact_text:
                 return deliverable_data_ref(deliverable)
@@ -1299,6 +1353,12 @@ def has_supply_chain(graph: Graph, node: URIRef) -> bool:
         produces, consumes, _ = data_edge_labels(role)
         if produces or consumes:
             return True
+    if any(isinstance(artifact, URIRef) for artifact in graph.objects(node, WF.produces)):
+        return True
+    if any(isinstance(artifact, URIRef) for artifact in graph.subjects(WF.consumes, node)):
+        return True
+    if any(isinstance(artifact, URIRef) for artifact in graph.subjects(WF.check, node)):
+        return True
     if list(graph.objects(node, WF.deliverables)):
         return True
     if graph.value(node, WF.targetArtifact) is not None:
@@ -1340,6 +1400,13 @@ def data_keys(graph: Graph, scope: str, data_registry: dict[str, dict[str, str]]
             keys.add(data_ref_for_locator(data_registry, data_type="local_file", locator=path)["id"])
         for deliverable, _ in deliverable_data_for_node(graph, node):
             keys.add(deliverable_data_ref(deliverable)["id"])
+        for artifact in graph.objects(node, WF.produces):
+            if isinstance(artifact, URIRef):
+                keys.add(artifact_node_data_ref(graph, artifact)["id"])
+        for pred in (WF.consumes, WF.check, WF.measures):
+            for artifact in graph.subjects(pred, node):
+                if isinstance(artifact, URIRef):
+                    keys.add(artifact_node_data_ref(graph, artifact)["id"])
     return keys
 
 
@@ -1369,6 +1436,19 @@ def collect_data_streams(
                 ref = deliverable_data_ref(deliverable)
                 refs.setdefault(ref["id"], ref)
                 producers.setdefault(ref["id"], set()).add(node_id)
+            for artifact in graph.objects(node, WF.produces):
+                if not isinstance(artifact, URIRef):
+                    continue
+                ref = artifact_node_data_ref(graph, artifact)
+                refs.setdefault(ref["id"], ref)
+                producers.setdefault(ref["id"], set()).add(node_id)
+            for pred in (WF.consumes, WF.check, WF.measures):
+                for artifact in graph.subjects(pred, node):
+                    if not isinstance(artifact, URIRef):
+                        continue
+                    ref = artifact_node_data_ref(graph, artifact)
+                    refs.setdefault(ref["id"], ref)
+                    consumers.setdefault(ref["id"], set()).add(node_id)
         streams[scope] = {
             "refs": refs,
             "producers": producers,
@@ -1946,7 +2026,7 @@ def build_workflow_topology(
         tool_value = first_literal(graph, task, WF.usesTool)
         if not tool_value:
             return None
-        ref = data_ref_for_locator(data_registry, data_type="local_file", locator=tool_value)
+        ref = tool_data_ref(data_registry, tool_value)
         if show_data_stream:
             data_refs.setdefault(ref["id"], ref)
             tool_node_id = declare_data(
@@ -2069,6 +2149,7 @@ def build_workflow_topology(
             (WF.Decision, "decision"),
             (WF.Eval, "eval"),
             (WF.Event, "event"),
+            (WF.Validation, "validation"),
             (WF.Group, "group"),
         ):
             if (term, RDF.type, rdf_type) in graph:
@@ -2105,6 +2186,8 @@ def build_workflow_topology(
                     event_kind = first_literal(graph, term, WF.eventKind)
                     if event_kind:
                         suffix = f"{suffix}<br>kind: {event_kind}"
+                elif rdf_type == WF.Validation:
+                    shape = "hexagon"
                 else:
                     shape = "rect"
                 return local_name(rdf_type).lower(), css_class, suffix, shape
@@ -2212,6 +2295,7 @@ def build_workflow_topology(
         data_node_ids: set[str] = set()
         produced_data_node_ids: set[str] = set()
         consumed_data_node_ids: set[str] = set()
+        measured_edges: set[tuple[str, str]] = set()
         data_producers: dict[str, set[URIRef]] = {}
         data_consumers: dict[str, set[URIRef]] = {}
 
@@ -2325,6 +2409,61 @@ def build_workflow_topology(
                 if show_data_stream:
                     edge(stream_actor_id, "-.->", "produces", data_node_id)
 
+            for artifact in graph.objects(node, WF.produces):
+                if not isinstance(artifact, URIRef):
+                    continue
+                ref = artifact_node_data_ref(graph, artifact)
+                if show_data_stream:
+                    data_refs.setdefault(ref["id"], ref)
+                    artifact_type = ref.get("artifact_type", "document")
+                    data_node_id = declare_data(
+                        ref["id"],
+                        data_label(
+                            ref["data_type"],
+                            ref["location"],
+                            detail=ref.get("detail"),
+                            node_id=ref["id"],
+                            locator=ref["locator"],
+                            artifact_type=artifact_type,
+                        ),
+                        artifact_type,
+                    )
+                else:
+                    data_node_id = data_id(ref["id"])
+                data_node_ids.add(data_node_id)
+                produced_data_node_ids.add(data_node_id)
+                data_producers.setdefault(data_node_id, set()).add(node)
+                if show_data_stream:
+                    edge(stream_actor_id, "-.->", "produces", data_node_id)
+
+            for pred, label in ((WF.consumes, "consumes"), (WF.check, "check")):
+                for artifact in graph.subjects(pred, node):
+                    if not isinstance(artifact, URIRef):
+                        continue
+                    ref = artifact_node_data_ref(graph, artifact)
+                    if show_data_stream:
+                        data_refs.setdefault(ref["id"], ref)
+                        artifact_type = ref.get("artifact_type", "document")
+                        data_node_id = declare_data(
+                            ref["id"],
+                            data_label(
+                                ref["data_type"],
+                                ref["location"],
+                                detail=ref.get("detail"),
+                                node_id=ref["id"],
+                                locator=ref["locator"],
+                                artifact_type=artifact_type,
+                            ),
+                            artifact_type,
+                        )
+                    else:
+                        data_node_id = data_id(ref["id"])
+                    data_node_ids.add(data_node_id)
+                    consumed_data_node_ids.add(data_node_id)
+                    data_consumers.setdefault(data_node_id, set()).add(node)
+                    if show_data_stream:
+                        edge(data_node_id, "-.->", label, stream_actor_id)
+
         if show_workflow_spine and process_nodes:
             start_id = declare_boundary("start")
             end_id = declare_boundary("end")
@@ -2401,7 +2540,7 @@ def build_workflow_topology(
                     tool_str = literal_text(tool_value)
                     if not tool_str:
                         continue
-                    tool_ref = data_ref_for_locator(data_registry, data_type="local_file", locator=tool_str)
+                    tool_ref = tool_data_ref(data_registry, tool_str)
                     tool_nid = data_id(tool_ref["id"])
                     if tool_nid not in declared:
                         tool_label_str = data_label(
@@ -2412,7 +2551,7 @@ def build_workflow_topology(
                         )
                         declare_data(tool_ref["id"], tool_label_str, tool_ref.get("artifact_type", "document"))
                         data_node_ids.add(tool_nid)
-                    edge(node_nid, "-->", "delegates_to", tool_nid)
+                    edge(node_nid, "-.->", "delegates_to", tool_nid)
 
                 is_eval_node = (target_node, RDF.type, WF.Eval) in graph
                 if is_eval_node:
@@ -2430,8 +2569,30 @@ def build_workflow_topology(
                             declare(target_workflow, "workflow", "workflow", "Workflow")
                         edge(node_nid, "--o", "target", workflow_id)
 
-                art_str = first_literal(graph, target_node, WF.targetArtifact)
-                if art_str:
+                    for measured_artifact in sorted(graph.subjects(WF.measures, target_node), key=str):
+                        if not isinstance(measured_artifact, URIRef):
+                            continue
+                        art_ref = artifact_node_data_ref(graph, measured_artifact)
+                        art_nid = data_id(art_ref["id"])
+                        if art_nid not in declared:
+                            art_label_str = data_label(
+                                art_ref["data_type"], art_ref.get("location", art_ref["id"]),
+                                detail=art_ref.get("detail"),
+                                locator=art_ref.get("locator", art_ref["id"]),
+                                node_id=art_ref["id"],
+                                artifact_type=art_ref.get("artifact_type", "document"),
+                            )
+                            declare_data(art_ref["id"], art_label_str, art_ref.get("artifact_type", "document"))
+                            data_node_ids.add(art_nid)
+                        measured_edges.add((art_nid, node_nid))
+                        edge(art_nid, "-.->", "measured_by", node_nid)
+
+                art_values = [
+                    literal_text(value)
+                    for value in graph.objects(target_node, WF.targetArtifact)
+                    if isinstance(value, Literal) and literal_text(value)
+                ]
+                for art_str in art_values:
                     art_ref = None
                     if is_eval_node:
                         for target_workflow in sorted(graph.objects(target_node, WF.target), key=str):
@@ -2500,7 +2661,9 @@ def build_workflow_topology(
                                         produced_ref.get("artifact_type", "document"),
                                     )
                                     data_node_ids.add(produced_nid)
-                                    edge(produced_nid, "-.->", "measured_by", node_nid)
+                                    if (produced_nid, node_nid) not in measured_edges:
+                                        measured_edges.add((produced_nid, node_nid))
+                                        edge(produced_nid, "-.->", "measured_by", node_nid)
                             for deliverable, produced_ref in produced_deliverables:
                                 produced_nid = declare_data(
                                     produced_ref["id"],
@@ -2515,9 +2678,13 @@ def build_workflow_topology(
                                     produced_ref.get("artifact_type", "document"),
                                 )
                                 data_node_ids.add(produced_nid)
-                                edge(produced_nid, "-.->", "measured_by", node_nid)
+                                if (produced_nid, node_nid) not in measured_edges:
+                                    measured_edges.add((produced_nid, node_nid))
+                                    edge(produced_nid, "-.->", "measured_by", node_nid)
                     elif is_eval_node:
-                        edge(art_nid, "-.->", "measured_by", node_nid)
+                        if (art_nid, node_nid) not in measured_edges:
+                            measured_edges.add((art_nid, node_nid))
+                            edge(art_nid, "-.->", "measured_by", node_nid)
 
                 # requests_revision — eval --> downstream task/decision
                 order_str = first_literal(graph, target_node, WF.orderTarget)

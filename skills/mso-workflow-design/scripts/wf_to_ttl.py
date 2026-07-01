@@ -13,17 +13,17 @@
 
     2) feedback loop control (SHACL-SPARQL + rdflib SPARQL)
        순환 자체는 허용한다. 다만 산출물이 재귀적으로 소비되는 loop 안에
-       Eval gate, Validation decision gate, user Decision gate 중 하나가 없으면
-       uncontrolled feedback loop로 본다. agent Decision gate만 있는 루프는 여전히
-       산출물 품질/정합 평가점이 아니므로 통제점으로 보지 않는다.
+       Eval gate, user Decision gate, 또는 deterministic Decision gate
+       (harness/decision_criteria/threshold/pass_criteria 보유)가 없으면
+       uncontrolled feedback loop로 본다.
 
 사용:
   python wf_to_ttl.py serialize <workflow.yaml>          # legacy YAML import: TTL stdout
   python wf_to_ttl.py validate  <workflow.yaml> [--json] # migration gate, 위반 시 exit 1
 
-검증 노드 배선: workflow 의 Eval(metric) 노드에서
-  harness: wf_shape_validator   (= `python wf_to_ttl.py validate <this.yaml>`)
-로 가리키면 워크플로 자체 형상이 게이트가 된다(자기 검증).
+검증 노드 배선: legacy YAML의 `type: validation`은 Eval(metric)으로 투영한다.
+선택/라우팅 판단은 `type: decision`, 산출물 측정·평가·검증은 `type: eval`로
+분리한다.
 """
 import argparse
 import hashlib
@@ -47,7 +47,7 @@ TBOX = _REF / "tbox" / "workflow-tbox.ttl"
 _TYPE_CLASS = {
     "step": WF.Step,
     "decision": WF.Decision,
-    "validation": WF.Eval,  # v0.6.1 phase-less: Validation 폐지 → Eval(oracle_type=metric)
+    "validation": WF.Eval,  # legacy YAML compatibility: Validation 폐지 → Eval(metric)
     "eval": WF.Eval,
     "event": WF.Event,
     "oracle": WF.Eval,  # legacy YAML alias
@@ -81,6 +81,10 @@ def _workflow_uri(workflow_id: str, scope: str = "") -> URIRef:
     if scope:
         return WF["workflow/" + _safe(scope) + "/" + safe]
     return WF["workflow/" + safe]
+
+
+def _oracle_workflow_uri(workflow_uri: URIRef) -> URIRef:
+    return URIRef(str(workflow_uri).rstrip("/") + "/oracle")
 
 
 def _module_uri(module_id: str) -> URIRef:
@@ -137,8 +141,6 @@ def _project_fields(g: Graph, subj: URIRef, doc: dict, skip: set) -> None:
 
 
 _NODE_SKIP = {"type", "id", "steps", "branches", "directories", "workflows", "target", "target_workflow", "evolves", "evolves_workflow"}
-
-
 def _project_nodes(
     g: Graph,
     nodes,
@@ -158,25 +160,36 @@ def _project_nodes(
         ntype = n.get("type")
         cls = _TYPE_CLASS.get(ntype)
         nu = _node_uri(n["id"], scope)
+        node_workflow_uri = workflow_uri
         ordered_uris.append(nu)
         g.add((nu, RDF.type, cls))
         g.add((nu, RDF.type, WF.Node))   # 명시 상위타입 — 추론 없이 hasNode range(sh:class wf:Node) 성립
         if cls in {WF.Step, WF.Group}:
             g.add((nu, RDF.type, WF.Task))
-        # v0.6.1 phase-less: validation 은 Eval(oracle_type=metric)로 투영 — 자동 pass/fail 게이트
-        if ntype == "validation" and not n.get("oracle_type"):
-            g.add((nu, WF.oracleType, Literal("metric")))
+        if ntype == "validation":
+            if not (n.get("oracle_type") or n.get("oracleType")):
+                g.add((nu, WF.oracleType, Literal("metric")))
+            if not n.get("criteria"):
+                for item in n.get("pass_criteria") or n.get("passCriteria") or []:
+                    g.add((nu, WF.criteria, Literal(str(item))))
         target_workflow = n.get("target") or n.get("target_workflow")
         if cls == WF.Eval and target_workflow:
             target_text = str(target_workflow)
             current_workflow_id = str(workflow_uri).rstrip("/").rsplit("/", 1)[-1]
+            target_is_self = False
             if target_text.startswith(("http://", "https://")):
                 target_uri = URIRef(target_text)
             elif target_text in {".", "self"} or _safe(target_text) == current_workflow_id:
                 target_uri = workflow_uri
+                target_is_self = True
             else:
                 target_uri = _workflow_uri(target_text, workflow_target_scope)
             g.add((nu, WF.target, target_uri))
+            if target_is_self:
+                node_workflow_uri = _oracle_workflow_uri(workflow_uri)
+                g.add((node_workflow_uri, RDF.type, WF.Workflow))
+                g.add((node_workflow_uri, WF.label, Literal(f"Oracle for {current_workflow_id}")))
+                g.add((node_workflow_uri, WF.status, Literal("active")))
         evolves_workflow = n.get("evolves") or n.get("evolves_workflow")
         if evolves_workflow:
             current_workflow_id = str(workflow_uri).rstrip("/").rsplit("/", 1)[-1]
@@ -189,9 +202,10 @@ def _project_nodes(
                 else:
                     evolves_uri = _workflow_uri(evolves_text, workflow_target_scope)
                 g.add((nu, WF.evolves, evolves_uri))
-        g.add((workflow_uri, WF.hasNode, nu))
-        g.add((nu, WF.inWorkflow, workflow_uri))
-        _project_fields(g, nu, n, _NODE_SKIP)  # label/instruction/status/harness/passCriteria/decisionSubject/owner/...
+        g.add((node_workflow_uri, WF.hasNode, nu))
+        g.add((nu, WF.inWorkflow, node_workflow_uri))
+        field_skip = _NODE_SKIP
+        _project_fields(g, nu, n, field_skip)  # label/instruction/status/harness/passCriteria/decisionSubject/owner/...
         for d in (n.get("directories") or []):  # 특수: directories[] → 구조화 노드(안정 URI)
             if isinstance(d, dict) and d.get("path"):
                 dn = URIRef(str(nu) + "_dir_" + _safe(d["path"]))
@@ -447,9 +461,15 @@ SELECT ?x WHERE {
     ?x (wf:next|wf:hasBranch/wf:gotoNode)* ?gate .
     { ?gate a wf:Eval . }
     UNION
-    { ?gate a wf:Validation . }
-    UNION
     { ?gate a wf:Decision ; wf:decisionSubject "user" . }
+    UNION
+    { ?gate a wf:Decision ; wf:decisionCriteria ?decisionCriteria . }
+    UNION
+    { ?gate a wf:Decision ; wf:threshold ?threshold . }
+    UNION
+    { ?gate a wf:Decision ; wf:passCriteria ?passCriteria . }
+    UNION
+    { ?gate a wf:Decision ; wf:harness ?harness . }
     ?gate (wf:next|wf:hasBranch/wf:gotoNode)* ?x .
   }
 }
@@ -457,7 +477,7 @@ SELECT ?x WHERE {
 
 
 def find_uncontrolled_loops(g: Graph) -> list[str]:
-    """Eval/Validation/user Decision 제어점 없이 닫힌 feedback loop 목록."""
+    """Eval/user/deterministic Decision 제어점 없이 닫힌 feedback loop 목록."""
     seen = []
     for row in g.query(_UNCONTROLLED_LOOP_QUERY):
         uri = str(row[0])

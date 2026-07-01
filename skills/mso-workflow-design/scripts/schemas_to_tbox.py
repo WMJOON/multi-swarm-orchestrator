@@ -47,6 +47,11 @@ _NODE_SUB = {"Step", "Decision", "Group", "Eval", "Event"}
 #   directories → wf:directory bnode(특수, wf_to_ttl 투영) / branches → wf:Branch 특수 투영
 _SKIP_FIELDS = {"type", "id", "steps", "workflows", "directories", "branches"}
 
+# These properties are reused by schema-less metadata or legacy validation
+# nodes, so giving them a narrow RDFS domain causes accidental class inference
+# under SHACL/RDFS (for example Project+owner => Decision).
+_DOMAINLESS_PROPS = {"owner", "onFail"}
+
 XSD = {"string": "xsd:string", "bool": "xsd:boolean"}
 
 
@@ -137,8 +142,8 @@ wf:slotFilled a owl:DatatypeProperty ; rdfs:label "slotFilled"@ko ;
 
 # ─── 구조화 링크 (컨테이너 관계 — schema 필드 아님) ──────────────────────────────
 wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
-    rdfs:domain wf:Decision ; rdfs:range wf:Branch ;
-    rdfs:comment "decision.branches[] → Branch 노드(라운드트립)."@ko .
+    rdfs:domain wf:Node ; rdfs:range wf:Branch ;
+    rdfs:comment "decision/eval branches[] → Branch 노드(라운드트립). Decision/Eval별 분기 규칙은 SHACL shape이 강제한다."@ko .
 wf:gotoNode a owl:ObjectProperty ; rdfs:label "gotoNode"@ko ;
     rdfs:domain wf:Branch ; rdfs:range wf:Node ;
     rdfs:comment "process edge. branch.goto 문자열을 같은 workflow scope의 Node URI로 해석한 조건부 실행 에지."@ko .
@@ -168,11 +173,11 @@ wf:target a owl:ObjectProperty ; rdfs:label "target"@ko ;
 wf:Artifact a owl:Class ; rdfs:label "Artifact"@ko ;
     rdfs:comment "공급망 산출물 노드. produces/consumes/check/measures 의 대상. 기존 targetArtifact(string)와 병존 — 노드 식별이 필요한 supply-chain/orphan 분석용."@ko .
 wf:produces a owl:ObjectProperty ; rdfs:label "produces"@ko ;
-    rdfs:domain wf:Workflow ; rdfs:range wf:Artifact ;
-    rdfs:comment "base(공급망): workflow 가 artifact 생산."@ko .
+    rdfs:domain wf:Node ; rdfs:range wf:Artifact ;
+    rdfs:comment "base(공급망): 실행 노드가 artifact 생산. Eval은 생산자가 아니라 측정 게이트이므로 produces 대상에서 제외한다."@ko .
 wf:consumes a owl:ObjectProperty ; rdfs:label "consumes"@ko ;
-    rdfs:domain wf:Artifact ; rdfs:range wf:Workflow ;
-    rdfs:comment "base(공급망): artifact 가 workflow 입력으로 소비됨."@ko .
+    rdfs:domain wf:Artifact ; rdfs:range wf:Node ;
+    rdfs:comment "base(공급망): artifact 가 실행/판단 노드 입력으로 소비됨. Eval 입력은 consumes가 아니라 measures로 표현한다."@ko .
 wf:check a owl:ObjectProperty ; rdfs:label "check"@ko ;
     rdfs:domain wf:Artifact ; rdfs:range wf:Task ;
     rdfs:comment "base(spine): artifact 가 task 입력으로 진입."@ko .
@@ -250,7 +255,7 @@ def gen_tbox(schemas: dict) -> str:
         is_obj = rng.startswith("wf:")
         ptype = "owl:ObjectProperty" if is_obj else "owl:DatatypeProperty"
         classes = sorted(prop_classes[pname])
-        dom = f" ; rdfs:domain wf:{classes[0]}" if len(classes) == 1 else ""
+        dom = f" ; rdfs:domain wf:{classes[0]}" if len(classes) == 1 and pname not in _DOMAINLESS_PROPS else ""
         usedby = "" if len(classes) == 1 else f' ; rdfs:comment "used by: {", ".join(classes)}"@ko'
         lines.append(f"wf:{pname} a {ptype} ; rdfs:label \"{pname}\"@ko{dom} ; rdfs:range {rng}{usedby} .")
 
@@ -290,6 +295,17 @@ wf:EvalMeasuredArtifactShape a sh:NodeShape ; sh:targetClass wf:Eval ;
 wf:EvalWorkflowTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
     sh:property [ sh:path wf:target ; sh:minCount 1 ; sh:class wf:Workflow ;
                   sh:message "Eval은 평가 대상 workflow를 wf:target으로 선언해야 함" ] .
+wf:EvalTargetDisjointWorkflowShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 자기 자신을 포함하는 workflow를 wf:target으로 삼을 수 없음. Eval/Oracle workflow를 target workflow와 분리해야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:target ?workflow .
+              ?workflow wf:hasNode $this .
+            }
+        \"\"\" ;
+    ] .
 wf:EvolutionTargetShape a sh:NodeShape ; sh:targetSubjectsOf wf:evolves ;
     sh:property [ sh:path wf:evolves ; sh:class wf:Workflow ;
                   sh:message "evolves 타깃은 wf:Workflow 여야 함" ] .
@@ -330,6 +346,105 @@ wf:EvalPassTerminalShape a sh:NodeShape ; sh:targetClass wf:Eval ;
 wf:EvalNoDirectNextShape a sh:NodeShape ; sh:targetClass wf:Eval ;
     sh:property [ sh:path wf:next ; sh:maxCount 0 ;
                   sh:message "Eval은 wf:next를 직접 쓰지 않고 on=fail/on=pass branch로 진행해야 함" ] .
+wf:EvalNoArtifactConsumeShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 artifact consume/check 대상이 아니며 Artifact는 wf:measures로 Eval에 연결해야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                ?artifact wf:consumes $this .
+              }
+              UNION
+              {
+                ?artifact wf:check $this .
+              }
+            }
+        \"\"\" ;
+    ] .
+wf:EvalMeasuredArtifactProducerShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval measured_by artifact는 Eval의 wf:target workflow 안의 Task/Decision node가 wf:produces한 Artifact여야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:target ?workflow .
+              ?artifact wf:measures $this .
+              FILTER NOT EXISTS {
+                ?workflow wf:hasNode ?producer .
+                ?producer wf:produces ?artifact .
+                {
+                  ?producer a wf:Task .
+                }
+                UNION
+                {
+                  ?producer a wf:Decision .
+                }
+              }
+            }
+        \"\"\" ;
+    ] .
+wf:EvalTargetArtifactProducerShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval targetArtifact는 Eval의 wf:target workflow 안의 Task/Decision node가 생산한 deliverable 또는 wf:produces Artifact label과 일치해야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:target ?workflow ;
+                    wf:targetArtifact ?artifactLabel .
+              FILTER(
+                !STRSTARTS(STR(?artifactLabel), "[[")
+                && !STRSTARTS(LCASE(STR(?artifactLabel)), "tool:")
+                && !STRSTARTS(LCASE(STR(?artifactLabel)), "process:")
+              )
+              FILTER NOT EXISTS {
+                ?workflow wf:hasNode ?producer .
+                {
+                  ?producer a wf:Task .
+                }
+                UNION
+                {
+                  ?producer a wf:Decision .
+                }
+                {
+                  ?producer wf:deliverables ?artifactLabel .
+                }
+                UNION
+                {
+                  ?producer wf:produces ?artifact .
+                  ?artifact a wf:Artifact ;
+                            wf:label ?artifactLabel .
+                }
+                UNION
+                {
+                  ?producer wf:directory ?dir .
+                  ?dir wf:dirPath ?artifactLabel .
+                  ?dir wf:dirRole ?role .
+                  FILTER(
+                    CONTAINS(LCASE(STR(?role)), "output")
+                    || LCASE(STR(?role)) IN ("staging", "generated", "write")
+                  )
+                }
+              }
+            }
+        \"\"\" ;
+    ] .
+wf:EvalMinimumOutgoingShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 최소 2개 이상의 outgoing branch(on:fail/on:pass 등)를 가져야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                SELECT $this (COUNT(DISTINCT ?branch) AS ?outgoingCount) WHERE {
+                  OPTIONAL { $this wf:hasBranch ?branch . }
+                }
+                GROUP BY $this
+              }
+              FILTER(?outgoingCount < 2)
+            }
+        \"\"\" ;
+    ] .
 wf:DecisionNoDuplicateNextShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:sparql [
         sh:message "Decision의 wf:next가 branch gotoNode와 같으면 중복이므로 제거해야 함" ;
@@ -342,6 +457,22 @@ wf:DecisionNoDuplicateNextShape a sh:NodeShape ; sh:targetClass wf:Decision ;
             }
         \"\"\" ;
     ] .
+wf:DecisionMinimumOutgoingShape a sh:NodeShape ; sh:targetClass wf:Decision ;
+    sh:sparql [
+        sh:message "Decision은 최소 2개 이상의 wf:hasBranch를 가져야 함. 단일 정상 진행은 wf:next가 아니라 명시 branch로 선언해야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                SELECT $this (COUNT(DISTINCT ?branch) AS ?branchCount) WHERE {
+                  OPTIONAL { $this wf:hasBranch ?branch . }
+                }
+                GROUP BY $this
+              }
+              FILTER(?branchCount < 2)
+            }
+        \"\"\" ;
+    ] .
 wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:sparql [
         sh:message "tool delegation shape: wf:usesTool step needs a consumable input/reference artifact so artifact --consumes--> tool can be rendered" ;
@@ -350,16 +481,28 @@ wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
             SELECT $this WHERE {
               $this wf:usesTool ?tool .
               FILTER NOT EXISTS {
-                $this wf:directory ?dir .
-                ?dir wf:dirPath ?path .
-                OPTIONAL { ?dir wf:dirRole ?role . }
-                FILTER(
-                  !BOUND(?role)
-                  || CONTAINS(LCASE(STR(?role)), "input")
-                  || CONTAINS(LCASE(STR(?role)), "reference")
-                  || CONTAINS(LCASE(STR(?role)), "instruction")
-                  || LCASE(STR(?role)) IN ("staging", "read")
-                )
+                {
+                  $this wf:directory ?dir .
+                  ?dir wf:dirPath ?path .
+                  OPTIONAL { ?dir wf:dirRole ?role . }
+                  FILTER(
+                    !BOUND(?role)
+                    || CONTAINS(LCASE(STR(?role)), "input")
+                    || CONTAINS(LCASE(STR(?role)), "reference")
+                    || CONTAINS(LCASE(STR(?role)), "instruction")
+                    || LCASE(STR(?role)) IN ("staging", "read")
+                  )
+                }
+                UNION
+                {
+                  ?inputArtifact a wf:Artifact ;
+                                 wf:consumes $this .
+                }
+                UNION
+                {
+                  ?checkedArtifact a wf:Artifact ;
+                                  wf:check $this .
+                }
               }
             }
         \"\"\" ;
@@ -372,6 +515,11 @@ wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
               $this wf:usesTool ?tool .
               FILTER NOT EXISTS {
                 { $this wf:deliverables ?deliverable . }
+                UNION
+                {
+                  $this wf:produces ?artifact .
+                  ?artifact a wf:Artifact .
+                }
                 UNION
                 {
                   $this wf:directory ?dir .
@@ -445,6 +593,27 @@ wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
 wf:BranchGraphShape a sh:NodeShape ; sh:targetClass wf:Branch ;
     sh:property [ sh:path wf:gotoNode ; sh:class wf:Node ;
                   sh:message "gotoNode 타깃은 wf:Node 여야 함" ] .
+wf:ArtifactEdgeShape a sh:NodeShape ; sh:targetClass wf:Artifact ;
+    sh:property [ sh:path wf:produces ; sh:maxCount 0 ;
+                  sh:message "Artifact는 wf:produces의 대상이지 주어가 아니어야 함" ] ;
+    sh:property [ sh:path wf:measures ; sh:class wf:Eval ;
+                  sh:message "Artifact wf:measures 타깃은 wf:Eval이어야 함" ] ;
+    sh:sparql [
+        sh:message "Artifact wf:consumes/wf:check 타깃은 Eval이 될 수 없음. Eval 연결은 wf:measures를 사용해야 함" ;
+        sh:select \"\"\"
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                $this wf:consumes ?consumer .
+              }
+              UNION
+              {
+                $this wf:check ?consumer .
+              }
+              ?consumer a wf:Eval .
+            }
+        \"\"\" ;
+    ] .
 wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .
@@ -455,7 +624,7 @@ wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
 # ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
 wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:sparql [
-        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval, Validation, or user Decision gate in the loop" ;
+        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval, user Decision, or deterministic Decision gate in the loop" ;
         sh:select \"\"\"
             PREFIX wf: <https://mso.dev/ontology/workflow#>
             SELECT $this WHERE {
@@ -464,9 +633,15 @@ wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
                 $this (wf:next|wf:hasBranch/wf:gotoNode)* ?gate .
                 { ?gate a wf:Eval . }
                 UNION
-                { ?gate a wf:Validation . }
-                UNION
                 { ?gate a wf:Decision ; wf:decisionSubject "user" . }
+                UNION
+                { ?gate a wf:Decision ; wf:decisionCriteria ?decisionCriteria . }
+                UNION
+                { ?gate a wf:Decision ; wf:threshold ?threshold . }
+                UNION
+                { ?gate a wf:Decision ; wf:passCriteria ?passCriteria . }
+                UNION
+                { ?gate a wf:Decision ; wf:harness ?harness . }
                 ?gate (wf:next|wf:hasBranch/wf:gotoNode)* $this .
               }
             }

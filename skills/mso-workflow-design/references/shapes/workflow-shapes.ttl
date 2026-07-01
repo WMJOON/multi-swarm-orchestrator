@@ -73,6 +73,17 @@ wf:EvalMeasuredArtifactShape a sh:NodeShape ; sh:targetClass wf:Eval ;
 wf:EvalWorkflowTargetShape a sh:NodeShape ; sh:targetClass wf:Eval ;
     sh:property [ sh:path wf:target ; sh:minCount 1 ; sh:class wf:Workflow ;
                   sh:message "Eval은 평가 대상 workflow를 wf:target으로 선언해야 함" ] .
+wf:EvalTargetDisjointWorkflowShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 자기 자신을 포함하는 workflow를 wf:target으로 삼을 수 없음. Eval/Oracle workflow를 target workflow와 분리해야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:target ?workflow .
+              ?workflow wf:hasNode $this .
+            }
+        """ ;
+    ] .
 wf:EvolutionTargetShape a sh:NodeShape ; sh:targetSubjectsOf wf:evolves ;
     sh:property [ sh:path wf:evolves ; sh:class wf:Workflow ;
                   sh:message "evolves 타깃은 wf:Workflow 여야 함" ] .
@@ -113,6 +124,105 @@ wf:EvalPassTerminalShape a sh:NodeShape ; sh:targetClass wf:Eval ;
 wf:EvalNoDirectNextShape a sh:NodeShape ; sh:targetClass wf:Eval ;
     sh:property [ sh:path wf:next ; sh:maxCount 0 ;
                   sh:message "Eval은 wf:next를 직접 쓰지 않고 on=fail/on=pass branch로 진행해야 함" ] .
+wf:EvalNoArtifactConsumeShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 artifact consume/check 대상이 아니며 Artifact는 wf:measures로 Eval에 연결해야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                ?artifact wf:consumes $this .
+              }
+              UNION
+              {
+                ?artifact wf:check $this .
+              }
+            }
+        """ ;
+    ] .
+wf:EvalMeasuredArtifactProducerShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval measured_by artifact는 Eval의 wf:target workflow 안의 Task/Decision node가 wf:produces한 Artifact여야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:target ?workflow .
+              ?artifact wf:measures $this .
+              FILTER NOT EXISTS {
+                ?workflow wf:hasNode ?producer .
+                ?producer wf:produces ?artifact .
+                {
+                  ?producer a wf:Task .
+                }
+                UNION
+                {
+                  ?producer a wf:Decision .
+                }
+              }
+            }
+        """ ;
+    ] .
+wf:EvalTargetArtifactProducerShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval targetArtifact는 Eval의 wf:target workflow 안의 Task/Decision node가 생산한 deliverable 또는 wf:produces Artifact label과 일치해야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:target ?workflow ;
+                    wf:targetArtifact ?artifactLabel .
+              FILTER(
+                !STRSTARTS(STR(?artifactLabel), "[[")
+                && !STRSTARTS(LCASE(STR(?artifactLabel)), "tool:")
+                && !STRSTARTS(LCASE(STR(?artifactLabel)), "process:")
+              )
+              FILTER NOT EXISTS {
+                ?workflow wf:hasNode ?producer .
+                {
+                  ?producer a wf:Task .
+                }
+                UNION
+                {
+                  ?producer a wf:Decision .
+                }
+                {
+                  ?producer wf:deliverables ?artifactLabel .
+                }
+                UNION
+                {
+                  ?producer wf:produces ?artifact .
+                  ?artifact a wf:Artifact ;
+                            wf:label ?artifactLabel .
+                }
+                UNION
+                {
+                  ?producer wf:directory ?dir .
+                  ?dir wf:dirPath ?artifactLabel .
+                  ?dir wf:dirRole ?role .
+                  FILTER(
+                    CONTAINS(LCASE(STR(?role)), "output")
+                    || LCASE(STR(?role)) IN ("staging", "generated", "write")
+                  )
+                }
+              }
+            }
+        """ ;
+    ] .
+wf:EvalMinimumOutgoingShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 최소 2개 이상의 outgoing branch(on:fail/on:pass 등)를 가져야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                SELECT $this (COUNT(DISTINCT ?branch) AS ?outgoingCount) WHERE {
+                  OPTIONAL { $this wf:hasBranch ?branch . }
+                }
+                GROUP BY $this
+              }
+              FILTER(?outgoingCount < 2)
+            }
+        """ ;
+    ] .
 wf:DecisionNoDuplicateNextShape a sh:NodeShape ; sh:targetClass wf:Decision ;
     sh:sparql [
         sh:message "Decision의 wf:next가 branch gotoNode와 같으면 중복이므로 제거해야 함" ;
@@ -125,6 +235,22 @@ wf:DecisionNoDuplicateNextShape a sh:NodeShape ; sh:targetClass wf:Decision ;
             }
         """ ;
     ] .
+wf:DecisionMinimumOutgoingShape a sh:NodeShape ; sh:targetClass wf:Decision ;
+    sh:sparql [
+        sh:message "Decision은 최소 2개 이상의 wf:hasBranch를 가져야 함. 단일 정상 진행은 wf:next가 아니라 명시 branch로 선언해야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                SELECT $this (COUNT(DISTINCT ?branch) AS ?branchCount) WHERE {
+                  OPTIONAL { $this wf:hasBranch ?branch . }
+                }
+                GROUP BY $this
+              }
+              FILTER(?branchCount < 2)
+            }
+        """ ;
+    ] .
 wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
     sh:sparql [
         sh:message "tool delegation shape: wf:usesTool step needs a consumable input/reference artifact so artifact --consumes--> tool can be rendered" ;
@@ -133,16 +259,28 @@ wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
             SELECT $this WHERE {
               $this wf:usesTool ?tool .
               FILTER NOT EXISTS {
-                $this wf:directory ?dir .
-                ?dir wf:dirPath ?path .
-                OPTIONAL { ?dir wf:dirRole ?role . }
-                FILTER(
-                  !BOUND(?role)
-                  || CONTAINS(LCASE(STR(?role)), "input")
-                  || CONTAINS(LCASE(STR(?role)), "reference")
-                  || CONTAINS(LCASE(STR(?role)), "instruction")
-                  || LCASE(STR(?role)) IN ("staging", "read")
-                )
+                {
+                  $this wf:directory ?dir .
+                  ?dir wf:dirPath ?path .
+                  OPTIONAL { ?dir wf:dirRole ?role . }
+                  FILTER(
+                    !BOUND(?role)
+                    || CONTAINS(LCASE(STR(?role)), "input")
+                    || CONTAINS(LCASE(STR(?role)), "reference")
+                    || CONTAINS(LCASE(STR(?role)), "instruction")
+                    || LCASE(STR(?role)) IN ("staging", "read")
+                  )
+                }
+                UNION
+                {
+                  ?inputArtifact a wf:Artifact ;
+                                 wf:consumes $this .
+                }
+                UNION
+                {
+                  ?checkedArtifact a wf:Artifact ;
+                                  wf:check $this .
+                }
               }
             }
         """ ;
@@ -155,6 +293,11 @@ wf:ToolDelegationShape a sh:NodeShape ; sh:targetClass wf:Step ;
               $this wf:usesTool ?tool .
               FILTER NOT EXISTS {
                 { $this wf:deliverables ?deliverable . }
+                UNION
+                {
+                  $this wf:produces ?artifact .
+                  ?artifact a wf:Artifact .
+                }
                 UNION
                 {
                   $this wf:directory ?dir .
@@ -228,6 +371,27 @@ wf:DecisionGraphShape a sh:NodeShape ; sh:targetClass wf:Decision ;
 wf:BranchGraphShape a sh:NodeShape ; sh:targetClass wf:Branch ;
     sh:property [ sh:path wf:gotoNode ; sh:class wf:Node ;
                   sh:message "gotoNode 타깃은 wf:Node 여야 함" ] .
+wf:ArtifactEdgeShape a sh:NodeShape ; sh:targetClass wf:Artifact ;
+    sh:property [ sh:path wf:produces ; sh:maxCount 0 ;
+                  sh:message "Artifact는 wf:produces의 대상이지 주어가 아니어야 함" ] ;
+    sh:property [ sh:path wf:measures ; sh:class wf:Eval ;
+                  sh:message "Artifact wf:measures 타깃은 wf:Eval이어야 함" ] ;
+    sh:sparql [
+        sh:message "Artifact wf:consumes/wf:check 타깃은 Eval이 될 수 없음. Eval 연결은 wf:measures를 사용해야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              {
+                $this wf:consumes ?consumer .
+              }
+              UNION
+              {
+                $this wf:check ?consumer .
+              }
+              ?consumer a wf:Eval .
+            }
+        """ ;
+    ] .
 wf:ModuleGraphShape a sh:NodeShape ; sh:targetClass wf:Module ;
     sh:property [ sh:path wf:criticalDep ; sh:class wf:Module ;
                   sh:message "criticalDep 타깃은 wf:Module 여야 함" ] .
@@ -238,7 +402,7 @@ wf:MilestoneGraphShape a sh:NodeShape ; sh:targetClass wf:Milestone ;
 # ─── Feedback loop control constraints (SHACL-SPARQL) ────────────────────────
 wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
     sh:sparql [
-        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval, Validation, or user Decision gate in the loop" ;
+        sh:message "uncontrolled node feedback loop: wf:next/branch cycle has no Eval, user Decision, or deterministic Decision gate in the loop" ;
         sh:select """
             PREFIX wf: <https://mso.dev/ontology/workflow#>
             SELECT $this WHERE {
@@ -247,9 +411,15 @@ wf:NodeFeedbackLoopShape a sh:NodeShape ; sh:targetClass wf:Node ;
                 $this (wf:next|wf:hasBranch/wf:gotoNode)* ?gate .
                 { ?gate a wf:Eval . }
                 UNION
-                { ?gate a wf:Validation . }
-                UNION
                 { ?gate a wf:Decision ; wf:decisionSubject "user" . }
+                UNION
+                { ?gate a wf:Decision ; wf:decisionCriteria ?decisionCriteria . }
+                UNION
+                { ?gate a wf:Decision ; wf:threshold ?threshold . }
+                UNION
+                { ?gate a wf:Decision ; wf:passCriteria ?passCriteria . }
+                UNION
+                { ?gate a wf:Decision ; wf:harness ?harness . }
                 ?gate (wf:next|wf:hasBranch/wf:gotoNode)* $this .
               }
             }

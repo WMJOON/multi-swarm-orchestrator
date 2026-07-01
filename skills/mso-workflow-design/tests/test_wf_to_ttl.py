@@ -78,7 +78,8 @@ def test_node_feedback_loop_with_user_decision_gate_conforms(tmp_path):
             {"id": "a", "name": "A", "status": "active", "steps": [
                 {"type": "step", "id": "s-01", "label": "수정", "instruction": "반려 내용을 수정한다", "status": "active"},
                 {"type": "decision", "id": "d-01", "label": "승인", "status": "active",
-                 "decision_subject": "user", "branches": [{"on": "rejected", "goto": "s-01"}]},
+                 "decision_subject": "user",
+                 "branches": [{"on": "rejected", "goto": "s-01"}, {"on": "approved"}]},
             ]},
         ]
     }
@@ -87,9 +88,9 @@ def test_node_feedback_loop_with_user_decision_gate_conforms(tmp_path):
     assert res["uncontrolled_loops"] == []
 
 
-def test_node_feedback_loop_with_validation_decision_gate_conforms(tmp_path):
-    """TTL-only workflow에서 Decision+Validation gate는 Eval이 아니어도 루프를 제어한다."""
-    ttl = tmp_path / "validation-decision-loop.ttl"
+def test_node_feedback_loop_with_agent_decision_gate_conforms(tmp_path):
+    """선택/라우팅 Decision gate는 criteria가 있으면 process loop 제어점이다."""
+    ttl = tmp_path / "agent-decision-loop.ttl"
     ttl.write_text(
         """
 @prefix wf: <https://mso.dev/ontology/workflow#> .
@@ -103,16 +104,21 @@ def test_node_feedback_loop_with_validation_decision_gate_conforms(tmp_path):
     wf:status "active" ;
     wf:next <https://mso.dev/ontology/workflow#node/a/v-01> .
 
-<https://mso.dev/ontology/workflow#node/a/v-01> a wf:Decision, wf:Validation, wf:Node ;
+<https://mso.dev/ontology/workflow#node/a/v-01> a wf:Decision, wf:Node ;
     wf:decisionSubject "agent" ;
+    wf:decisionCriteria "schema validates" ;
     wf:label "검증" ;
     wf:status "active" ;
-    wf:hasBranch <https://mso.dev/ontology/workflow#node/a/v-01_branch_failed_s-01> .
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/a/v-01_branch_failed_s-01>,
+        <https://mso.dev/ontology/workflow#node/a/v-01_branch_passed> .
 
 <https://mso.dev/ontology/workflow#node/a/v-01_branch_failed_s-01> a wf:Branch ;
     wf:on "failed" ;
     wf:goto "s-01" ;
     wf:gotoNode <https://mso.dev/ontology/workflow#node/a/s-01> .
+
+<https://mso.dev/ontology/workflow#node/a/v-01_branch_passed> a wf:Branch ;
+    wf:on "passed" .
 """,
         encoding="utf-8",
     )
@@ -139,7 +145,8 @@ def test_node_feedback_loop_with_eval_gate_conforms(tmp_path):
                 {"type": "step", "id": "s-fix", "label": "개선 반영", "status": "active",
                  "instruction": "평가 결과를 작업 workflow에 반영한다", "evolves": "a"},
                 {"type": "decision", "id": "d-01", "label": "분기", "status": "active",
-                 "decision_subject": "agent", "branches": [{"on": "again", "goto": "s-01"}]},
+                 "decision_subject": "agent",
+                 "branches": [{"on": "again", "goto": "s-01"}, {"on": "done"}]},
             ]},
         ]
     }
@@ -187,7 +194,7 @@ def test_bad_status_enum_fails_shacl(tmp_path):
 
 
 def test_validation_projects_to_eval_metric(tmp_path):
-    # v0.6.1 phase-less: type:validation → wf:Eval + oracle_type=metric 주입(projection).
+    # Legacy YAML type:validation → wf:Eval(metric). 산출물 검증은 Eval이다.
     doc = {
         "phases": [{
             "id": "t", "name": "T", "status": "active",
@@ -213,6 +220,12 @@ def test_validation_projects_to_eval_metric(tmp_path):
     }
     res = wf_to_ttl.validate(_write(tmp_path, "okv.yaml", doc))
     assert res["ok"], res  # validation → eval, oracle_type=metric 주입으로 conform
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "okv-graph.yaml", doc))
+    node = wf_to_ttl._node_uri("t-v-01")
+    assert (node, wf_to_ttl.RDF.type, wf_to_ttl.WF.Eval) in g
+    assert (node, wf_to_ttl.RDF.type, wf_to_ttl.WF.Decision) not in g
+    assert (node, wf_to_ttl.WF.oracleType, wf_to_ttl.Literal("metric")) in g
+    assert (node, wf_to_ttl.WF.criteria, wf_to_ttl.Literal("schema valid")) in g
 
 
 # ─── ABox ↔ TBox 정합 (range / 통제어휘) ───
@@ -685,10 +698,160 @@ def test_good_decision_subject_conforms(tmp_path):
         "id": "p", "name": "P", "status": "active",
         "steps": [{"type": "decision", "id": "p-d-01", "label": "분기",
                    "status": "active", "decision_subject": "agent",
-                   "decision_criteria": "F1 < 0.87"}],
+                   "decision_criteria": "F1 < 0.87",
+                   "branches": [{"on": "low_confidence"}, {"on": "enough_confidence"}]}],
     }]}
     res = wf_to_ttl.validate(_write(tmp_path, "subject_ok.yaml", doc))
     assert res["ok"], res
+
+
+def test_decision_single_outgoing_fails_shape(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {"type": "decision", "id": "p-d-01", "label": "분기",
+             "status": "active", "decision_subject": "agent",
+             "branches": [{"on": "retry", "goto": "p-s-01"}]},
+            {"type": "step", "id": "p-s-01", "label": "후속", "status": "active"},
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "decision-single-outgoing.yaml", doc))
+    assert res["ok"] is False
+    assert "Decision은 최소 2개 이상의 wf:hasBranch" in res["shacl_report"]
+
+
+def test_eval_single_outgoing_fails_shape(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {"type": "eval", "id": "p-v-01", "label": "평가",
+             "status": "active", "oracle_type": "metric", "target": "p",
+             "target_artifact": "out/", "criteria": ["score >= 0.8"],
+             "branches": [{"on": "fail", "goto": "p-s-01"}]},
+            {"type": "step", "id": "p-s-01", "label": "개선",
+             "status": "active", "instruction": "평가 결과를 반영한다", "evolves": "p"},
+        ],
+    }]}
+    res = wf_to_ttl.validate(_write(tmp_path, "eval-single-outgoing.yaml", doc))
+    assert res["ok"] is False
+    assert "Eval은 최소 2개 이상의 outgoing branch" in res["shacl_report"]
+
+
+def test_eval_target_cannot_be_own_container_workflow(tmp_path):
+    ttl = tmp_path / "eval-self-target.ttl"
+    ttl.write_text(
+        """
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+
+<https://mso.dev/ontology/workflow#workflow/p> a wf:Workflow ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/p/s-01>,
+        <https://mso.dev/ontology/workflow#node/p/e-01>,
+        <https://mso.dev/ontology/workflow#node/p/s-fix> .
+
+<https://mso.dev/ontology/workflow#node/p/s-01> a wf:Step, wf:Task, wf:Node ;
+    wf:label "생산" ;
+    wf:instruction "평가 대상 artifact를 생산한다" ;
+    wf:status "active" ;
+    wf:deliverables "out" .
+
+<https://mso.dev/ontology/workflow#node/p/e-01> a wf:Eval, wf:Node ;
+    wf:label "검수" ;
+    wf:criteria "out artifact가 검수 기준을 만족한다" ;
+    wf:status "active" ;
+    wf:oracleType "metric" ;
+    wf:target <https://mso.dev/ontology/workflow#workflow/p> ;
+    wf:targetArtifact "out" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/p/e-01_branch_fail_s-fix>,
+        <https://mso.dev/ontology/workflow#node/p/e-01_branch_pass> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01_branch_fail_s-fix> a wf:Branch ;
+    wf:on "fail" ;
+    wf:gotoNode <https://mso.dev/ontology/workflow#node/p/s-fix> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01_branch_pass> a wf:Branch ;
+    wf:on "pass" .
+
+<https://mso.dev/ontology/workflow#node/p/s-fix> a wf:Step, wf:Task, wf:Node ;
+    wf:label "수정" ;
+    wf:instruction "검수 실패 내용을 반영한다" ;
+    wf:status "active" ;
+    wf:evolves <https://mso.dev/ontology/workflow#workflow/p> .
+""",
+        encoding="utf-8",
+    )
+    conforms, _, report = shacl_validate(
+        str(ttl),
+        shacl_graph=str(wf_to_ttl.SHAPES),
+        ont_graph=str(wf_to_ttl.TBOX),
+        inference="rdfs",
+        abort_on_first=False,
+    )
+    assert not conforms
+    assert "Eval은 자기 자신을 포함하는 workflow를 wf:target으로 삼을 수 없음" in report
+
+
+def test_eval_cannot_be_artifact_consumer(tmp_path):
+    doc = {"phases": [{
+        "id": "p", "name": "P", "status": "active",
+        "steps": [
+            {"type": "eval", "id": "p-v-01", "label": "평가",
+             "status": "active", "oracle_type": "metric", "target": "p",
+             "target_artifact": "out/", "criteria": ["score >= 0.8"],
+             "branches": [{"on": "fail", "goto": "p-s-01"}, {"on": "pass"}]},
+            {"type": "step", "id": "p-s-01", "label": "개선",
+             "status": "active", "instruction": "평가 결과를 반영한다", "evolves": "p"},
+        ],
+    }]}
+    g, _ = wf_to_ttl.build_graph(_write(tmp_path, "eval-consumes.yaml", doc))
+    artifact = wf_to_ttl.WF["artifact/p/out"]
+    eval_node = wf_to_ttl._node_uri("p-v-01")
+    g.add((artifact, wf_to_ttl.RDF.type, wf_to_ttl.WF.Artifact))
+    g.add((artifact, wf_to_ttl.WF.consumes, eval_node))
+    g.add((artifact, wf_to_ttl.WF.measures, eval_node))
+    conforms, report = wf_to_ttl.run_shacl(g)
+    assert conforms is False
+    assert "Eval은 artifact consume/check 대상이 아니며 Artifact는 wf:measures로 Eval에 연결해야 함" in report
+
+
+def test_project_owner_and_decision_on_fail_do_not_infer_eval(tmp_path):
+    ttl = tmp_path / "metadata-domain.ttl"
+    ttl.write_text(
+        """
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+
+<https://mso.dev/ontology/workflow#project/demo> a wf:Project ;
+    wf:label "Demo" ;
+    wf:owner "wmjoon" .
+
+<https://mso.dev/ontology/workflow#workflow/demo/root> a wf:Workflow ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/demo/v-001> .
+
+<https://mso.dev/ontology/workflow#node/demo/v-001> a wf:Node, wf:Decision ;
+    wf:label "schema validation" ;
+    wf:decisionSubject "agent" ;
+    wf:harness "validator" ;
+    wf:onFail "block" ;
+    wf:passCriteria "schema validates" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/demo/v-001_branch_failed>,
+        <https://mso.dev/ontology/workflow#node/demo/v-001_branch_passed> ;
+    wf:status "pending" .
+
+<https://mso.dev/ontology/workflow#node/demo/v-001_branch_failed> a wf:Branch ;
+    wf:on "failed" .
+
+<https://mso.dev/ontology/workflow#node/demo/v-001_branch_passed> a wf:Branch ;
+    wf:on "passed" .
+""",
+        encoding="utf-8",
+    )
+    conforms, _, report = shacl_validate(
+        str(ttl),
+        shacl_graph=str(wf_to_ttl.SHAPES),
+        ont_graph=str(wf_to_ttl.TBOX),
+        inference="rdfs",
+        abort_on_first=False,
+    )
+    assert conforms, report
 
 
 def test_decision_next_duplicate_with_branch_target_fails_shape(tmp_path):
@@ -890,6 +1053,112 @@ def test_eval_target_artifact_can_measure_target_workflow_deliverable(tmp_path):
     }]}
     res = wf_to_ttl.validate(_write(tmp_path, "good_eval_artifact.yaml", doc))
     assert res["ok"], res
+
+
+def test_eval_measured_artifact_must_be_produced_by_target_workflow(tmp_path):
+    ttl = tmp_path / "bad-measured-artifact.ttl"
+    ttl.write_text(
+        """
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+
+<https://mso.dev/ontology/workflow#workflow/p> a wf:Workflow ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/p/e-01>,
+        <https://mso.dev/ontology/workflow#node/p/s-fix> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01> a wf:Eval, wf:Node ;
+    wf:label "검수" ;
+    wf:status "active" ;
+    wf:oracleType "metric" ;
+    wf:target <https://mso.dev/ontology/workflow#workflow/p> ;
+    wf:targetArtifact "out" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/p/e-01_branch_fail_s-fix>,
+        <https://mso.dev/ontology/workflow#node/p/e-01_branch_pass> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01_branch_fail_s-fix> a wf:Branch ;
+    wf:on "fail" ;
+    wf:gotoNode <https://mso.dev/ontology/workflow#node/p/s-fix> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01_branch_pass> a wf:Branch ;
+    wf:on "pass" .
+
+<https://mso.dev/ontology/workflow#node/p/s-fix> a wf:Step, wf:Task, wf:Node ;
+    wf:label "수정" ;
+    wf:status "active" ;
+    wf:evolves <https://mso.dev/ontology/workflow#workflow/p> .
+
+<https://mso.dev/ontology/workflow#artifact/p/out> a wf:Artifact ;
+    wf:label "out" ;
+    wf:measures <https://mso.dev/ontology/workflow#node/p/e-01> .
+""",
+        encoding="utf-8",
+    )
+    conforms, _, report = shacl_validate(
+        str(ttl),
+        shacl_graph=str(wf_to_ttl.SHAPES),
+        ont_graph=str(wf_to_ttl.TBOX),
+        inference="rdfs",
+        abort_on_first=False,
+    )
+    assert not conforms
+    assert "Eval measured_by artifact는 Eval의 wf:target workflow 안의 Task/Decision node가 wf:produces한 Artifact여야 함" in report
+
+
+def test_eval_measured_artifact_produced_by_target_workflow_conforms(tmp_path):
+    ttl = tmp_path / "good-measured-artifact.ttl"
+    ttl.write_text(
+        """
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+
+<https://mso.dev/ontology/workflow#workflow/p> a wf:Workflow ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/p/s-01>,
+        <https://mso.dev/ontology/workflow#node/p/s-fix> .
+
+<https://mso.dev/ontology/workflow#workflow/p/oracle> a wf:Workflow ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/p/e-01> .
+
+<https://mso.dev/ontology/workflow#node/p/s-01> a wf:Step, wf:Task, wf:Node ;
+    wf:label "생산" ;
+    wf:instruction "평가 대상 artifact를 생산한다" ;
+    wf:status "active" ;
+    wf:produces <https://mso.dev/ontology/workflow#artifact/p/out> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01> a wf:Eval, wf:Node ;
+    wf:label "검수" ;
+    wf:criteria "out artifact가 검수 기준을 만족한다" ;
+    wf:status "active" ;
+    wf:oracleType "metric" ;
+    wf:target <https://mso.dev/ontology/workflow#workflow/p> ;
+    wf:targetArtifact "out" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/p/e-01_branch_fail_s-fix>,
+        <https://mso.dev/ontology/workflow#node/p/e-01_branch_pass> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01_branch_fail_s-fix> a wf:Branch ;
+    wf:on "fail" ;
+    wf:gotoNode <https://mso.dev/ontology/workflow#node/p/s-fix> .
+
+<https://mso.dev/ontology/workflow#node/p/e-01_branch_pass> a wf:Branch ;
+    wf:on "pass" .
+
+<https://mso.dev/ontology/workflow#node/p/s-fix> a wf:Step, wf:Task, wf:Node ;
+    wf:label "수정" ;
+    wf:instruction "검수 실패 내용을 반영한다" ;
+    wf:status "active" ;
+    wf:evolves <https://mso.dev/ontology/workflow#workflow/p> .
+
+<https://mso.dev/ontology/workflow#artifact/p/out> a wf:Artifact ;
+    wf:label "out" ;
+    wf:measures <https://mso.dev/ontology/workflow#node/p/e-01> .
+""",
+        encoding="utf-8",
+    )
+    conforms, _, report = shacl_validate(
+        str(ttl),
+        shacl_graph=str(wf_to_ttl.SHAPES),
+        ont_graph=str(wf_to_ttl.TBOX),
+        inference="rdfs",
+        abort_on_first=False,
+    )
+    assert conforms, report
 
 
 # ─── 교차-스킬 join: directories.path ∈ scaffold(index) ───

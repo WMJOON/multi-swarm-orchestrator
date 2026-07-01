@@ -192,8 +192,8 @@ def test_step_with_deliverable_and_tool_remains_agent_task():
 
     assert "step_node_demo_nlu_s_101_" in markdown
     assert "Decision / inferred-branch" not in markdown
-    assert "[[nlu engine process]]<br>TOOL" in markdown
-    assert "-->|delegates_to|" in markdown
+    assert "nlu engine process<br>TOOL" in markdown
+    assert "-.->|delegates_to|" in markdown
     assert "|target|" not in markdown
 
 
@@ -239,7 +239,7 @@ def test_tool_step_can_consume_and_produce_same_table_without_internal_scripts()
 
     assert "labeling.db#labels<br>TABLE" in markdown
     assert "demo.data" not in markdown
-    assert "[[nlu engine process]]<br>TOOL" in markdown
+    assert "nlu engine process<br>TOOL" in markdown
     assert any(
         "labeling.db#labels" not in line
         and "data_local_file_data_labeling_db_labels_" in line
@@ -307,7 +307,7 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
 
-    assert "[[nlu engine process]]<br>TOOL" in markdown
+    assert "nlu engine process<br>TOOL" in markdown
     assert "-->|target|" in markdown
     assert "labeling.db#labels<br>TABLE" in markdown
     assert "-.->|measured_by|" in markdown
@@ -359,6 +359,82 @@ def test_eval_target_artifact_reuses_target_workflow_produced_deliverable():
         for line in markdown.splitlines()
     )
     assert "data_local_file_campaign_SETTLED_" not in markdown
+
+
+def test_eval_target_artifact_reuses_explicit_produced_artifact():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/ccw-d-010"]
+    eval_node = wf["node/demo/ccw-o-010"]
+    workflow = wf["phase/demo/source_and_style"]
+    artifact = wf["artifact/demo/text-policy-selection"]
+    label = "text policy selection"
+
+    graph.add((workflow, RDF.type, wf.Phase))
+    graph.add((workflow, RDFS.label, Literal("Source and Style")))
+    for node, cls, node_label in (
+        (producer, wf.Decision, "Text policy gate"),
+        (eval_node, wf.Eval, "Text policy oracle"),
+    ):
+        graph.add((node, RDF.type, cls))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(node_label)))
+        graph.add((workflow, wf.hasNode, node))
+    graph.add((artifact, RDF.type, wf.Artifact))
+    graph.add((artifact, RDFS.label, Literal(label)))
+    graph.add((producer, wf.produces, artifact))
+    graph.add((artifact, wf.measures, eval_node))
+    graph.add((eval_node, wf.target, workflow))
+    graph.add((eval_node, wf.targetArtifact, Literal(label)))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+    artifact_node_id = observe_graph.data_id(observe_graph.artifact_node_data_ref(graph, artifact)["id"])
+    measured_lines = [
+        line for line in markdown.splitlines()
+        if f"-.->|measured_by| eval_node_demo_ccw_o_010_" in line
+    ]
+
+    assert any(line.startswith(f"  {artifact_node_id} ") for line in measured_lines)
+    assert len(measured_lines) == 1
+    assert "data_local_file_text_policy_selection" not in markdown
+
+
+def test_eval_multiple_target_artifacts_render_all_measured_by_edges():
+    graph = Graph()
+    wf = observe_graph.WF
+    workflow = wf["phase/demo/development"]
+    producer_a = wf["node/demo/rmp-s-001"]
+    producer_b = wf["node/demo/rmp-s-002"]
+    eval_node = wf["node/demo/rmp-v-002"]
+    artifact_a = "상태 테이블, append-only trajectory 로그, 멱등키 컬럼"
+    artifact_b = "얇은 오케스트레이터, 무상태 워커 계약 인터페이스"
+
+    graph.add((workflow, RDF.type, wf.Phase))
+    graph.add((workflow, RDFS.label, Literal("Development")))
+    for node, cls, label in (
+        (producer_a, wf.Step, "Foundation"),
+        (producer_b, wf.Step, "Orchestration"),
+        (eval_node, wf.Eval, "Workflow shape eval"),
+    ):
+        graph.add((node, RDF.type, cls))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((workflow, wf.hasNode, node))
+    graph.add((producer_a, wf.deliverables, Literal(artifact_a)))
+    graph.add((producer_b, wf.deliverables, Literal(artifact_b)))
+    graph.add((eval_node, wf.target, workflow))
+    graph.add((eval_node, wf.targetArtifact, Literal(artifact_a)))
+    graph.add((eval_node, wf.targetArtifact, Literal(artifact_b)))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+    measured_lines = [
+        line for line in markdown.splitlines()
+        if "-.->|measured_by| eval_node_demo_rmp_v_002_" in line
+    ]
+
+    assert len(measured_lines) == 2
+    assert observe_graph.data_id(observe_graph.deliverable_data_ref(artifact_a)["id"]) in measured_lines[0] + measured_lines[1]
+    assert observe_graph.data_id(observe_graph.deliverable_data_ref(artifact_b)["id"]) in measured_lines[0] + measured_lines[1]
 
 
 def test_eval_without_next_does_not_invent_approval_edge():
@@ -525,6 +601,136 @@ def test_data_stream_report_flags_unconsumed_outputs_and_external_inputs():
     assert "else omit or convert to jsonl/ttl/sqlite" in report
     assert "local_file:external/source/" in report
     assert "external input (document)" in report
+
+
+def test_artifact_object_edges_render_and_clear_unconsumed_report():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/cur-s-001"]
+    consumer = wf["node/demo/cur-s-002"]
+    artifact = wf["artifact/demo/vendor-url-list"]
+    phase = wf["phase/demo/p"]
+
+    for node, label in ((producer, "크롤 대상 allow-list 로드"), (consumer, "W1 크롤 실행")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Curation")))
+    graph.add((artifact, RDF.type, wf.Artifact))
+    graph.add((artifact, RDFS.label, Literal("벤더 URL 목록 (화이트리스트)")))
+    graph.add((producer, wf.produces, artifact))
+    graph.add((artifact, wf.consumes, consumer))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="artifact-stream")
+    report = observe_graph.build_data_stream_report(graph)
+    artifact_id = observe_graph.data_id(observe_graph.artifact_node_data_ref(graph, artifact)["id"])
+
+    assert "벤더 URL 목록 (화이트리스트)<br>DOCUMENT" in markdown
+    assert any(
+        f"step_node_demo_cur_s_001_" in line and f"-.->|produces| {artifact_id}" in line
+        for line in markdown.splitlines()
+    )
+    assert any(
+        f"{artifact_id} -.->|consumes| step_node_demo_cur_s_002_" in line
+        for line in markdown.splitlines()
+    )
+    assert "Produced but unconsumed artifacts: 0" in report
+
+
+def test_artifact_measures_eval_renders_measured_by_and_clears_unconsumed_report():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/s-001"]
+    evaluator = wf["node/demo/o-001"]
+    artifact = wf["artifact/demo/campaign-settled"]
+    phase = wf["phase/demo/p"]
+
+    graph.add((producer, RDF.type, wf.Step))
+    graph.add((producer, RDF.type, wf.Node))
+    graph.add((producer, RDFS.label, Literal("SETTLED 산출")))
+    graph.add((evaluator, RDF.type, wf.Eval))
+    graph.add((evaluator, RDF.type, wf.Node))
+    graph.add((evaluator, RDFS.label, Literal("Oracle 평가")))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Groupbuy")))
+    graph.add((phase, wf.hasNode, producer))
+    graph.add((phase, wf.hasNode, evaluator))
+    graph.add((artifact, RDF.type, wf.Artifact))
+    graph.add((artifact, RDFS.label, Literal("campaign SETTLED")))
+    graph.add((producer, wf.produces, artifact))
+    graph.add((artifact, wf.measures, evaluator))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="artifact-stream")
+    report = observe_graph.build_data_stream_report(graph)
+    artifact_id = observe_graph.data_id(observe_graph.artifact_node_data_ref(graph, artifact)["id"])
+
+    assert f"{artifact_id} -.->|measured_by|" in markdown
+    assert f"{artifact_id} -.->|consumes|" not in markdown
+    assert "Produced but unconsumed artifacts: 0" in report
+
+
+def test_validation_node_renders_as_validation_not_generic_node():
+    graph = Graph()
+    wf = observe_graph.WF
+    workflow = wf["phase/demo/validation"]
+    validation = wf["node/demo/v-001"]
+    next_step = wf["node/demo/s-001"]
+
+    graph.add((workflow, RDF.type, wf.Workflow))
+    graph.add((workflow, RDFS.label, Literal("Validation")))
+    graph.add((workflow, wf.hasNode, validation))
+    graph.add((workflow, wf.hasNode, next_step))
+    graph.add((validation, RDF.type, wf.Node))
+    graph.add((validation, RDF.type, wf.Task))
+    graph.add((validation, RDF.type, wf.Validation))
+    graph.add((validation, RDFS.label, Literal("workflow schema validation")))
+    graph.add((validation, wf.status, Literal("pending")))
+    graph.add((validation, wf.next, next_step))
+    graph.add((next_step, RDF.type, wf.Node))
+    graph.add((next_step, RDF.type, wf.Step))
+    graph.add((next_step, RDFS.label, Literal("next task")))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
+
+    assert "validation_node_demo_v_001_" in markdown
+    assert "class validation_node_demo_v_001_" in markdown
+    assert "node_node_demo_v_001_" not in markdown
+    assert "validation_node_demo_v_001_" in markdown and "-->|next| step_node_demo_s_001_" in markdown
+
+
+def test_artifact_object_consumer_with_tool_renders_tool_actor():
+    graph = Graph()
+    wf = observe_graph.WF
+    producer = wf["node/demo/cur-s-001"]
+    consumer = wf["node/demo/cur-s-002"]
+    artifact = wf["artifact/demo/vendor-url-list"]
+    phase = wf["phase/demo/p"]
+    tool = "[[curation crawler agent]]"
+
+    for node, label in ((producer, "크롤 대상 allow-list 로드"), (consumer, "W1 크롤 실행")):
+        graph.add((node, RDF.type, wf.Step))
+        graph.add((node, RDF.type, wf.Node))
+        graph.add((node, RDFS.label, Literal(label)))
+        graph.add((phase, wf.hasNode, node))
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("Curation")))
+    graph.add((artifact, RDF.type, wf.Artifact))
+    graph.add((artifact, RDFS.label, Literal("벤더 URL 목록 (화이트리스트)")))
+    graph.add((producer, wf.produces, artifact))
+    graph.add((artifact, wf.consumes, consumer))
+    graph.add((consumer, wf.usesTool, Literal(tool)))
+
+    markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="artifact-stream")
+    artifact_id = observe_graph.data_id(observe_graph.artifact_node_data_ref(graph, artifact)["id"])
+    tool_ref = observe_graph.tool_data_ref({}, tool)
+    tool_id = observe_graph.data_id(tool_ref["id"])
+
+    assert "curation crawler agent<br>TOOL" in markdown
+    assert f"{artifact_id} -.->|consumes| {tool_id}" in markdown
+    assert f"-.->|consumes| step_node_demo_cur_s_002_" not in markdown
+    assert "-.->|delegates_to|" in markdown
 
 
 def test_workflow_subgraph_uses_index_data_ids_for_locations():

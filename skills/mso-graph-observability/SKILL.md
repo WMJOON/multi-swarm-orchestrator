@@ -1,6 +1,6 @@
 ---
 name: mso-graph-observability
-version: "0.6.5"
+version: "0.6.6"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 ---
 
@@ -50,7 +50,7 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 ## Use Cases
 
 - workflow phase/module dependency를 한 화면에서 확인한다.
-- HITL/Validation/Step/Decision/Group 등의 노드 계층을 시각적으로 점검한다.
+- HITL/Step/Decision/Eval/Group 등의 노드 계층을 시각적으로 점검한다.
 - workflow TBox의 property domain/range를 확인해 TTL 작성/리뷰 시 참조한다.
 - 새 repo에 MSO를 붙인 뒤 `agent-context/workflow/*.ttl`의 현 상태를 리뷰 가능한 문서로 내보낸다.
 - 특정 workflow 또는 phase에서 실패가 반복되는지 확인한다.

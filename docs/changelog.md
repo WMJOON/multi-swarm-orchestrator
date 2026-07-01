@@ -1,5 +1,20 @@
 # 변경 이력
 
+## v0.6.6 (2026-07-02) — Artifact supply-chain gates
+
+> **Artifact supply chain의 생산·소비·측정 edge를 분리하고, Decision/Eval gate shape를 강화.** 실행 노드가 artifact를 생산하고 artifact가 실행/판단 노드로 소비되며, Eval은 소비자가 아니라 measured artifact를 기준으로 workflow를 평가한다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| artifact edge ownership | `wf:produces` domain을 `Workflow`에서 `Node`로, `wf:consumes` range를 `Workflow`에서 `Node`로 정렬. Eval은 consume/check 대상이 아니라 `wf:measures`로 연결. |
+| decision branch shape | Decision은 최소 2개 branch를 요구하고, branch `gotoNode`와 같은 방향의 `wf:next` 중복을 validator가 실패 처리. |
+| eval measured artifact shape | Eval의 `targetArtifact`/measured artifact가 target workflow 안의 Task/Decision 생산물과 일치해야 함. |
+| graph observability | workflow graph, artifact-stream graph, repository graph를 workflow scope별로 분리하고, produced artifact와 measured artifact가 같은 Mermaid data node를 공유. |
+| migration path | legacy `phases`→`workflows`, `type: validation`→`type: eval` 정리를 위한 `migrate_phases_to_workflows.py` 안내와 테스트 보강. |
+| 버전 정렬 | README, changelog, 모든 MSO skill frontmatter, repository interaction test 기대값을 v0.6.6으로 정렬. |
+
 ## v0.6.5 (2026-07-01) — Eval artifact provenance
 
 > **Oracle Eval이 평가하는 artifact를 target workflow의 실제 산출물로 고정.** TTL ABox가 SSOT인 상황에서 Eval의 `targetArtifact`가 target workflow 내부 task/decision 산출물과 어긋나면 shape 검증이 실패하고, 관측 그래프는 같은 산출물을 `produces`와 `measured_by`가 공유하는 단일 data node로 렌더링한다.
