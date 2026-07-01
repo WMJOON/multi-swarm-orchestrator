@@ -1,5 +1,20 @@
 # 변경 이력
 
+## v0.6.5 (2026-07-01) — Eval artifact provenance
+
+> **Oracle Eval이 평가하는 artifact를 target workflow의 실제 산출물로 고정.** TTL ABox가 SSOT인 상황에서 Eval의 `targetArtifact`가 target workflow 내부 task/decision 산출물과 어긋나면 shape 검증이 실패하고, 관측 그래프는 같은 산출물을 `produces`와 `measured_by`가 공유하는 단일 data node로 렌더링한다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| eval targetArtifact shape | `Eval --target--> workflow`의 plain `targetArtifact`는 target workflow의 `wf:hasNode` 아래 `Task`/`Decision`이 생산한 `wf:deliverables` 또는 output directory artifact와 일치해야 함. |
+| workflow validator | `wf_to_ttl.py validate`에 `eval_target_artifact_mismatches` 검증 결과를 추가하고, 위반 시 `ok=false`로 실패 처리. |
+| graph observability | Eval measured artifact가 target workflow 산출물과 일치하면 producer의 data ref를 재사용해 `produces`와 `measured_by`가 같은 Mermaid node에 붙도록 수정. |
+| target scope | root-scoped workflow에서 sibling workflow를 Eval target/evolves로 참조할 때 workflow URI scope가 현재 node scope로 잘못 좁혀지지 않도록 보정. |
+| templates/tests | root workflow template의 testing Eval target을 development 산출물 평가로 정렬하고, provenance shape 및 rendering identity regression test 추가. |
+| 버전 정렬 | README, changelog, 모든 MSO skill frontmatter 버전을 v0.6.5로 정렬. |
+
 ## v0.6.4 (2026-07-01) — Decision/Validation loop gates
 
 > **Eval을 산출물 평가/evolve gate로 좁히고, 결정적 검증·HITL 승인 루프는 Decision gate로 표현.** TTL ABox가 SSOT인 상황에서 `wf:Decision + wf:Validation` 검증 게이트와 `decisionSubject="user"` 승인 게이트를 loop control shape가 인식하도록 정리했다.

@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.6.4
+# Multi-Swarm Orchestrator (MSO) v0.6.5
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,14 +13,18 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
+### v0.6.5 (2026-07-01) — Eval artifact provenance
+
+Oracle workflow의 Eval이 무엇을 평가하는지 graph에서 흐려지지 않도록 `targetArtifact` provenance를 강제한다. Eval이 `target` workflow를 가리키면, 그 Eval의 `targetArtifact`는 target workflow의 `hasNode` 아래 task/decision이 생산한 `deliverables` 또는 output directory artifact여야 한다.
+
+- **Eval artifact shape**: plain `targetArtifact`가 target workflow 산출물과 일치하지 않으면 validator가 실패한다.
+- **Tool target compatibility**: `[[tool]]` locator는 기존 tool-output shape가 담당한다.
+- **Observability identity**: 같은 artifact를 `produces`와 `measured_by`가 공유하도록 Mermaid data node를 재사용한다.
+- **Cross-workflow target scope**: root-scoped workflow 안에서 sibling workflow를 Eval target으로 가리킬 때 URI scope가 엇갈리지 않도록 보정했다.
+
 ### v0.6.4 (2026-07-01) — Decision/Validation loop gates
 
 Workflow topology에서 `Eval`, `Decision`, `Validation`의 역할을 다시 분리했다. Eval은 산출물 품질/정합성 평가와 evolve 루프를 위한 gate이고, 결정적 검증이나 사람 승인/반려 루프는 Decision gate로 표현한다.
-
-- **Eval gate**: `target`, `targetArtifact`, fail/pass branch, downstream `evolves` 흐름을 강제한다.
-- **Validation decision gate**: TTL ABox에서 `wf:Decision + wf:Validation`으로 표현할 수 있으며, deterministic process/state 검증 루프의 제어점으로 인정한다.
-- **User decision gate**: `decisionSubject="user"`인 승인/반려 루프도 통제된 HITL 루프로 인정한다.
-- **Regression guard**: agent Decision만 있는 재귀 루프는 여전히 uncontrolled loop로 실패한다.
 
 ### v0.6.3 (2026-06-30) — Stop reminder throttle
 
@@ -37,9 +41,9 @@ Stop hook이 매 턴 사용자에게 같은 안내를 반복하는 문제를 줄
 - **worklog 경계**: workflow node를 명시할 수 있을 때만 `worklog`를 작성한다. node 맥락이 없으면 `AD` 또는 `IN/TS` 후보로 기록하고 workflow TTL 갱신 후보로 환류한다.
 - **hook 정책**: Stop/PreCompact는 `commit-work-memory.sh`만 수행한다. Stop hook은 worklog를 자동 생성하지 않는다. `work-memory-check`는 SessionStart(compact/resume)에서 기록 판단을 상기시킨다.
 - **cloud hand-off**: Codex cloud 같은 ephemeral 환경에서는 hook side effect를 다음 에이전트 기억 보장으로 보지 않는다. cloud hand-off는 최종 답변, diff, 커밋 가능한 tracked file에 남는 기록을 기준으로 한다.
-- **version ladder**: v0.6.1은 phase-less workflow 모델 구현 완료 패치다. v0.6.2는 work-memory/hook/cloud hand-off 운영 의미 정리 패치고, v0.6.3은 Stop reminder 출력 throttle 패치, v0.6.4는 Decision/Validation loop gate 정합화 패치다.
+- **version ladder**: v0.6.1은 phase-less workflow 모델 구현 완료 패치다. v0.6.2는 work-memory/hook/cloud hand-off 운영 의미 정리 패치고, v0.6.3은 Stop reminder 출력 throttle 패치, v0.6.4는 Decision/Validation loop gate 정합화, v0.6.5는 Eval artifact provenance 패치다.
 
-상세 변경은 [docs/changelog.md](docs/changelog.md)의 v0.6.4 항목을 본다.
+상세 변경은 [docs/changelog.md](docs/changelog.md)의 v0.6.5 항목을 본다.
 
 ## Core Philosophy
 
