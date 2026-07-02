@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.6.6
+# Multi-Swarm Orchestrator (MSO) v0.7.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,37 +13,35 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.6.6 (2026-07-02) — Artifact supply-chain gates
+### v0.7.0 (2026-07-02) — Repository Graph: edge-first ontology
 
-Artifact supply chain을 workflow graph의 1급 구조로 끌어올렸다. 실행 노드가 artifact를 생산하고, artifact가 실행/판단 노드로 소비되며, Eval은 소비자가 아니라 `measured_by` 관계로 산출물을 측정한다.
+> **Repository는 파일을 저장하는 곳이 아니라, 실행(Execution)과 산출물(Artifact)의 관계를 저장하는 그래프다.**
+>
+> ```
+> Repository Graph = Execution Graph (Control Plane, wf:Rail)
+>                  + Artifact Stream Graph (Data Plane, wf:Stream)
+> ```
 
-- **Artifact edge ownership**: `produces`는 `Node -> Artifact`, `consumes`는 `Artifact -> Node`로 정렬하고 Eval consume/check 우회를 차단한다.
-- **Decision branch shape**: Decision은 2개 이상 branch를 가져야 하며, branch target과 같은 `next` 중복을 validator가 실패 처리한다.
-- **Eval measured artifact shape**: Eval의 measured artifact는 target workflow 안의 Task/Decision이 생산한 artifact여야 한다.
-- **Observability split**: workflow graph, artifact-stream graph, repository graph를 scope별로 분리하고 같은 artifact node를 `produces`/`measured_by`가 공유한다.
+edge를 일급 인스턴스(`wf:Rail`/`wf:Stream`)로 승격한 온톨로지 재설계다. v0.6.x의 반복 결함(Step 다중 분기 승격, Eval self-target, Branch 반쪽 reification)이 shape 수준에서 구조적으로 불가능해졌다.
 
-### v0.6.4 (2026-07-01) — Decision/Validation loop gates
+- **Execution 중심 모델**: `wf:Execution ⊃ Task | Decision | Eval`. 모든 Execution은 `hasSubject`(self|human|model|system|workflow, 기본 self)를 가진다 — "무엇을"뿐 아니라 "누가" 실행하는가.
+- **hand_off**: 주체 전환은 `delegates_to`(실행 가능 주체 위임)/`escalates_to`(Human 승격) rail이다. Workflow 형태는 바뀌지 않고 Execution의 주체만 바뀐다. **HITL = `escalates_to → Decision(hasSubject=human)`** — 노드 속성이 아니라 rail.
+- **Start/End Terminal**: workflow당 Start 정확히 1, End 1 이상. Task는 out default-Rail 정확히 1 — 분기는 Decision 외 표현 불가.
+- **WorkflowGraph 평가 단위**: `Eval --measures--> Workflow`는 소비 Artifact + Execution + 생산 Artifact의 graph closure를 측정한다. 평가 대상은 개별 Output이 아니라 WorkflowGraph 전체다. `metricDimension ∈ trust|quality|cost|speed|safety|robustness|resource_usage`.
+- **Property Chain (저장 vs 추론)**: `consumed_by ∘ produces_to = evidence_of`. `materialize_v07.py`가 derived Stream(`wf:derived` + `derivedFrom` provenance)을 `.inferred.ttl` sibling로 합성한다 — 정본 불변, 관측은 `evidence_of*` 표기.
+- **Provenance**: Artifact는 `author/version/timestamp/validation/coverage/confidence`, Execution은 `hasSubject/method/policy/timestamp`. 충족은 SHACL 오류가 아니라 validator 커버리지 경고.
+- **Trust는 계산되는 값**: `trust_v07.py`가 Trust Policy(내장 + YAML 재정의)로 Artifact/Execution/WorkflowGraph/repository trust를 계산하고 `measures` rail별 Oracle Decision(pass/fail)을 **제안**한다. Trust를 저장하는 property는 존재하지 않는다.
+- **도구 체인**: `validate_abox.py`(TTL SSOT 직접 검증, v0.6/v0.7 자동 감지) → `materialize_v07.py` → `trust_v07.py` → `observe_graph.py`(v0.7 native 렌더). hook `hooks/workflow-check.sh`가 이 체인을 `.abox.ttl` 저장 시 자동 실행한다.
+- **출력 규약**: 분석 리포트는 `agent-context/observability/*`, 시각화 md는 `agent-context/observability/graph/*`.
+- **마이그레이션**: `migrate_abox_v06_to_v07.py`가 v0.6 ABox(legacy Phase/goto 문자열/judge 포함)를 v0.7로 변환한다. v0.6 어휘는 파일 단위 자동 감지로 병존 지원.
 
-Workflow topology에서 `Eval`, `Decision`, `Validation`의 역할을 다시 분리했다. Eval은 산출물 품질/정합성 평가와 evolve 루프를 위한 gate이고, 결정적 검증이나 사람 승인/반려 루프는 Decision gate로 표현한다.
+### v0.6.6 (2026-07-02) — Workflow shape and observability hardening
 
-### v0.6.3 (2026-06-30) — Stop reminder throttle
+Decision/Eval 역할 분리 정렬, phase/validation 잔재 마이그레이션 도구, shape guard 보강, Mermaid 렌더링 명확화. 상세는 [docs/changelog.md](docs/changelog.md).
 
-Stop hook이 매 턴 사용자에게 같은 안내를 반복하는 문제를 줄이기 위해 `stop-check.sh` 상태 관리기를 추가했다. 첫 Stop에서는 reminder를 출력하고 `.claude/state/stop-check.state`를 남기며, 바로 다음 Stop에서는 조용히 종료하고 state를 지운다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계다 (ontology 레이어 v0.7~v0.10 포함).
 
-- **적용 범위**: 사용자에게 보이는 Stop reminder 출력만 억제한다.
-- **비적용 범위**: `commit-work-memory.sh`는 계속 실행한다. work-memory 변경분 커밋 백스톱을 억제하지 않는다.
-- **로컬 상태**: `.claude/state/`는 gitignore 대상이다.
-
-### v0.6.2 (2026-06-30) — Worklog semantic boundary + cloud hand-off
-
-`worklog` 의미를 Stop hook 자동 세션 로그가 아니라 **workflow TTL `node -> node` 실행 기록**으로 고정했다. `auditlog`는 도구 실행 사실, `worklog`는 workflow 레일을 따라 수행한 작업, `AD/IN/TS`는 레일 밖 판단과 예외 기록을 담당한다.
-
-- **worklog 경계**: workflow node를 명시할 수 있을 때만 `worklog`를 작성한다. node 맥락이 없으면 `AD` 또는 `IN/TS` 후보로 기록하고 workflow TTL 갱신 후보로 환류한다.
-- **hook 정책**: Stop/PreCompact는 `commit-work-memory.sh`만 수행한다. Stop hook은 worklog를 자동 생성하지 않는다. `work-memory-check`는 SessionStart(compact/resume)에서 기록 판단을 상기시킨다.
-- **cloud hand-off**: Codex cloud 같은 ephemeral 환경에서는 hook side effect를 다음 에이전트 기억 보장으로 보지 않는다. cloud hand-off는 최종 답변, diff, 커밋 가능한 tracked file에 남는 기록을 기준으로 한다.
-- **version ladder**: v0.6.1은 phase-less workflow 모델 구현 완료 패치다. v0.6.2는 work-memory/hook/cloud hand-off 운영 의미 정리 패치고, v0.6.3은 Stop reminder 출력 throttle 패치, v0.6.4는 Decision/Validation loop gate 정합화, v0.6.5는 Eval artifact provenance 패치, v0.6.6은 Artifact supply-chain gates 패치다.
-
-상세 변경은 [docs/changelog.md](docs/changelog.md)의 v0.6.6 항목을 본다.
+상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 
 ## Core Philosophy
 
@@ -111,15 +109,15 @@ MSO repository workflow를 설계할 때는 세 관점을 동시에 본다.
 
 이 세 관점은 graph shape requirements이며, workflow-design 대화에서는 이를 slot으로 본다. 비어 있는 slot이 있으면 에이전트는 바로 TTL을 채우기보다 필요한 질문을 던져 slot-filling을 유도하고, 충분히 채워진 뒤 안정적인 repository workflow topology로 기록한다.
 
-MSO repository에는 세 그래프가 함께 존재한다.
+MSO repository에는 다음 그래프가 함께 존재한다 (v0.7.0 Repository Graph).
 
 | Graph | 역할 | 대표 산출물 |
 |---|---|---|
-| Task Graph | task 간 실행 관계를 정의한다. | `workflow/*.abox.ttl`, `workflow-views/` |
-| Artifact Graph | artifact의 생성과 소비 관계를 정의한다. | `artifact-stream-views/`, `artifact-stream-report.md` |
+| Execution Graph (Control Plane) | Execution 간 실행·분기·주체 전환(`wf:Rail`)을 정의한다. | `workflow/*.abox.ttl`, `observability/graph/<scope>/workflow-graph.md` |
+| Artifact Stream Graph (Data Plane) | Artifact의 소비·생산·근거 계보(`wf:Stream`)를 정의한다. | `observability/graph/<scope>/artifact-stream-graph.md`, `observability/artifact-stream-report.md` |
 | Knowledge Graph | artifact 안에 저장되는 의미와 관계를 정의한다. | ontology TTL, SHACL, work-memory projection |
 
-이 세 그래프가 합쳐져 repository workflow topology를 이룬다.
+Execution Graph + Artifact Stream Graph = **Repository Graph** 이며, 여기에 Semantic 계층(RDF→RDFS→OWL→SHACL)이 의미와 제약을, Trust/Provenance 계층이 신뢰도 계산을 얹는다.
 
 ## Artifact Types
 
@@ -137,8 +135,9 @@ MSO repository에는 세 그래프가 함께 존재한다.
 |---|---|---|
 | 구조 없음 | repository index와 artifact registry | `index.yaml`, `agent-context/index/index.yaml` |
 | 절차 없음 | TTL workflow topology | `agent-context/workflow/*.abox.ttl` |
-| 소비 관계 불명확 | artifact stream observability | `agent-context/observability/graph/` |
+| 소비 관계 불명확 | artifact stream observability | `agent-context/observability/` (리포트) + `observability/graph/` (시각화) |
 | 결정/품질 판단 혼재 | decision/eval gate 분리 | workflow TTL, SHACL |
+| 신뢰 근거 없음 | provenance + trust 계산 (저장 아님) | `trust_v07.py`, `observability/trust-report.md` |
 | 기억 없음 | work-memory JSONL + graph projection | `agent-context/work-memory/` |
 
 ## Skills
@@ -215,6 +214,26 @@ python3 skills/mso-scaffold-design/scripts/sf_node.py validate .
 
 ```bash
 python3 skills/mso-graph-observability/scripts/observe_graph.py --root .
+```
+
+### Validate / Materialize / Trust (v0.7)
+
+```bash
+# TTL ABox(SSOT) 직접 검증 — v0.6/v0.7 자동 감지
+python3 skills/mso-workflow-design/scripts/validate_abox.py agent-context/workflow
+
+# property chain 파생 (consumed_by ∘ produces_to = evidence_of) → .inferred.ttl
+python3 skills/mso-workflow-design/scripts/materialize_v07.py agent-context/workflow
+
+# Trust 계산 + Oracle Decision 제안 (계산 전용 — TTL 비저장)
+python3 skills/mso-workflow-design/scripts/trust_v07.py agent-context/workflow \
+  --report agent-context/observability/trust-report.md
+```
+
+v0.6 ABox는 v0.7로 마이그레이션한다 (sibling `.v07.abox.ttl` 생성 후 검토·교체):
+
+```bash
+python3 skills/mso-workflow-design/scripts/migrate_abox_v06_to_v07.py agent-context/workflow
 ```
 
 legacy workflow YAML이 남아 있는 repository에서만 TTL migration을 실행한다. TTL 검증이 끝난 뒤 legacy YAML은 제거한다.

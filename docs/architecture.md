@@ -1,4 +1,4 @@
-# 아키텍처 (v0.3.0)
+# 아키텍처 (v0.7.0)
 
 ## 스킬 관계
 
@@ -139,4 +139,51 @@ project/
 ├── .claude/
 │   └── settings.json                  ← hook 설정
 └── .gitignore                         ← agent-context/work-memory/.zvec/ 포함
+```
+
+
+## Repository Graph (v0.7.0)
+
+> Repository는 파일을 저장하는 곳이 아니라, 실행(Execution)과 산출물(Artifact)의
+> 관계를 저장하는 그래프다.
+
+```text
+Repository Graph
+├── Execution Graph        (Control Plane — wf:Rail)
+│     Node: Workflow · Execution(Task|Decision|Eval) · Terminal(Start|End)
+│     Rail: default · reads · delegates_to · escalates_to
+│           measured_by · measures · evolves_to · tests_to
+└── Artifact Stream Graph  (Data Plane — wf:Stream)
+      Node: Artifact  (Artifact First — Document/Prompt/Policy/Ontology/KB/DB 전부)
+      Stream: consumed_by · produces_to · evidence_of
+```
+
+- edge는 reify된 일급 인스턴스다 (`wf:from`/`wf:to`/`railType`/`streamType`).
+- 모든 Execution은 `hasSubject`(기본 self)를 가진다. 주체 전환은 hand_off rail
+  (`delegates_to`/`escalates_to`)이며 workflow 형태는 바뀌지 않는다.
+- Eval의 평가 단위는 WorkflowGraph closure(소비 Artifact + Execution + 생산 Artifact)다.
+- 저장 관계와 추론 관계를 구분한다: `consumed_by ∘ produces_to = evidence_of`는
+  materialize가 파생하고 `wf:derived`로 표시한다.
+- Trust는 저장하지 않는다 — Trust Policy로 계산하고 리포트로만 낸다.
+
+### v0.7 도구 체인 (hook: workflow-check.sh)
+
+```text
+*.abox.ttl 저장
+  → validate_abox.py    (SSOT shape/oracle/partition/loop 검증 — 설계 게이트)
+  → materialize_v07.py  (property chain 파생 → *.inferred.ttl)
+  → trust_v07.py        (Trust 계산 → observability/trust-report.md)
+  → observe_graph.py    (v0.7 native 렌더 → observability/graph/)
+```
+
+### 관측 출력 규약
+
+```text
+agent-context/observability/          # 분석 리포트
+├── artifact-stream-report.md · workflow-ssot-report.md
+├── runtime-analysis.md · trust-report.md
+└── graph/                            # 시각화 md
+    ├── README.md · workflow-subgraph-index.md · oracle-graph.md
+    ├── class-layer-map.md · property-map.md
+    └── <scope>/{repository,workflow,artifact-stream}-graph.md
 ```

@@ -1,4 +1,4 @@
-# 시작하기 (v0.3.0)
+# 시작하기 (v0.7.0)
 
 ## 0. 설치
 
@@ -234,4 +234,31 @@ WORKMEM_DIR=./agent-context/work-memory \
 
 # 생성 확인
 ls agent-context/work-memory/auditlog/
+```
+
+
+## 6. v0.7 Workflow 정의·검증·관측 흐름
+
+v0.7부터 workflow 정본은 Rail/Stream edge-first ABox다. 신규 워크플로는 v0.7 어휘로
+작성하고, 기존 v0.6 ABox는 마이그레이션한다.
+
+```bash
+# v0.6 → v0.7 변환 (sibling .v07.abox.ttl 생성 — 검토 후 원본 교체)
+python3 skills/mso-workflow-design/scripts/migrate_abox_v06_to_v07.py agent-context/workflow
+
+# SSOT 검증 (v0.6/v0.7 자동 감지)
+python3 skills/mso-workflow-design/scripts/validate_abox.py agent-context/workflow
+
+# property chain 파생 + trust 계산 + 관측
+python3 skills/mso-workflow-design/scripts/materialize_v07.py agent-context/workflow
+python3 skills/mso-workflow-design/scripts/trust_v07.py agent-context/workflow \
+  --report agent-context/observability/trust-report.md
+python3 skills/mso-graph-observability/scripts/observe_graph.py --root .
+```
+
+hook을 등록하면 `.abox.ttl` 저장 시 위 체인이 자동 실행된다:
+
+```bash
+cp skills/mso-workflow-design/hooks/workflow-check.sh .claude/scripts/
+# .claude/settings.json 의 PostToolUse 에 등록 (mso-repository-setup init 참조)
 ```

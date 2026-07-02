@@ -34,6 +34,25 @@ SCHEMAS = _DIR.parent / "references" / "schemas"
 TBOX_OUT = _DIR.parent / "references" / "tbox" / "workflow-tbox.ttl"
 SHAPES_OUT = _DIR.parent / "references" / "shapes" / "workflow-shapes.ttl"
 
+# v0.7 Rail/Stream 어휘 — 그래프-층 개념이라 YAML 노드 스키마가 없다.
+# 소스 fragment(references/schemas/v07/*.ttl)가 SSOT이며 여기서 출력물을 생성한다.
+# ROADMAP: planning/mso-ROADMAP-v0.x-repository-graph.md
+V07_SRC_DIR = SCHEMAS / "v07"
+V07_TBOX_SRC = V07_SRC_DIR / "tbox.ttl"
+V07_SHAPES_SRC = V07_SRC_DIR / "shapes.ttl"
+V07_TBOX_OUT = _DIR.parent / "references" / "tbox" / "workflow-tbox-v07.ttl"
+V07_SHAPES_OUT = _DIR.parent / "references" / "shapes" / "workflow-shapes-v07.ttl"
+
+_V07_GENERATED_HEADER = """\
+# ⚠ GENERATED — 직접 편집 금지.
+# 소스: references/schemas/v07/{src} (v0.7 어휘 SSOT)
+# 재생성: python scripts/schemas_to_tbox.py
+"""
+
+
+def gen_v07(src: Path) -> str:
+    return _V07_GENERATED_HEADER.format(src=src.name) + src.read_text(encoding="utf-8")
+
 NS = "https://mso.dev/ontology/workflow#"
 
 # type → 클래스명. Node 하위 = 실행 노드. branch 는 독립.
@@ -123,6 +142,8 @@ wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:str
     rdfs:comment "directory.path. 필수. 교차-스킬(scaffold) 멤버십 대상."@ko .
 wf:dirNote a owl:DatatypeProperty ; rdfs:label "dirNote"@ko ; rdfs:range xsd:string ;
     rdfs:comment "directory 설명 주석. cross-workflow 의존·보안·TTL 힌트 등. 선택."@ko .
+wf:artifactType a owl:DatatypeProperty ; rdfs:label "artifactType"@ko ; rdfs:range xsd:string ;
+    rdfs:comment "artifact 의 소비/운영 의미 분류. directory bnode·Artifact 노드에 선언 가능. 값: knowledge_store | event_store | local_database | table | tool | document | media. TTL 명시값 > index 명시값 > 관측기 추론 순으로 우선한다. 선택."@ko .
 
 # ─── Eval slot-filling 프로퍼티 (schema 없음 — 여기서 직접 정의) ──────────────
 wf:EntitySlot a owl:Class ; rdfs:label "EntitySlot"@ko ;
@@ -771,22 +792,31 @@ def main(argv=None) -> int:
 
     schemas = _load_schemas()
     tbox, shapes = gen_tbox(schemas), gen_shapes(schemas)
+    v07_targets = [
+        (V07_TBOX_OUT, gen_v07(V07_TBOX_SRC)),
+        (V07_SHAPES_OUT, gen_v07(V07_SHAPES_SRC)),
+    ]
 
     if args.check:
         drift = []
-        for path, gen in ((TBOX_OUT, tbox), (SHAPES_OUT, shapes)):
+        for path, gen in ((TBOX_OUT, tbox), (SHAPES_OUT, shapes), *v07_targets):
             cur = path.read_text(encoding="utf-8") if path.exists() else ""
             if cur != gen:
                 drift.append(path.name)
         if drift:
             print(f"✗ drift: {drift} — schemas 와 불일치. `python schemas_to_tbox.py` 재생성 필요", file=sys.stderr)
             return 1
-        print("✓ TBox/SHACL 가 schemas 와 동기 상태")
+        print("✓ TBox/SHACL (v0.6 + v0.7) 가 schemas 와 동기 상태")
         return 0
 
     TBOX_OUT.write_text(tbox, encoding="utf-8")
     SHAPES_OUT.write_text(shapes, encoding="utf-8")
-    print(f"생성: {TBOX_OUT.name}, {SHAPES_OUT.name} (소스 {len(schemas)} schemas)")
+    for path, gen in v07_targets:
+        path.write_text(gen, encoding="utf-8")
+    print(
+        f"생성: {TBOX_OUT.name}, {SHAPES_OUT.name}, "
+        f"{V07_TBOX_OUT.name}, {V07_SHAPES_OUT.name} (소스 {len(schemas)} schemas + v07 fragments)"
+    )
     return 0
 
 

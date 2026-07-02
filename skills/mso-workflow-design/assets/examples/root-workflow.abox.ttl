@@ -42,17 +42,18 @@
 
 <https://mso.dev/ontology/workflow#workflow/workflow-00> a wf:Workflow ;
     wf:has_subWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development>,
+        <https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle>,
         <https://mso.dev/ontology/workflow#workflow/workflow-00/discovery>,
         <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> .
 
 <https://mso.dev/ontology/workflow#module/ingestion> a wf:Module .
 
-<https://mso.dev/ontology/workflow#node/development/development-e-001_branch_fail_development-s-002> a wf:Branch ;
+<https://mso.dev/ontology/workflow#node/development-oracle/development-e-001_branch_fail_development-s-002> a wf:Branch ;
     wf:goto "development-s-002" ;
-    wf:gotoNode <https://mso.dev/ontology/workflow#node/development/development-s-002> ;
+    wf:gotoNode <https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> ;
     wf:on "fail" .
 
-<https://mso.dev/ontology/workflow#node/development/development-e-001_branch_pass_> a wf:Branch ;
+<https://mso.dev/ontology/workflow#node/development-oracle/development-e-001_branch_pass_> a wf:Branch ;
     wf:on "pass" .
 
 <https://mso.dev/ontology/workflow#node/development/development-s-001> a wf:Node,
@@ -64,7 +65,7 @@
     wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
     wf:instruction "설계된 workflow에 따라 핵심 모듈 산출물을 구현한다." ;
     wf:label "핵심 모듈 구현" ;
-    wf:next <https://mso.dev/ontology/workflow#node/development/development-e-001> ;
+    wf:next <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> ;
     wf:status "active" .
 
 <https://mso.dev/ontology/workflow#node/development/development-s-001_dir_generated_> wf:dirPath "generated/" ;
@@ -103,24 +104,24 @@
 <https://mso.dev/ontology/workflow#node/testing/testing-e-001_branch_pass_> a wf:Branch ;
     wf:on "pass" .
 
-<https://mso.dev/ontology/workflow#node/development/development-e-001> a wf:Eval,
+<https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> a wf:Eval,
         wf:Node ;
     wf:criteria "unit tests pass" ;
     wf:harness "unit-test" ;
-    wf:hasBranch <https://mso.dev/ontology/workflow#node/development/development-e-001_branch_fail_development-s-002>,
-        <https://mso.dev/ontology/workflow#node/development/development-e-001_branch_pass_> ;
-    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001_branch_fail_development-s-002>,
+        <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001_branch_pass_> ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle> ;
     wf:label "구현 품질 평가" ;
     wf:oracleType "metric" ;
     wf:status "pending" ;
     wf:target <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
     wf:targetArtifact "generated/module-output.md" .
 
-<https://mso.dev/ontology/workflow#node/development/development-s-002> a wf:Node,
+<https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> a wf:Node,
         wf:Step,
         wf:Task ;
     wf:evolves <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
-    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle> ;
     wf:instruction "평가 결과를 바탕으로 development workflow의 구현 규칙과 산출물을 개선한다." ;
     wf:label "구현 개선 반영" ;
     wf:status "pending" .
@@ -149,8 +150,14 @@
 
 <https://mso.dev/ontology/workflow#workflow/workflow-00/development> a wf:Workflow ;
     wf:description "각 모듈의 핵심 기능 개발 및 구현" ;
-    wf:hasNode <https://mso.dev/ontology/workflow#node/development/development-e-001>,
-        <https://mso.dev/ontology/workflow#node/development/development-s-001>,
-        <https://mso.dev/ontology/workflow#node/development/development-s-002> ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/development/development-s-001> ;
     wf:label "개발 & 구현" ;
     wf:status "active" .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle> a wf:Workflow ;
+    wf:description "development workflow 산출물 품질 평가와 개선 지시 (oracle)" ;
+    wf:exercises <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:hasNode <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001>,
+        <https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> ;
+    wf:label "개발 평가 (oracle)" ;
+    wf:status "pending" .

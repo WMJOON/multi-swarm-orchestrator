@@ -266,7 +266,7 @@ def test_sequential_next_and_branch_goto_node_projected(tmp_path):
                     "label": "승인",
                     "status": "active",
                     "decision_subject": "user",
-                    "owner": "wmjoon",
+                    "owner": "repo-owner",
                     "branches": [{"on": "rejected", "goto": "s-01"}],
                 },
                 {
@@ -310,7 +310,7 @@ def test_task_and_eval_roles_projected_from_legacy_oracle_alias(tmp_path):
                 "label": "진행 분기",
                 "status": "active",
                 "decision_subject": "user",
-                "owner": "wmjoon",
+                "owner": "repo-owner",
             },
             {
                 "type": "oracle",
@@ -821,7 +821,7 @@ def test_project_owner_and_decision_on_fail_do_not_infer_eval(tmp_path):
 
 <https://mso.dev/ontology/workflow#project/demo> a wf:Project ;
     wf:label "Demo" ;
-    wf:owner "wmjoon" .
+    wf:owner "repo-owner" .
 
 <https://mso.dev/ontology/workflow#workflow/demo/root> a wf:Workflow ;
     wf:hasNode <https://mso.dev/ontology/workflow#node/demo/v-001> .

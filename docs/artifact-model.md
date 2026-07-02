@@ -55,3 +55,21 @@ MSO repository에는 세 그래프가 동시에 존재한다.
 Workflow는 Artifact를 흐르게 하고, Artifact는 Knowledge를 담으며, Knowledge는 Agent의 실행과 추론을 가능하게 한다.
 
 MSO는 task 중심 Workflow, artifact 중심 Supply Chain, knowledge 중심 Semantic Graph를 하나의 repository 안에서 통합 관리하는 Repository Execution System을 목표로 한다.
+
+
+## Artifact Provenance (v0.7 — ROADMAP §6)
+
+모든 Artifact는 Provenance를 가진다. Knowledge Base(ontology TTL)도 Artifact이므로 동일하다.
+
+| property | 의미 |
+|---|---|
+| `wf:author` | 작성/생성 주체 (≈ prov:wasAttributedTo) |
+| `wf:version` | artifact 버전 |
+| `wf:timestamp` | 생성/갱신 시각 — 실행 도구가 기록한다 (LLM 추정 금지) |
+| `wf:validation` | 검증 상태/참조 |
+| `wf:coverage` | 커버리지 0..1 |
+| `wf:confidence` | 선언된 신뢰 확신도 0..1 — **Trust Score가 아니다** (Trust는 계산 전용) |
+
+`wf:artifactType`은 TTL 명시 선언이 최우선이며, 관측기 추론은 미선언 fallback일 뿐이다.
+Artifact 간 근거 계보는 `evidence_of` stream으로 표현되고,
+`consumed_by ∘ produces_to = evidence_of` chain이 파생을 보충한다.

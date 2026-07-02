@@ -1,0 +1,341 @@
+@prefix wf:  <https://mso.dev/ontology/workflow#> .
+@prefix sh:  <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MSO Workflow SHACL v0.7.0-r2 — Execution/hand_off/WorkflowGraph shape (SOURCE)
+# 이 파일이 v0.7 shape의 SSOT다. schemas_to_tbox.py 가
+# references/shapes/workflow-shapes-v07.ttl 로 생성한다.
+# SPEC §4 + §6-B(D-13~D-16). oracle disjoint / partition / feedback-loop
+# control 은 validate_abox.py python 검사가 담당한다.
+# ⚠ 이 shape는 v0.7 그래프 전용이다 — validate_abox가 파일 단위로 v0.6/v0.7을
+#   분리 검증한다 (클래스명 공유, Q-4(a)).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Edge 공통 ──────────────────────────────────────────────────────────────
+
+# from/to 클래스 제약은 railType/streamType별 shape가 담당한다.
+wf:EdgeShape a sh:NodeShape ; sh:targetClass wf:Edge ;
+    sh:property [ sh:path wf:from ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "Edge는 from 정점이 정확히 1개 필요" ] ;
+    sh:property [ sh:path wf:to ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "Edge는 to 정점이 정확히 1개 필요" ] .
+
+wf:RailShape a sh:NodeShape ; sh:targetClass wf:Rail ;
+    sh:property [ sh:path wf:railType ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:in ( "default" "reads" "delegates_to" "escalates_to" "measured_by" "measures" "evolves_to" "tests_to" ) ;
+        sh:message "railType은 default|reads|delegates_to|escalates_to|measured_by|measures|evolves_to|tests_to 중 하나" ] .
+
+wf:StreamShape a sh:NodeShape ; sh:targetClass wf:Stream ;
+    sh:property [ sh:path wf:streamType ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:in ( "consumed_by" "produces_to" "evidence_of" ) ;
+        sh:message "streamType은 consumed_by|produces_to|evidence_of 중 하나" ] .
+
+# ─── Provenance 값 형식 (v0.9.0 D-22 — 충족 강제는 validate_abox 경고) ─────────
+
+wf:ArtifactProvenanceFormatShape a sh:NodeShape ; sh:targetClass wf:Artifact ;
+    sh:property [ sh:path wf:timestamp ; sh:datatype xsd:dateTime ;
+        sh:message "timestamp는 xsd:dateTime (도구가 기록 — LLM 추정 금지)" ] ;
+    sh:property [ sh:path wf:coverage ; sh:datatype xsd:decimal ;
+        sh:minInclusive 0.0 ; sh:maxInclusive 1.0 ;
+        sh:message "coverage는 0..1 decimal" ] ;
+    sh:property [ sh:path wf:confidence ; sh:datatype xsd:decimal ;
+        sh:minInclusive 0.0 ; sh:maxInclusive 1.0 ;
+        sh:message "confidence는 0..1 decimal (Trust Score 아님 — 선언 입력 신호)" ] .
+
+wf:ExecutionMetadataFormatShape a sh:NodeShape ; sh:targetClass wf:Execution ;
+    sh:property [ sh:path wf:method ; sh:maxCount 1 ;
+        sh:in ( "prompt" "script" "workflow" "api" "manual" ) ;
+        sh:message "method는 prompt|script|workflow|api|manual 중 하나 (§7 ExecutionMethod)" ] ;
+    sh:property [ sh:path wf:timestamp ; sh:datatype xsd:dateTime ;
+        sh:message "timestamp는 xsd:dateTime (도구가 기록)" ] .
+
+# ─── Execution 주체 (D-14) ───────────────────────────────────────────────────
+
+wf:ExecutionSubjectShape a sh:NodeShape ; sh:targetClass wf:Execution ;
+    sh:property [ sh:path wf:hasSubject ; sh:maxCount 1 ;
+        sh:in ( "self" "human" "model" "system" "workflow" ) ;
+        sh:message "hasSubject는 self|human|model|system|workflow 중 하나 (미선언=self)" ] .
+
+wf:RealizedByRequiresWorkflowSubjectShape a sh:NodeShape ; sh:targetClass wf:Execution ;
+    sh:sparql [
+        sh:message "realizedBy는 hasSubject=workflow인 Execution에만 선언 (Skill=sub-workflow)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                $this wf:realizedBy ?w .
+                FILTER NOT EXISTS { $this wf:hasSubject "workflow" . }
+            } """ ] .
+
+# ─── Rail from/to 타입 제약 ──────────────────────────────────────────────────
+
+wf:RailReadsShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Rail ; wf:railType "reads" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Artifact ;
+        sh:message "reads Rail의 from은 Artifact여야 함" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Execution ;
+        sh:message "reads Rail의 to는 Execution이어야 함" ] .
+
+# hand_off = delegates_to | escalates_to — Execution → Execution 주체 전환 (D-15).
+# Workflow 형태는 바뀌지 않는다. 주체만 바뀐다.
+wf:RailDelegatesShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Rail ; wf:railType "delegates_to" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Execution ;
+        sh:message "delegates_to Rail의 from은 Execution이어야 함" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Execution ;
+        sh:message "delegates_to Rail의 to는 Execution이어야 함 (hand_off는 Execution 간 주체 전환)" ] ;
+    sh:sparql [
+        sh:message "delegates_to의 to Execution은 hasSubject ∈ {model, system, workflow} (실행 가능한 주체 위임, D-15)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                $this wf:to ?t .
+                FILTER NOT EXISTS {
+                    ?t wf:hasSubject ?s .
+                    FILTER(?s IN ("model", "system", "workflow"))
+                }
+            } """ ] .
+
+wf:RailEscalatesShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Rail ; wf:railType "escalates_to" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Execution ;
+        sh:message "escalates_to Rail의 from은 Execution이어야 함" ] ;
+    sh:sparql [
+        sh:message "escalates_to의 to Execution은 hasSubject=human (사람 승격, D-15 — HITL=escalates_to→Decision(human))" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                $this wf:to ?t .
+                FILTER NOT EXISTS { ?t wf:hasSubject "human" . }
+            } """ ] .
+
+wf:RailMeasuredByShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Rail ; wf:railType "measured_by" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Artifact ;
+        sh:message "measured_by Rail의 from은 Artifact여야 함 (Eval의 증거 입력)" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Eval ;
+        sh:message "measured_by Rail의 to는 Eval이어야 함" ] .
+
+wf:RailMeasuresShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Rail ; wf:railType "measures" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Eval ;
+        sh:message "measures Rail의 from은 Eval이어야 함" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Workflow ;
+        sh:message "measures Rail의 to는 Workflow여야 함 — WorkflowGraph closure(소비 Artifact+Execution+생산 Artifact) 측정 (D-16)" ] .
+
+wf:RailOracleTargetShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Rail ; wf:railType ?t .
+            FILTER(?t IN ("evolves_to", "tests_to")) } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Execution ;
+        sh:message "evolves_to/tests_to Rail의 from은 Execution이어야 함" ] ;
+    sh:sparql [
+        sh:message "evolves_to/tests_to Rail의 to는 Workflow 또는 Artifact여야 함 (D-12: 지식 artifact도 oracle 대상)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                $this wf:to ?t .
+                FILTER NOT EXISTS { ?t a wf:Workflow }
+                FILTER NOT EXISTS { ?t a wf:Artifact }
+            } """ ] .
+
+# ─── Stream bipartite (Artifact ↔ Execution) ────────────────────────────────
+
+wf:StreamConsumedByShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Stream ; wf:streamType "consumed_by" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Artifact ;
+        sh:message "consumed_by Stream의 from은 Artifact여야 함" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Execution ;
+        sh:message "consumed_by Stream의 to는 Execution이어야 함" ] .
+
+wf:StreamProducesToShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Stream ; wf:streamType "produces_to" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Execution ;
+        sh:message "produces_to Stream의 from은 Execution이어야 함" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Artifact ;
+        sh:message "produces_to Stream의 to는 Artifact여야 함" ] .
+
+wf:StreamEvidenceShape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Stream ; wf:streamType "evidence_of" . } """ ] ;
+    sh:property [ sh:path wf:from ; sh:class wf:Artifact ;
+        sh:message "evidence_of Stream의 from은 Artifact여야 함" ] ;
+    sh:property [ sh:path wf:to ; sh:class wf:Artifact ;
+        sh:message "evidence_of Stream의 to는 Artifact여야 함" ] .
+
+wf:StreamNoTerminalShape a sh:NodeShape ; sh:targetClass wf:Stream ;
+    sh:sparql [
+        sh:message "Start/End는 Stream에 참여할 수 없음 (Execution Graph 전용 terminal)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                { $this wf:from ?n } UNION { $this wf:to ?n }
+                { ?n a wf:Start } UNION { ?n a wf:End }
+            } """ ] .
+
+# ─── Terminal 노드 (D-7) ────────────────────────────────────────────────────
+
+wf:StartShape a sh:NodeShape ; sh:targetClass wf:Start ;
+    sh:sparql [
+        sh:message "Start는 in-Rail을 가질 수 없음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { ?rail a wf:Rail ; wf:to $this . } """ ] ;
+    sh:sparql [
+        sh:message "Start는 out default-Rail이 1개 이상 필요" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { ?rail a wf:Rail ; wf:from $this ; wf:railType "default" . }
+            } """ ] .
+
+wf:EndShape a sh:NodeShape ; sh:targetClass wf:End ;
+    sh:sparql [
+        sh:message "End는 out-Rail을 가질 수 없음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { ?rail a wf:Rail ; wf:from $this . } """ ] ;
+    sh:sparql [
+        sh:message "End는 in-Rail이 1개 이상 필요" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { ?rail a wf:Rail ; wf:to $this . }
+            } """ ] .
+
+# ─── Execution 카디널리티 (D-6/D-7: Start/End 도입으로 예외 없음) ────────────────
+
+wf:ExecutionReachableShape a sh:NodeShape ; sh:targetClass wf:Execution ;
+    sh:sparql [
+        sh:message "Execution은 in-Rail이 1개 이상 필요 (도달 불가 노드)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { ?rail a wf:Rail ; wf:to $this . }
+            } """ ] .
+
+wf:TaskSingleOutShape a sh:NodeShape ; sh:targetClass wf:Task ;
+    sh:sparql [
+        sh:message "Task는 out default-Rail이 정확히 1개여야 함 (0=미종결: End로 rail, 2+=분기: Decision으로 모델링)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                {
+                    SELECT $this (COUNT(?rail) AS ?n) WHERE {
+                        OPTIONAL { ?rail a wf:Rail ; wf:from $this ; wf:railType "default" . }
+                    } GROUP BY $this
+                }
+                FILTER(?n != 1)
+            } """ ] ;
+    sh:sparql [
+        sh:message "Task는 hasBranch를 가질 수 없음 (분기는 Decision/Eval)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { $this wf:hasBranch ?rail . } """ ] .
+
+# ─── Decision ───────────────────────────────────────────────────────────────
+
+wf:DecisionV07Shape a sh:NodeShape ; sh:targetClass wf:Decision ;
+    sh:property [ sh:path wf:hasBranch ; sh:minCount 2 ; sh:class wf:Rail ;
+        sh:message "Decision은 hasBranch Rail 2개 이상 필수" ] ;
+    sh:sparql [
+        sh:message "Decision의 branch Rail에는 on(routing case)이 필수" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                $this wf:hasBranch ?rail .
+                FILTER NOT EXISTS { ?rail wf:on ?case . }
+            } """ ] ;
+    sh:sparql [
+        sh:message "hasSubject≠human인 Decision의 branch Rail에는 criteria 필수 (자동 판단 기준)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                $this wf:hasBranch ?rail .
+                FILTER NOT EXISTS { $this wf:hasSubject "human" . }
+                FILTER NOT EXISTS { ?rail wf:criteria ?c . }
+                FILTER NOT EXISTS { $this wf:criteria ?tc . }
+            } """ ] .
+
+# ─── Eval (D-16) ────────────────────────────────────────────────────────────
+
+wf:EvalV07Shape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 in measured_by Rail(증거 artifact)이 1개 이상 필요" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS {
+                    ?rail a wf:Rail ; wf:railType "measured_by" ; wf:to $this .
+                }
+            } """ ] ;
+    sh:sparql [
+        sh:message "Eval은 out measures Rail(평가 단위 WorkflowGraph)이 1개 이상 필요 (D-16)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS {
+                    ?rail a wf:Rail ; wf:railType "measures" ; wf:from $this .
+                }
+            } """ ] ;
+    sh:sparql [
+        sh:message "Eval은 on=fail branch Rail이 필수" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { $this wf:hasBranch ?rail . ?rail wf:on "fail" . }
+            } """ ] ;
+    sh:sparql [
+        sh:message "Eval은 on=pass branch Rail이 필수 (pass → End)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { $this wf:hasBranch ?rail . ?rail wf:on "pass" . }
+            } """ ] ;
+    sh:property [ sh:path wf:metricDimension ;
+        sh:in ( "trust" "quality" "cost" "speed" "safety" "robustness" "resource_usage" ) ;
+        sh:message "metricDimension은 trust|quality|cost|speed|safety|robustness|resource_usage 중 하나" ] .
+
+wf:EvalOracleOnlyShape a sh:NodeShape ; sh:targetClass wf:Eval ;
+    sh:sparql [
+        sh:message "Eval은 workflowType=oracle인 Workflow에만 속할 수 있음 (D-9)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+                ?w wf:has $this .
+                FILTER NOT EXISTS { ?w wf:workflowType "oracle" . }
+            } """ ] .
+
+# ─── Workflow ───────────────────────────────────────────────────────────────
+
+wf:WorkflowV07Shape a sh:NodeShape ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Workflow ; wf:workflowType ?t . } """ ] ;
+    sh:property [ sh:path wf:workflowType ; sh:maxCount 1 ; sh:in ( "base" "oracle" ) ;
+        sh:message "workflowType은 base|oracle 중 하나" ] ;
+    sh:property [ sh:path wf:has ;
+        sh:qualifiedValueShape [ sh:class wf:Start ] ;
+        sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ;
+        sh:message "Workflow는 Start를 정확히 1개 가져야 함" ] ;
+    sh:property [ sh:path wf:has ;
+        sh:qualifiedValueShape [ sh:class wf:End ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:message "Workflow는 End를 1개 이상 가져야 함" ] .

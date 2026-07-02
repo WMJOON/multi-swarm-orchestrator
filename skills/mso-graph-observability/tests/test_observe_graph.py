@@ -256,7 +256,7 @@ def test_tool_step_can_consume_and_produce_same_table_without_internal_scripts()
     assert "scripts/<br>" not in markdown
 
 
-def test_step_with_multiple_control_targets_is_inferred_decision():
+def test_step_with_multiple_control_targets_is_marked_as_shape_violation():
     graph = Graph()
     wf = observe_graph.WF
     step = wf["node/demo/nlu-s-104"]
@@ -276,7 +276,11 @@ def test_step_with_multiple_control_targets_is_inferred_decision():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
 
-    assert "Decision / inferred-branch" in markdown
+    # 관측기는 Step을 Decision으로 승격하지 않는다 — 위반 표기만 한다.
+    assert "Decision / inferred-branch" not in markdown
+    assert "multi-outgoing" in markdown
+    assert "model as wf:Decision" in markdown
+    assert "shape_violation" in markdown
 
 
 def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
@@ -918,7 +922,11 @@ def test_exporter_writes_per_workflow_graph_outputs_and_deprecated_aliases_absen
     subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path)], check=True)
 
     output_dir = tmp_path / "agent-context" / "observability" / "graph"
-    assert (output_dir / "artifact-stream-report.md").exists()
+    report_dir = tmp_path / "agent-context" / "observability"
+    # 출력 규약 (2026-07-02): 리포트는 observability/, 시각화는 observability/graph/
+    assert (report_dir / "artifact-stream-report.md").exists()
+    assert (report_dir / "workflow-ssot-report.md").exists()
+    assert not (output_dir / "artifact-stream-report.md").exists()
     assert (output_dir / "demo" / "repository-graph.md").exists()
     assert (output_dir / "demo" / "workflow-graph.md").exists()
     assert (output_dir / "demo" / "artifact-stream-graph.md").exists()
@@ -992,3 +1000,49 @@ def test_workflow_subgraph_renders_eval_shape():
     assert '[/"Quality Gate<br>id: eval<br>Eval"/]' in markdown
     assert "-->|next|" in markdown
     assert "classDef eval" in markdown
+
+
+def test_explicit_ttl_artifact_type_overrides_inference():
+    graph = Graph()
+    wf = observe_graph.WF
+    step = wf["node/demo/at-s-001"]
+    phase = wf["phase/demo/p"]
+    directory = wf["node/demo/at-s-001_dir_out"]
+
+    graph.add((phase, RDF.type, wf.Phase))
+    graph.add((phase, RDFS.label, Literal("AT")))
+    graph.add((phase, wf.hasNode, step))
+    graph.add((step, RDF.type, wf.Step))
+    graph.add((step, RDF.type, wf.Node))
+    graph.add((step, RDFS.label, Literal("산출")))
+    graph.add((step, wf.directory, directory))
+    graph.add((directory, wf.dirPath, Literal("out/report.md")))
+    graph.add((directory, wf.dirRole, Literal("output")))
+    # 추론이라면 .md → document. TTL 명시 선언이 이겨야 한다.
+    graph.add((directory, wf.artifactType, Literal("knowledge_store")))
+
+    items = observe_graph.directory_data_for_node(graph, step)
+    assert items == [("output", "out/report.md", "local_file:out/report.md", "knowledge_store")]
+
+    ref = observe_graph.apply_explicit_artifact_type(
+        observe_graph.data_ref_for_locator({}, data_type="local_file", locator="out/report.md"),
+        "knowledge_store",
+    )
+    assert ref["artifact_type"] == "knowledge_store"
+    assert ref["resource_kind"] == "data"
+
+
+def test_invalid_explicit_artifact_type_falls_back_to_inference():
+    graph = Graph()
+    wf = observe_graph.WF
+    directory = wf["node/demo/at-s-002_dir_out"]
+    graph.add((directory, wf.dirPath, Literal("out/report.md")))
+    graph.add((directory, wf.dirRole, Literal("output")))
+    graph.add((directory, wf.artifactType, Literal("nonsense_type")))
+
+    assert observe_graph.explicit_artifact_type(graph, directory) == ""
+    ref = observe_graph.apply_explicit_artifact_type(
+        observe_graph.data_ref_for_locator({}, data_type="local_file", locator="out/report.md"),
+        "",
+    )
+    assert ref["artifact_type"] == "document"  # .md 추론 유지

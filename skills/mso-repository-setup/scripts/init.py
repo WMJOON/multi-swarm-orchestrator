@@ -268,7 +268,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     기본값은 기존 Claude Code 동작을 보존한다. `--provider codex` 를 지정하면
     <target>/.codex/scripts/ 를 만들고 <target>/.codex/config.toml 에 hook 을 등록한다.
     <target>/.codex/hooks.json 도 compatibility 파일로 함께 갱신한다. 절대 경로
-    (스킬의 iCloud 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
+    (스킬의 로컬 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
     박지 않으므로 다른 머신·CI·경로 이동에도 견딘다.
 
     WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다(미지정 시 스크립트 기본값 =

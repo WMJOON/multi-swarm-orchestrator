@@ -23,6 +23,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import observe_v07  # noqa: E402 - v0.7 Rail/Stream native renderer (A-phase)
+
 try:
     import yaml
 except ImportError:  # pragma: no cover - optional index registry support
@@ -1256,15 +1259,36 @@ def deliverable_data_ref(deliverable: str) -> dict[str, str]:
     }
 
 
+def explicit_artifact_type(graph: Graph, subject) -> str:
+    """TTL 명시 wf:artifactType. 유효 어휘가 아니면 빈 문자열 (추론 fallback)."""
+    value = graph.value(subject, WF.artifactType)
+    if isinstance(value, Literal):
+        text = literal_text(value).strip()
+        if text in ARTIFACT_TYPES:
+            return text
+    return ""
+
+
+def apply_explicit_artifact_type(ref: dict[str, str], explicit_type: str) -> dict[str, str]:
+    """TTL 명시값 > index 명시값 > 추론. 명시값이 유효할 때만 override."""
+    if not explicit_type or explicit_type not in ARTIFACT_TYPES:
+        return ref
+    overridden = dict(ref)
+    overridden["artifact_type"] = explicit_type
+    overridden["resource_kind"] = "data" if explicit_type in MACHINE_NATIVE_ARTIFACTS else "file"
+    overridden["primary_consumer"] = ARTIFACT_PRIMARY_CONSUMERS.get(explicit_type, "-")
+    return overridden
+
+
 def artifact_node_data_ref(graph: Graph, artifact: URIRef) -> dict[str, str]:
     detail = preferred_label(graph, artifact)
     if detail:
         ref = deliverable_data_ref(detail)
         ref["location"] = "declared artifact"
-        return ref
+        return apply_explicit_artifact_type(ref, explicit_artifact_type(graph, artifact))
     artifact_key = str(artifact).split("#", 1)[-1] if "#" in str(artifact) else str(artifact)
     key = f"artifact:{artifact_key}"
-    artifact_type = infer_artifact_type(
+    artifact_type = explicit_artifact_type(graph, artifact) or infer_artifact_type(
         data_type="local_file",
         locator="",
         artifact_id=key,
@@ -1283,8 +1307,9 @@ def artifact_node_data_ref(graph: Graph, artifact: URIRef) -> dict[str, str]:
     }
 
 
-def directory_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str, str]]:
-    data_items: list[tuple[str, str, str]] = []
+def directory_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str, str, str]]:
+    """(role, path, fallback_key, explicit_artifact_type) — 4번째 항목은 TTL 명시 wf:artifactType."""
+    data_items: list[tuple[str, str, str, str]] = []
     for directory in graph.objects(node, WF.directory):
         path_value = graph.value(directory, WF.dirPath)
         if not isinstance(path_value, Literal):
@@ -1293,7 +1318,7 @@ def directory_data_for_node(graph: Graph, node: URIRef) -> list[tuple[str, str, 
         role = literal_text(role_value) if isinstance(role_value, Literal) else "reference"
         path = literal_text(path_value)
         if path:
-            data_items.append((role, path, f"local_file:{path}"))
+            data_items.append((role, path, f"local_file:{path}", explicit_artifact_type(graph, directory)))
     return data_items
 
 
@@ -1335,12 +1360,15 @@ def produced_artifact_ref_for_workflow(
         for deliverable, _ in deliverable_data_for_node(graph, node):
             if literal_text(Literal(deliverable)) == artifact_text:
                 return deliverable_data_ref(deliverable)
-        for role, path, _ in directory_data_for_node(graph, node):
+        for role, path, _, dir_artifact_type in directory_data_for_node(graph, node):
             produces, _, _ = data_edge_labels(role)
             if not produces:
                 continue
             if normalize_locator(path) == artifact_locator:
-                return data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+                return apply_explicit_artifact_type(
+                    data_ref_for_locator(data_registry, data_type="local_file", locator=path),
+                    dir_artifact_type,
+                )
     return None
 
 
@@ -1393,7 +1421,7 @@ def data_keys(graph: Graph, scope: str, data_registry: dict[str, dict[str, str]]
     data_registry = data_registry or {}
     keys: set[str] = set()
     for node in workflow_node_terms(graph, scope):
-        for role, path, _ in directory_data_for_node(graph, node):
+        for role, path, _, dir_artifact_type in directory_data_for_node(graph, node):
             produces, consumes, _ = data_edge_labels(role)
             if not produces and not consumes:
                 continue
@@ -1422,8 +1450,11 @@ def collect_data_streams(
         consumers: dict[str, set[str]] = {}
         for node in workflow_node_terms(graph, scope):
             node_id = display_id(node)
-            for role, path, _ in directory_data_for_node(graph, node):
-                ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+            for role, path, _, dir_artifact_type in directory_data_for_node(graph, node):
+                ref = apply_explicit_artifact_type(
+                data_ref_for_locator(data_registry, data_type="local_file", locator=path),
+                dir_artifact_type,
+            )
                 produces, consumes, _ = data_edge_labels(role)
                 if not produces and not consumes:
                     continue
@@ -1690,8 +1721,11 @@ def build_process_map(
         if not pstr:
             continue
 
-        for role, path, _ in directory_data_for_node(graph, node):
-            ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+        for role, path, _, dir_artifact_type in directory_data_for_node(graph, node):
+            ref = apply_explicit_artifact_type(
+                data_ref_for_locator(data_registry, data_type="local_file", locator=path),
+                dir_artifact_type,
+            )
             all_refs.setdefault(ref["id"], ref)
             produces, consumes, _ = data_edge_labels(role)
             prev = phase_arts.setdefault(pstr, {}).get(ref["id"], (False, False))
@@ -1856,8 +1890,11 @@ def build_process_flow(
         pstr = step_to_phase.get(str(node))
         if not pstr:
             continue
-        for role, path, _ in directory_data_for_node(graph, node):
-            ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+        for role, path, _, dir_artifact_type in directory_data_for_node(graph, node):
+            ref = apply_explicit_artifact_type(
+                data_ref_for_locator(data_registry, data_type="local_file", locator=path),
+                dir_artifact_type,
+            )
             if ref.get("artifact_type") not in MACHINE_NATIVE_ARTIFACTS:
                 continue
             all_refs.setdefault(ref["id"], ref)
@@ -2001,7 +2038,7 @@ def build_workflow_topology(
             if cls:
                 lines.append(f"  class {node_id} {cls}")
                 if cls == "decision":
-                    style_node(node_id, decision_style(term, inferred=is_inferred_branch_step(term)))
+                    style_node(node_id, decision_style(term))
             declared.add(node_id)
         return node_id
 
@@ -2082,30 +2119,31 @@ def build_workflow_topology(
                         targets.add(f"goto:{target}")
         return targets
 
-    def is_inferred_branch_step(term: URIRef) -> bool:
+    def is_multi_outgoing_step(term: URIRef) -> bool:
+        """Step 인데 제어 edge 2개 이상 — TTL 정본의 shape 결함 신호 (렌더는 위반 표기만)."""
         if (term, RDF.type, WF.Step) not in graph:
             return False
         targets = rendered_outgoing_targets(term)
         return len(targets) >= 2
 
-    def decision_style(term: URIRef, *, inferred: bool = False) -> str | None:
-        subject = decision_subject(term, inferred=inferred)
+    def decision_style(term: URIRef) -> str | None:
+        subject = decision_subject(term)
         if subject == "user":
             return "fill:#ffedd5,stroke:#ea580c,color:#111827"
         if subject == "agent":
             return "fill:#dbeafe,stroke:#2563eb,color:#111827"
         return None
 
-    def decision_subject(term: URIRef, *, inferred: bool = False) -> str | None:
+    def decision_subject(term: URIRef) -> str | None:
         explicit = (first_literal(graph, term, WF.decisionSubject) or "").strip().lower()
         if explicit in {"user", "agent"}:
             return explicit
         legacy_judge = (first_literal(graph, term, WF.judge) or "").strip().upper()
         if legacy_judge in {"HITL", "HITLFE"}:
             return "user"
-        if legacy_judge in {"HOTL", "HOOTL"} or inferred:
+        if legacy_judge in {"HOTL", "HOOTL"}:
             return "agent"
-        return "agent" if inferred else None
+        return None
 
     def first_decision_criterion(term: URIRef) -> str | None:
         for predicate in (
@@ -2157,10 +2195,12 @@ def build_workflow_topology(
                 status = first_literal(graph, term, WF.status)
                 if status:
                     suffix = f"{suffix} / {status}"
-                if rdf_type == WF.Step and is_inferred_branch_step(term):
-                    suffix = "Decision / inferred-branch"
-                    shape = "hexagon"
-                    return "decision", "decision", suffix, shape
+                if rdf_type == WF.Step and is_multi_outgoing_step(term):
+                    # 관측기는 TTL에 없는 타입을 창작하지 않는다. Step이 제어 edge를
+                    # 2개 이상 가지면 Decision으로 승격해 그리지 않고 shape-violation으로
+                    # 표기한다. 분기 모델링은 validate_abox.py 가 설계 게이트에서 경고한다.
+                    suffix = f"{suffix} / ⚠ multi-outgoing — model as wf:Decision"
+                    return "step", "shape_violation", suffix, "rect"
                 if rdf_type == WF.Decision:
                     shape = "hexagon"
                     subject = decision_subject(term)
@@ -2271,7 +2311,7 @@ def build_workflow_topology(
                         node_class = node_cls or css_class
                         lines.append(f"  class {node_id} {node_class}")
                         if node_class == "decision":
-                            style_node(node_id, decision_style(node, inferred=is_inferred_branch_step(node)))
+                            style_node(node_id, decision_style(node))
                         declared.add(node_id)
                 else:
                     node_prefix, node_cls, node_suffix, node_shape = visual_kind(node)
@@ -2351,11 +2391,14 @@ def build_workflow_topology(
             source_prefix, source_cls, source_suffix, source_shape = visual_kind(node)
             source_id = declare(node, source_prefix, source_cls, source_suffix, source_shape)
             stream_actor_id = task_tool_node_id(node) or source_id
-            for role, path, _ in directory_data_for_node(graph, node):
+            for role, path, _, dir_artifact_type in directory_data_for_node(graph, node):
                 produces, consumes, label_suffix = data_edge_labels(role)
                 if not produces and not consumes:
                     continue
-                ref = data_ref_for_locator(data_registry, data_type="local_file", locator=path)
+                ref = apply_explicit_artifact_type(
+                data_ref_for_locator(data_registry, data_type="local_file", locator=path),
+                dir_artifact_type,
+            )
                 if show_data_stream:
                     data_refs.setdefault(ref["id"], ref)
                     artifact_type = ref.get("artifact_type", "document")
@@ -2642,12 +2685,15 @@ def build_workflow_topology(
                                 ref.get("artifact_type") == "table" for _, ref in produced_deliverables
                             )
                             if not has_table_deliverable:
-                                for role, path, _ in directory_data_for_node(graph, producer):
+                                for role, path, _, dir_artifact_type in directory_data_for_node(graph, producer):
                                     produces, _, _ = data_edge_labels(role)
                                     if not produces:
                                         continue
-                                    produced_ref = data_ref_for_locator(
-                                        data_registry, data_type="local_file", locator=path
+                                    produced_ref = apply_explicit_artifact_type(
+                                        data_ref_for_locator(
+                                            data_registry, data_type="local_file", locator=path
+                                        ),
+                                        dir_artifact_type,
                                     )
                                     produced_nid = declare_data(
                                         produced_ref["id"],
@@ -2758,6 +2804,7 @@ def build_workflow_topology(
             "  classDef status_pending fill:#f3f4f6,stroke:#6b7280,color:#111827",
             "  classDef step fill:#dbeafe,stroke:#2563eb,color:#111827",
             "  classDef decision fill:#f3f4f6,stroke:#6b7280,color:#111827",
+            "  classDef shape_violation fill:#fef2f2,stroke:#dc2626,stroke-dasharray: 4 3,color:#7f1d1d",
             "  classDef eval fill:#fee2e2,stroke:#dc2626,color:#111827",
             "  classDef validation fill:#e0f2fe,stroke:#0284c7,color:#111827",
             "  classDef group fill:#f5f5f4,stroke:#78716c,color:#111827",
@@ -3034,16 +3081,56 @@ def main() -> int:
     graph = parse_graph(ttl_paths)
     data_registry = load_data_registry(args.root.resolve())
     output_dir.mkdir(parents=True, exist_ok=True)
+    # 디렉토리 규약 (2026-07-02): observability/* = 분석 리포트, observability/graph/* =
+    # 시각화 md. 기본 output_dir(.../observability/graph)일 때 리포트는 부모로 나간다.
+    # --output-dir 커스텀(이름이 graph가 아님)이면 단일 디렉토리 유지 (테스트/임시 실행).
+    report_dir = output_dir.parent if output_dir.name == "graph" else output_dir
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if report_dir != output_dir:
+        # 구 배치(graph/ 안 리포트) 잔재 제거 — 규약 이전 산출물
+        for stale in ("artifact-stream-report.md", "workflow-ssot-report.md",
+                      "runtime-analysis.md", "trust-report.md"):
+            stale_path = output_dir / stale
+            if stale_path.exists():
+                stale_path.unlink()
     clean_generated_graph_views(output_dir)
     ssot_report, legacy_yaml_count = build_workflow_ssot_report(workflow_dir, graph)
 
-    write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", build_workflow_subgraph_index(graph, data_registry=data_registry))
+    # v0.7 Rail/Stream native 렌더 (A-phase): workflowType이 선언된 workflow는
+    # observe_v07이 Rail/Stream을 직접 순회해 렌더하고, 같은 scope의 v0.6 경로는
+    # 건너뛴다 (native 우선). 호환 projection(project_v06_compat)은 관측 경로에
+    # 더 이상 필요하지 않다.
+    v07_map = observe_v07.v07_workflows(graph)
+    v07_scopes = set(v07_map.values())
+    for wf_uri, v07_scope in sorted(v07_map.items(), key=lambda kv: kv[1]):
+        flow_dir = output_dir / scope_dir_name(v07_scope)
+        for view, filename, view_title in (
+            ("repository", "repository-graph.md", "Repository Graph"),
+            ("workflow", "workflow-graph.md", "Workflow Graph"),
+            ("artifact-stream", "artifact-stream-graph.md", "Artifact Stream Graph"),
+        ):
+            write_markdown(
+                flow_dir / filename,
+                f"MSO {view_title} — {scope_label(v07_scope)} (v0.7)",
+                observe_v07.build_view(graph, wf_uri, v07_scope, view),
+            )
+
+    subgraph_index = build_workflow_subgraph_index(graph, data_registry=data_registry)
+    if v07_map:
+        v07_lines = "\n".join(
+            f"- `{scope_dir_name(scope)}/` — v0.7 Rail/Stream native ({scope_label(scope)})"
+            for scope in sorted(v07_scopes)
+        )
+        subgraph_index += f"\n\n## v0.7 Rail/Stream Scopes (native)\n\n{v07_lines}\n"
+    write_markdown(output_dir / "workflow-subgraph-index.md", "MSO Workflow Sub-Graph Index", subgraph_index)
     artifact_report = build_artifact_stream_report(graph, data_registry=data_registry)
-    write_markdown(output_dir / "artifact-stream-report.md", "MSO Artifact Stream Report", artifact_report)
+    write_markdown(report_dir / "artifact-stream-report.md", "MSO Artifact Stream Report", artifact_report)
     # v0.6.0 oracle layer view (SPEC §3.3 축 A): evolves/exercises/has_subWorkflow/target
     # edge-필터. workflow 간 self-improvement 관계라 scope 무관(전체 graph).
     write_markdown(output_dir / "oracle-graph.md", "MSO Oracle Graph (self-improvement layer)", build_oracle_view(graph))
     for scope in workflow_scopes(graph):
+        if scope in v07_scopes:
+            continue  # v0.7 native 출력이 우선한다
         flow_dir = output_dir / scope_dir_name(scope)
         write_markdown(
             flow_dir / "repository-graph.md",
@@ -3066,10 +3153,10 @@ def main() -> int:
             f"MSO Artifact Stream Graph — {scope_label(scope)}",
             artifact_stream_view,
         )
-    write_markdown(output_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
+    write_markdown(report_dir / "workflow-ssot-report.md", "MSO Workflow SSOT Report", ssot_report)
     write_markdown(output_dir / "class-layer-map.md", "MSO Workflow Class Layer Map", build_class_layer_map(graph))
     write_markdown(output_dir / "property-map.md", "MSO Workflow Property Map", build_property_map(graph))
-    write_markdown(output_dir / "runtime-analysis.md", "MSO Runtime Graph Analysis", build_runtime_analysis(args.root.resolve()))
+    write_markdown(report_dir / "runtime-analysis.md", "MSO Runtime Graph Analysis", build_runtime_analysis(args.root.resolve()))
     write_markdown(output_dir / "README.md", "MSO Graph Observability Views", build_readme(workflow_dir, ttl_paths, output_dir))
 
     print(f"Wrote graph observability views to {output_dir}")

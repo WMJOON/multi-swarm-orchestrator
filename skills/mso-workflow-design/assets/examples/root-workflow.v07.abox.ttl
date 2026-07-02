@@ -1,0 +1,345 @@
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+
+<https://mso.dev/ontology/workflow#criticaldep/policy-engine__ingestion> a wf:CriticalDependency ;
+    wf:cdFrom "policy-engine" ;
+    wf:cdTo "ingestion" ;
+    wf:description "정책 수립을 위한 상담 데이터 분석 필요" .
+
+<https://mso.dev/ontology/workflow#keydecision/14d03a75> a wf:KeyDecision ;
+    wf:decisionText "RAG 평가 엔진을 GitHub submodule로 관리" ;
+    wf:impactModule "rag-eval" ;
+    wf:rationale "독립적인 버전 관리와 외부 협업 경계를 분리하기 위함" .
+
+<https://mso.dev/ontology/workflow#milestone/m-core-modules-ready> a wf:Milestone ;
+    wf:label "모든 핵심 모듈 완성" ;
+    wf:milestoneDate "2026-05-21" ;
+    wf:milestoneOf <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:status "completed" .
+
+<https://mso.dev/ontology/workflow#milestone/m-testing-complete> a wf:Milestone ;
+    wf:label "모든 모듈 테스트 완료" ;
+    wf:milestoneDate "2026-05-22" ;
+    wf:milestoneOf <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> ;
+    wf:status "pending" .
+
+<https://mso.dev/ontology/workflow#module/policy-engine> a wf:Module ;
+    wf:criticalDep <https://mso.dev/ontology/workflow#module/ingestion> .
+
+<https://mso.dev/ontology/workflow#project/workflow-00> a wf:Project ;
+    wf:created "2026-05-21" ;
+    wf:description "프로젝트 root workflow. 모듈 sub-workflow, artifact supply chain, eval gate를 조율한다." ;
+    wf:label "AI Chatbot 1.0 - Root Workflow" ;
+    wf:owner "owner@example.com" ;
+    wf:version "1.0.0" .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-e-001__measures__development> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> ;
+    wf:railType "measures" ;
+    wf:to <https://mso.dev/ontology/workflow#workflow/workflow-00/development> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-s-002__default__end> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/end> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-s-002__evolves_to__development> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> ;
+    wf:railType "evolves_to" ;
+    wf:to <https://mso.dev/ontology/workflow#workflow/workflow-00/development> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/generated_module-output.md__measured_by__development-e-001> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#artifact/workflow-00_development-oracle/generated_module-output.md> ;
+    wf:railType "measured_by" ;
+    wf:to <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/start__default__development-e-001> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/start> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development/development-s-001__default__end> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/development/development-s-001> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/workflow-00_development/end> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development/start__default__development-s-001> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/workflow-00_development/start> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/development/development-s-001> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_discovery/discovery-s-001__default__end> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/workflow-00_discovery/end> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_discovery/start__default__discovery-s-001> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/workflow-00_discovery/start> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/generated_module-output.md__measured_by__testing-e-001> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#artifact/workflow-00_testing/generated_module-output.md> ;
+    wf:railType "measured_by" ;
+    wf:to <https://mso.dev/ontology/workflow#node/testing/testing-e-001> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/start__default__testing-e-001> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/workflow-00_testing/start> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/testing/testing-e-001> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-e-001__measures__development> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/testing/testing-e-001> ;
+    wf:railType "measures" ;
+    wf:to <https://mso.dev/ontology/workflow#workflow/workflow-00/development> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-s-001__default__end> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/testing/testing-s-001> ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/workflow-00_testing/end> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-s-001__evolves_to__development> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/testing/testing-s-001> ;
+    wf:railType "evolves_to" ;
+    wf:to <https://mso.dev/ontology/workflow#workflow/workflow-00/development> .
+
+<https://mso.dev/ontology/workflow#sc/all_modules_documented> a wf:SuccessCriterion ;
+    wf:scKey "all_modules_documented" ;
+    wf:scValue "모든 모듈 docs/ 문서 작성 완료" .
+
+<https://mso.dev/ontology/workflow#sc/stakeholder_approval> a wf:SuccessCriterion ;
+    wf:scKey "stakeholder_approval" ;
+    wf:scValue "벤더 협업 완료 및 승인" .
+
+<https://mso.dev/ontology/workflow#stream/workflow-00_development/development-s-001__produces_to__generated> a wf:Edge,
+        wf:Stream ;
+    wf:from <https://mso.dev/ontology/workflow#node/development/development-s-001> ;
+    wf:streamType "produces_to" ;
+    wf:to <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated> .
+
+<https://mso.dev/ontology/workflow#stream/workflow-00_development/development-s-001__produces_to__generated_module-output.md> a wf:Edge,
+        wf:Stream ;
+    wf:from <https://mso.dev/ontology/workflow#node/development/development-s-001> ;
+    wf:streamType "produces_to" ;
+    wf:to <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated_module-output.md> .
+
+<https://mso.dev/ontology/workflow#stream/workflow-00_development/src__consumed_by__development-s-001> a wf:Edge,
+        wf:Stream ;
+    wf:from <https://mso.dev/ontology/workflow#artifact/workflow-00_development/src> ;
+    wf:streamType "consumed_by" ;
+    wf:to <https://mso.dev/ontology/workflow#node/development/development-s-001> .
+
+<https://mso.dev/ontology/workflow#stream/workflow-00_discovery/discovery-s-001__produces_to__planning_requirements.md> a wf:Edge,
+        wf:Stream ;
+    wf:from <https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> ;
+    wf:streamType "produces_to" ;
+    wf:to <https://mso.dev/ontology/workflow#artifact/workflow-00_discovery/planning_requirements.md> .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00> a wf:Workflow ;
+    wf:has_subWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development>,
+        <https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle>,
+        <https://mso.dev/ontology/workflow#workflow/workflow-00/discovery>,
+        <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_development-oracle/generated_module-output.md> a wf:Artifact,
+        wf:Node ;
+    rdfs:label "generated/module-output.md" ;
+    wf:locator "generated/module-output.md" .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated> a wf:Artifact,
+        wf:Node ;
+    rdfs:label "generated/" ;
+    wf:locator "generated/" .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated_module-output.md> a wf:Artifact,
+        wf:Node ;
+    rdfs:label "generated/module-output.md" ;
+    wf:locator "generated/module-output.md" .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_development/src> a wf:Artifact,
+        wf:Node ;
+    rdfs:label "src/" ;
+    wf:locator "src/" .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_discovery/planning_requirements.md> a wf:Artifact,
+        wf:Node ;
+    rdfs:label "planning/requirements.md" ;
+    wf:locator "planning/requirements.md" .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_testing/generated_module-output.md> a wf:Artifact,
+        wf:Node ;
+    rdfs:label "generated/module-output.md" ;
+    wf:locator "generated/module-output.md" .
+
+<https://mso.dev/ontology/workflow#module/ingestion> a wf:Module .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-e-001__default__development-s-002__fail> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> ;
+    wf:on "fail" ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-e-001__default__end__pass> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> ;
+    wf:on "pass" ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/end> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-e-001__default__end__pass> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/testing/testing-e-001> ;
+    wf:on "pass" ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/workflow-00_testing/end> .
+
+<https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-e-001__default__testing-s-001__fail> a wf:Edge,
+        wf:Rail ;
+    wf:from <https://mso.dev/ontology/workflow#node/testing/testing-e-001> ;
+    wf:on "fail" ;
+    wf:railType "default" ;
+    wf:to <https://mso.dev/ontology/workflow#node/testing/testing-s-001> .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/start> a wf:Node,
+        wf:Start ;
+    rdfs:label "workflow-00_development-oracle start" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_development/end> a wf:End,
+        wf:Node ;
+    rdfs:label "workflow-00_development end" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_development/start> a wf:Node,
+        wf:Start ;
+    rdfs:label "workflow-00_development start" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_discovery/end> a wf:End,
+        wf:Node ;
+    rdfs:label "workflow-00_discovery end" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_discovery/start> a wf:Node,
+        wf:Start ;
+    rdfs:label "workflow-00_discovery start" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_testing/start> a wf:Node,
+        wf:Start ;
+    rdfs:label "workflow-00_testing start" .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00/discovery> a wf:Workflow ;
+    wf:description "모듈별 요구사항 분석, 범위 정의, 리소스 할당" ;
+    wf:has <https://mso.dev/ontology/workflow#node/discovery/discovery-s-001>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_discovery/end>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_discovery/start> ;
+    wf:label "발견 & 계획" ;
+    wf:status "completed" ;
+    wf:workflowType "base" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/end> a wf:End,
+        wf:Node ;
+    rdfs:label "workflow-00_development-oracle end" .
+
+<https://mso.dev/ontology/workflow#node/workflow-00_testing/end> a wf:End,
+        wf:Node ;
+    rdfs:label "workflow-00_testing end" .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle> a wf:Workflow ;
+    wf:description "development workflow 산출물 품질 평가와 개선 지시 (oracle)" ;
+    wf:has <https://mso.dev/ontology/workflow#node/development-oracle/development-e-001>,
+        <https://mso.dev/ontology/workflow#node/development-oracle/development-s-002>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/end>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_development-oracle/start> ;
+    wf:label "개발 평가 (oracle)" ;
+    wf:status "pending" ;
+    wf:workflowType "oracle" .
+
+<https://mso.dev/ontology/workflow#node/development-oracle/development-s-002> a wf:Execution,
+        wf:Node,
+        wf:Task ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle> ;
+    wf:instruction "평가 결과를 바탕으로 development workflow의 구현 규칙과 산출물을 개선한다." ;
+    wf:label "구현 개선 반영" ;
+    wf:status "pending" .
+
+<https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> a wf:Execution,
+        wf:Node,
+        wf:Task ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/discovery> ;
+    wf:instruction "이해관계자 요구사항과 입력 artifact를 수집한다." ;
+    wf:label "요구사항 수집" ;
+    wf:status "completed" .
+
+<https://mso.dev/ontology/workflow#node/testing/testing-s-001> a wf:Execution,
+        wf:Node,
+        wf:Task ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> ;
+    wf:instruction "통합 평가 결과를 바탕으로 development workflow의 구현 산출물을 개선한다." ;
+    wf:label "테스트 개선 반영" ;
+    wf:status "pending" .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00/testing> a wf:Workflow ;
+    wf:description "통합 테스트와 최종 평가" ;
+    wf:has <https://mso.dev/ontology/workflow#node/testing/testing-e-001>,
+        <https://mso.dev/ontology/workflow#node/testing/testing-s-001>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_testing/end>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_testing/start> ;
+    wf:label "테스트 & 평가" ;
+    wf:status "pending" ;
+    wf:workflowType "oracle" .
+
+<https://mso.dev/ontology/workflow#node/development-oracle/development-e-001> a wf:Eval,
+        wf:Execution,
+        wf:Node ;
+    wf:criteria "unit tests pass" ;
+    wf:harness "unit-test" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-e-001__default__development-s-002__fail>,
+        <https://mso.dev/ontology/workflow#rail/workflow-00_development-oracle/development-e-001__default__end__pass> ;
+    wf:hasSubject "system" ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development-oracle> ;
+    wf:label "구현 품질 평가" ;
+    wf:status "pending" ;
+    wf:targetArtifact "generated/module-output.md" .
+
+<https://mso.dev/ontology/workflow#node/development/development-s-001> a wf:Execution,
+        wf:Node,
+        wf:Task ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/development> ;
+    wf:instruction "설계된 workflow에 따라 핵심 모듈 산출물을 구현한다." ;
+    wf:label "핵심 모듈 구현" ;
+    wf:status "active" .
+
+<https://mso.dev/ontology/workflow#node/testing/testing-e-001> a wf:Eval,
+        wf:Execution,
+        wf:Node ;
+    wf:criteria "integration tests pass" ;
+    wf:harness "integration-test" ;
+    wf:hasBranch <https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-e-001__default__end__pass>,
+        <https://mso.dev/ontology/workflow#rail/workflow-00_testing/testing-e-001__default__testing-s-001__fail> ;
+    wf:hasSubject "system" ;
+    wf:inWorkflow <https://mso.dev/ontology/workflow#workflow/workflow-00/testing> ;
+    wf:label "최종 통합 평가" ;
+    wf:status "pending" ;
+    wf:targetArtifact "generated/module-output.md" .
+
+<https://mso.dev/ontology/workflow#workflow/workflow-00/development> a wf:Workflow ;
+    wf:description "각 모듈의 핵심 기능 개발 및 구현" ;
+    wf:has <https://mso.dev/ontology/workflow#node/development/development-s-001>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_development/end>,
+        <https://mso.dev/ontology/workflow#node/workflow-00_development/start> ;
+    wf:label "개발 & 구현" ;
+    wf:status "active" ;
+    wf:workflowType "base" .
+

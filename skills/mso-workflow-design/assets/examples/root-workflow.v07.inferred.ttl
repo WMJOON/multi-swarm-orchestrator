@@ -1,0 +1,30 @@
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<https://mso.dev/ontology/workflow#node/discovery/discovery-s-001> wf:produces_to <https://mso.dev/ontology/workflow#artifact/workflow-00_discovery/planning_requirements.md> .
+
+<https://mso.dev/ontology/workflow#stream/inferred/src__evidence_of__generated> a wf:Edge,
+        wf:Stream ;
+    wf:derived true ;
+    wf:derivedFrom <https://mso.dev/ontology/workflow#stream/workflow-00_development/development-s-001__produces_to__generated>,
+        <https://mso.dev/ontology/workflow#stream/workflow-00_development/src__consumed_by__development-s-001> ;
+    wf:from <https://mso.dev/ontology/workflow#artifact/workflow-00_development/src> ;
+    wf:streamType "evidence_of" ;
+    wf:to <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated> .
+
+<https://mso.dev/ontology/workflow#stream/inferred/src__evidence_of__generated_module-output.md> a wf:Edge,
+        wf:Stream ;
+    wf:derived true ;
+    wf:derivedFrom <https://mso.dev/ontology/workflow#stream/workflow-00_development/development-s-001__produces_to__generated_module-output.md>,
+        <https://mso.dev/ontology/workflow#stream/workflow-00_development/src__consumed_by__development-s-001> ;
+    wf:from <https://mso.dev/ontology/workflow#artifact/workflow-00_development/src> ;
+    wf:streamType "evidence_of" ;
+    wf:to <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated_module-output.md> .
+
+<https://mso.dev/ontology/workflow#node/development/development-s-001> wf:produces_to <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated>,
+        <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated_module-output.md> .
+
+<https://mso.dev/ontology/workflow#artifact/workflow-00_development/src> wf:consumed_by <https://mso.dev/ontology/workflow#node/development/development-s-001> ;
+    wf:evidence_of <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated>,
+        <https://mso.dev/ontology/workflow#artifact/workflow-00_development/generated_module-output.md> .
+

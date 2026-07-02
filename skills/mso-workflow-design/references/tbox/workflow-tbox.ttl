@@ -90,6 +90,8 @@ wf:dirPath a owl:DatatypeProperty ; rdfs:label "dirPath"@ko ; rdfs:range xsd:str
     rdfs:comment "directory.path. 필수. 교차-스킬(scaffold) 멤버십 대상."@ko .
 wf:dirNote a owl:DatatypeProperty ; rdfs:label "dirNote"@ko ; rdfs:range xsd:string ;
     rdfs:comment "directory 설명 주석. cross-workflow 의존·보안·TTL 힌트 등. 선택."@ko .
+wf:artifactType a owl:DatatypeProperty ; rdfs:label "artifactType"@ko ; rdfs:range xsd:string ;
+    rdfs:comment "artifact 의 소비/운영 의미 분류. directory bnode·Artifact 노드에 선언 가능. 값: knowledge_store | event_store | local_database | table | tool | document | media. TTL 명시값 > index 명시값 > 관측기 추론 순으로 우선한다. 선택."@ko .
 
 # ─── Eval slot-filling 프로퍼티 (schema 없음 — 여기서 직접 정의) ──────────────
 wf:EntitySlot a owl:Class ; rdfs:label "EntitySlot"@ko ;

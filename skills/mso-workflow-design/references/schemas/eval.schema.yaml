@@ -48,7 +48,7 @@ fields:
   evaluator:
     required: false
     type: string
-    description: "평가자 식별자. 예: wmjoon, qa-agent, layout-fit-metric"
+    description: "평가자 식별자. 예: repo-owner, qa-agent, layout-fit-metric"
 
   oracle:
     required: false

@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-design
-version: "0.6.6"
+version: "0.7.0"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
@@ -21,6 +21,18 @@ description: >
 # MSO Workflow Design v2
 
 **Primary**: Repository Scaffolding 위에 workflow, artifact stream, eval의 **node/edge shape**를 TTL ABox로 규정한다. **정본(SSOT-of-record)은 TTL ABox** 이다. YAML 은 legacy migration input 으로만 허용하며, TTL→YAML 역생성 경로는 제공하지 않는다.
+
+> **v0.7.0 Repository Graph (edge-first)**: 정본 어휘가 Rail/Stream 온톨로지로 재설계됐다 —
+> `Repository Graph = Execution Graph(Control Plane, wf:Rail) + Artifact Stream Graph(Data Plane, wf:Stream)`.
+> `wf:Execution ⊃ Task|Decision|Eval` + `hasSubject`(self|human|model|system|workflow) + hand_off
+> (`delegates_to`/`escalates_to` — HITL은 escalates_to→Decision(human) rail) + Start/End Terminal +
+> `measures`(WorkflowGraph closure 측정) + Property Chain(`consumed_by ∘ produces_to = evidence_of`) +
+> Provenance(§6/§7) + Trust 계산(`trust_v07.py`, 저장 금지).
+> 어휘 SSOT는 [references/schemas/v07/](references/schemas/v07/) — `schemas_to_tbox.py`가 TBox/SHACL을 생성한다.
+> 신규 워크플로는 v0.7 어휘로 작성한다. 기존 v0.6 ABox는 `scripts/migrate_abox_v06_to_v07.py`로
+> 변환하고, `validate_abox.py`가 두 어휘를 파일 단위 자동 감지해 검증하며, 관측은 v0.7 native
+> 렌더러(observe_v07)가 담당한다. 아래 본문의 v0.6 어휘 서술은 legacy 호환 대상이다.
+
 **Secondary**: `mso-graph-observability`가 읽을 수 있도록 `wf:Workflow`/`wf:Step`/`wf:Decision`/`wf:Eval`, `wf:directory`, `wf:targetArtifact`, `wf:orderTarget`, `wf:orderArtifact`의 구조 정합성을 점검한다.
 
 > **워크플로 층위 어휘 (3층)**: `global`(전 프로젝트/엄브렐라 루트) = **UUG 영역**. MSO 는 한
@@ -135,9 +147,11 @@ mkdir -p agent-context/workflow
 
 `decision_subject=agent`인 decision은 사람이 매번 승인하지 않으므로 판단 기준을 property로 남긴다. 우선순위는 `decision_criteria` → `threshold` → `pass_criteria` → `success_criteria`이며, 관측 그래프에서는 branch edge label에 조건으로 표시한다. HITL/HITLFE/HOTL/HOOTL은 node property가 아니라, 경로 안에 user decision 또는 user eval이 있는지로 파생하는 repository 운영 분류다.
 
-여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 `Eval`이 아니라 `decision_subject=user` 또는 `decision_subject=agent`인 `Decision`이다. `Decision`은 선택과 판단, 라우팅을 담당한다. 산출물의 품질·정합·수용 가능성·스키마 적합성처럼 산출물을 측정/평가/검증하는 경우는 `Eval`이다. `Eval`은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때 사용한다. 이때 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 tool use를 가리키는 artifact-like target으로 다룬다. 관측 그래프에서는 `artifact -.->|measured_by| Eval`, `Eval --target--> [[workflow]]`, `Eval -.->|on: fail| remediation agentTask`, `remediation agentTask --evolves--> [[workflow]]`, `Eval -.->|on: pass| end`, `Eval -.->|report| artifact` 형태로 표현한다. agentTask가 실행 도구를 위임할 때만 `agentTask --delegates_to--> [[tool]]` 를 별도 표시한다.
+여러 후보 artifact 중 하나를 고르거나 재생산 여부를 판단하는 경우는 `Eval`이 아니라 `decision_subject=user` 또는 `decision_subject=agent`인 `Decision`이다. `Decision`은 선택과 판단, 라우팅을 담당한다. 산출물의 품질·정합·수용 가능성·스키마 적합성처럼 산출물을 측정/평가/검증하는 경우는 `Eval`이다. `Eval`은 NLU engine process, evaluator, corpus 품질, 배포 가능성처럼 대상 artifact/process 자체의 품질·정합성을 판정할 때 사용한다. 이때 `[[process]]`/`[[processing artifact]]`는 workflow control node가 아니라 tool use를 가리키는 artifact-like target으로 다룬다.
 
-workflow 최적화 관점에서 tool 위임이 토큰 효율과 생산성을 높이는지 볼 수 있어야 한다. 따라서 `usesTool`이 있는 agentTask의 artifact 소비/생산 edge는 tool 중심으로 렌더링한다: `artifact --consumes--> tool --produces--> artifact`. agentTask는 workflow edge인 `--delegates_to--> tool`로 남겨 누가 tool에 위임하는지 설명한다. DB는 가능하면 table 단위 artifact(`table:<name>` 또는 sqlite locator `path.db#table`)로 노출한다. `consumes`/`produces`는 1개로 제한하지 않는다. 예를 들어 NLU engine tool은 `labels` table을 읽고 쓰면서 다른 table도 소비할 수 있다. tool 내부 스크립트는 artifact가 아니라 구현이므로 `implementation`/`tool_internal`/`internal` role로 두고 stream edge에서 제외한다.
+TTL 모델링 가이드: tool 위임은 실행 노드의 `wf:usesTool`로 선언하고, DB는 가능하면 table 단위 artifact(`table:<name>` 또는 sqlite locator `path.db#table`)로 노출한다. `consumes`/`produces`는 1개로 제한하지 않는다 — 예를 들어 NLU engine tool은 `labels` table을 읽고 쓰면서 다른 table도 소비할 수 있다. tool 내부 스크립트는 artifact가 아니라 구현이므로 `implementation`/`tool_internal`/`internal` role로 둔다.
+
+> **렌더링 규칙 소유권**: 위 선언들이 Mermaid에서 어떤 edge/shape로 그려지는지(`measured_by`/`delegates_to`/tool 중심 stream 등)는 `mso-graph-observability` SKILL.md가 단일 소유한다. 이 스킬은 TTL 어휘의 의미만 규정한다.
 
 #### Eval 필수 패턴: `artifact -.-> eval --target--> workflow; eval --on:fail--> task --evolves--> workflow; eval --on:pass--> end`
 
@@ -153,8 +167,9 @@ Eval 노드는 반드시 평가 대상 workflow(`wf:target`), 측정 대상 arti
 | **delegates_to** | non-Eval node의 `wf:usesTool` | agentTask가 위임하는 tool/capability |
 | **report** | `wf:orderArtifact` | 평가 결과 report/manifest artifact |
 
-SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Task --evolves--> target Workflow`, `Eval --on:pass--> end`, `Eval` 직접 `wf:next` 금지를 강제한다. Eval target은 자기 자신이 속한 workflow가 될 수 없고, measured artifact는 target workflow의 `Task`/`Decision`이 생산한 artifact여야 한다. Decision은 `wf:hasBranch` 2개 이상이 필수이며, branch와 같은 방향의 `wf:next` 중복은 금지한다 (`.abox.ttl` 저장 시 PostToolUse hook 자동 실행).
-`observe_graph.py --root .` 도 동일 hook에서 자동 실행되어 subgraph/artifact-stream-views 등 observability 산출물을 재생성한다.
+SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Task --evolves--> target Workflow`, `Eval --on:pass--> end`, `Eval` 직접 `wf:next` 금지를 강제한다. Eval target은 자기 자신이 속한 workflow가 될 수 없고, measured artifact는 target workflow의 `Task`/`Decision`이 생산한 artifact여야 한다. Decision은 `wf:hasBranch` 2개 이상이 필수이며, branch와 같은 방향의 `wf:next` 중복은 금지한다.
+
+이 검증 스택 전체는 `scripts/validate_abox.py`가 TTL ABox를 직접 파싱해 실행한다. 소비 프로젝트는 [hooks/workflow-check.sh](hooks/workflow-check.sh)를 `.claude/scripts/`(또는 `.codex/scripts/`)로 복사해 PostToolUse hook으로 등록하면 `.abox.ttl` 저장 시 자동 실행된다 — 검증(설계 게이트)이 먼저 돌고, 통과 시 `observe_graph.py --root .`가 observability 산출물을 재생성한다(투영 전용). hook 등록 절차는 `mso-repository-setup` init 을 따른다.
 
 **Slot-filling Eval**: `wf:hasSlot` + `wf:EntitySlot` 을 선언하면 slot-filling 방식으로 동작한다. 모든 슬롯(`slotFilled=true`)이 충족될 때 `wf:orderArtifact`를 생성하고 `orderTarget` step에 전달한다. 이 경우 `orderArtifact`도 필수다.
 
@@ -192,6 +207,7 @@ SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Ta
 | `wf:dirPath` | ✅ | 상대 경로 또는 파일 경로 |
 | `wf:dirRole` | ✅ | 프로젝트 자유 어휘. 기본: `input` \| `output` \| `input_output` \| `reference` \| `instruction`; 내부 구현: `implementation` \| `tool_internal` \| `internal` |
 | `wf:dirNote` | 선택 | cross-workflow 의존·보안·TTL 힌트 등 자유 텍스트 |
+| `wf:artifactType` | 선택 | `knowledge_store` \| `event_store` \| `local_database` \| `table` \| `tool` \| `document` \| `media` |
 
 ```ttl
 # 예시 — input directory
@@ -204,7 +220,14 @@ SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Ta
     wf:dirRole "output" .
 ```
 
-`artifact_type`(`document`/`media`/`knowledge_store`/`event_store`/`local_database`)은 `observe_graph.py`가 `dirPath` 확장자·경로에서 추론하며, 현재 TTL에 직접 선언하는 방식은 지원하지 않는다.
+`artifact_type`은 directory bnode 또는 `wf:Artifact` 노드에 `wf:artifactType`으로 **TTL에 직접 선언할 수 있다** (v0.6.7). 우선순위는 TTL 명시값 > index(`data_registry`) 명시값 > 관측기 추론(`dirPath` 확장자·경로 휴리스틱) 순이다. 의미 분류의 정본은 이 스킬(TBox)이 소유하고, 관측기 추론은 미선언 시 fallback일 뿐이다.
+
+```ttl
+# 예시 — artifact_type 명시 선언
+<wf:node/my-s-003_dir_db__out> wf:dirPath "data/labeling.db" ;
+    wf:dirRole "output" ;
+    wf:artifactType "local_database" .
+```
 
 #### Event Node 필수 구조
 
@@ -297,16 +320,24 @@ TTL ABox에서는 `wf:has_subWorkflow` 직접 edge로 계층 참조를 표현한
 
 ### Step 3. Validate (필수)
 
-변환 전에 반드시 MOTIF 패턴 준수 검증 실행:
+**TTL ABox(정본) 검증** — `scripts/validate_abox.py`가 SSOT를 직접 파싱해 검증한다:
 
 ```bash
-cd workflow/scripts
-python validate_workflow.py            # 전체 검증
-python validate_workflow.py --module 04.vendor-x  # 단일 모듈
-python validate_workflow.py --strict   # warning까지 error로 승격
+python skills/mso-workflow-design/scripts/validate_abox.py agent-context/workflow
+python skills/mso-workflow-design/scripts/validate_abox.py path/to/one.abox.ttl --json
+python skills/mso-workflow-design/scripts/validate_abox.py agent-context/workflow --strict  # warning도 실패로
 ```
 
-검증 실패 시 변환 단계로 진행할 수 없다.
+검사 항목: ① SHACL 로컬 shape ② uncontrolled feedback loop ③ Eval targetArtifact 정합 ④ directory `dirPath`/`dirRole` 필수 ⑤ Step multi-outgoing(→ Decision 모델링) 경고 ⑥ legacy YAML 잔존 경고. ④~⑥은 SSOT 거버넌스 판정으로 이 스킬이 소유하며, `mso-graph-observability`는 판정 없이 리포트 렌더만 한다.
+
+**legacy YAML 검증** — migration 입력에만 사용:
+
+```bash
+python skills/mso-workflow-design/scripts/wf_node.py validate path/to/workflow.yaml
+python skills/mso-workflow-design/scripts/wf_to_ttl.py validate path/to/workflow.yaml
+```
+
+검증 실패 시 다음 단계로 진행할 수 없다.
 
 ### Step 3-B. Graph Validation — TTL TBox/ABox + SHACL/Feedback Loop Control
 
@@ -527,6 +558,8 @@ pyshacl>=0.31    # migration gate 로컬 shape/feedback-loop 검증
 
 ## 참고 자료
 
+- **TTL ABox 검증기 (SSOT 게이트)**: [scripts/validate_abox.py](scripts/validate_abox.py)
+- **PostToolUse hook 자산**: [hooks/workflow-check.sh](hooks/workflow-check.sh) — validate → observe 순서로 실행
 - **legacy YAML migration input 스펙**: [references/yaml-schema.md](references/yaml-schema.md)
 - **MOTIF 패턴 상세**: [references/motif-patterns.md](references/motif-patterns.md)
 - **Intervention Levels (derived HITL/HITLFE/HOTL/HOOTL)**: [references/gate-levels.md](references/gate-levels.md)

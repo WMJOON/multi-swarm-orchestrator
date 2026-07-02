@@ -1,10 +1,16 @@
 ---
 name: mso-graph-observability
-version: "0.6.6"
+version: "0.7.0"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 ---
 
 # MSO Graph Observability
+
+> **v0.7 Rail/Stream native (A-phase)**: `wf:workflowType`이 선언된 workflow는
+> `scripts/observe_v07.py`가 **Rail/Stream 인스턴스를 직접 순회**해 렌더한다 —
+> 호환 projection 불필요, artifact_type은 명시 `wf:artifactType`만 표시(추론 없음),
+> Start/End는 정본 노드 렌더, `[[Executor]]` + `realizedBy`(Skill=sub-workflow) 지원.
+> 같은 scope의 v0.6 렌더 경로는 자동으로 건너뛴다. v0.6 어휘 workflow는 기존 경로 유지.
 
 MSO의 **그래프 관측 레이어**다. `mso-workflow-design`이 workflow/artifact/eval TTL ABox를 설계 원본으로 관리하고 `mso-work-memory`가 작업 기억과 로그를 축적한다면, 이 스킬은 그 그래프들을 읽어 사람이 운영 상태를 빠르게 파악할 수 있는 뷰와 개선 리포트를 만든다.
 
@@ -14,17 +20,19 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 
 - 원본 그래프가 SSOT다. 관측 Markdown/metrics는 파생 산출물이므로 직접 편집하지 않는다.
 - workflow topology 입력은 TTL ABox뿐이다. YAML은 legacy migration 입력일 뿐 Mermaid topology 생성 입력으로 쓰지 않는다.
-- 관측 결과는 기본적으로 `agent-context/observability/graph/` 아래에 둔다. workflow별 뷰는 `graph/<workflow-scope>/` 폴더로 묶는다.
+- 출력 규약 (2026-07-02): **분석 리포트는 `agent-context/observability/*`**, **시각화 md는 `agent-context/observability/graph/*`**. workflow별 뷰는 `graph/<workflow-scope>/` 폴더로 묶는다.
 - 시각적으로 보는 1차 대상은 workflow graph다.
 - workflow별 관측 뷰는 세 가지로 분리한다. `artifact-stream`은 `artifact --consumes--> task --produces--> artifact` supply chain을, `workflow`는 TTL의 `wf:next`/`wf:gotoNode` control edge만으로 `((start)) --next--> node --next--> ((end))` spine을 렌더링하며, `integrated`는 둘을 한 화면에 함께 보여준다.
 - TTL 원본의 node/edge shape를 수정하지 않는다. 누락·과잉·bypass 후보는 `artifact-stream-report.md`와 runtime analysis 같은 개선 리포트로 제안한다.
+- **TTL에 없는 의미를 창작하지 않는다.** 제어 edge가 2개 이상인 `wf:Step`을 Decision으로 승격해 그리지 않고, `⚠ multi-outgoing — model as wf:Decision` shape-violation 스타일로 있는 그대로 표기한다 (v0.6.7). 해당 결함의 판정·경고는 `mso-workflow-design`의 `validate_abox.py`(설계 게이트) 소관이다.
+- SSOT 거버넌스 판정(legacy YAML 제거 후보/migration blocker 등)도 `validate_abox.py`가 소유한다. `workflow-ssot-report.md`는 같은 신호를 사람이 읽는 리포트로 투영할 뿐이다.
 - work-memory/runtime analysis에서 반복 실패·결정 drift·artifact consumer 누락을 발견하면 graph Markdown을 고치지 않는다. 해당 signal을 evidence로 삼아 workflow TTL ABox를 갱신하고 graph를 재생성한다.
 - 같은 target Artifact id로 이어지는 stream은 하나의 workflow로 볼 수 있다. 분기되거나 서로 다른 방식으로 소비되는 stream은 같은 workflow 내부 branch가 아니라 별도 workflow boundary 후보로 해석한다.
 - MSO는 Data Pipeline이 아니라 Artifact Supply Chain을 관측한다. Artifact는 repository가 관리하는 단위이고, Data는 Artifact 내부 표현 방식이며, Knowledge는 Data가 해석되었을 때 얻어지는 의미 계층이다.
 - Artifact node는 `artifact_type`, `data_type`, `location`을 가진 관측 노드다. `data_type`은 저장/접근 매체(local_file/api/mcp/database 등), `artifact_type`은 소비/운영 의미를 뜻한다.
 - 지원 `artifact_type`: `knowledge_store`(ontology.ttl, workflow.ttl), `event_store`(work-memory/auditlog jsonl), `local_database`(sqlite/cache), `table`(DB table), `tool`(agentTask tool use), `document`(README/report/prompt), `media`(html/pdf/pptx/png/svg).
 - 현재 TTL에서는 `wf:directory`를 `data_type=local_file`로 해석하되, `agent-context/index/index.yaml` 또는 `index.yaml`의 `data_registry`/module/subdir registry를 통해 `location=index:<artifact-id>`로 렌더링한다. 실제 path/API endpoint/MCP resource는 `locator`로 분리한다.
-- `artifact_type`은 index의 명시값이 우선한다. 기존 `resource_kind=file|data`는 호환 alias로 읽어 `document|media` 또는 machine-native artifact로 매핑한다. 명시값이 없으면 locator/detail/role/data_type으로 보수적으로 추론한다.
+- `artifact_type` 우선순위는 **TTL 명시값(`wf:artifactType`) > index 명시값 > 관측기 추론** 이다 (v0.6.7). 의미 분류 어휘의 정본은 `mso-workflow-design` TBox가 소유하고, 이 스킬의 추론은 미선언 artifact에 대한 fallback일 뿐이다. 기존 `resource_kind=file|data`는 호환 alias로 읽어 `document|media` 또는 machine-native artifact로 매핑한다. 명시값이 없으면 locator/detail/role/data_type으로 보수적으로 추론한다.
 - Mermaid graph 안의 Artifact node label은 `DOCUMENT|MEDIA|KNOWLEDGE STORE|EVENT STORE|LOCAL DATABASE`와 `id`만 표시한다. `artifact_type`, `primary_consumer`, `medium`, `location`, `locator`, `detail`은 graph 아래 `Artifact Node Index` 표로 분리해 시각적 복잡도를 낮춘다.
 - `artifact-stream-report.md`는 생산됐지만 같은 workflow 안에서 소비되지 않는 Artifact를 점검한다. 각 항목은 `cross-workflow <artifact_type> artifact`, `missing agent consumer for <artifact_type>`, `terminal/review document candidate`, `terminal media deliverable candidate`, `external input (<artifact_type>)` 힌트로 분류한다.
 - Artifact stream review는 생산량 자체가 아니라 소비자 적합성을 본다. Markdown 같은 `document`는 Agent/User review, handoff, eval, prompt/context reuse 소비자가 workflow 안에 있을 때만 유지하고, 소비자가 없으면 생략하거나 장기 조회·추론 목적에 맞춰 JSONL/TTL/SQLite 계열 machine-native Artifact로 구조화한다.
@@ -68,10 +76,18 @@ Trigger phrases: graph observability, 그래프 관측, mso graph, workflow obse
 
 ## Outputs
 
-기본 출력 디렉토리:
+기본 출력 디렉토리 (2026-07-02 규약):
 
 ```bash
-agent-context/observability/graph/
+agent-context/observability/          # 분석 리포트
+├── artifact-stream-report.md
+├── workflow-ssot-report.md
+├── runtime-analysis.md
+├── trust-report.md                   # hook의 trust_v07.py 단계가 생성 (v0.10.0)
+└── graph/                            # 시각화 md
+    ├── README.md · workflow-subgraph-index.md · oracle-graph.md
+    ├── class-layer-map.md · property-map.md
+    └── <scope>/{repository,workflow,artifact-stream}-graph.md
 ```
 
 `workflow` scope 생성 파일:
@@ -95,9 +111,11 @@ agent-context/observability/graph/
 python skills/mso-graph-observability/scripts/observe_graph.py --root .
 ```
 
-> **자동 실행**: 프로젝트의 PostToolUse hook(`workflow-check.sh`)이 `*.abox.ttl` 저장 시
-> `validate_abox.py` 검증 후 자동으로 위 CLI를 실행한다. 수동 실행은 ABox 없이 스크립트를 직접
-> 테스트하거나 YAML만 수정했을 때만 필요하다.
+> **자동 실행**: `mso-workflow-design`의 hook 자산
+> [hooks/workflow-check.sh](../mso-workflow-design/hooks/workflow-check.sh)를 프로젝트
+> `.claude/scripts/`(또는 `.codex/scripts/`)에 복사해 PostToolUse hook으로 등록하면,
+> `*.abox.ttl` 저장 시 `validate_abox.py` 검증(설계 게이트) 통과 후 자동으로 위 CLI를
+> 실행한다. 수동 실행은 ABox 없이 스크립트를 직접 테스트하거나 YAML만 수정했을 때만 필요하다.
 
 예제 TTL만 대상으로 테스트할 때:
 

@@ -1,19 +1,49 @@
 # 변경 이력
 
-## v0.6.6 (2026-07-02) — Artifact supply-chain gates
+## v0.7.0 (2026-07-02) — Repository Graph: edge-first ontology (Rail/Stream)
 
-> **Artifact supply chain의 생산·소비·측정 edge를 분리하고, Decision/Eval gate shape를 강화.** 실행 노드가 artifact를 생산하고 artifact가 실행/판단 노드로 소비되며, Eval은 소비자가 아니라 measured artifact를 기준으로 workflow를 평가한다.
+> **Repository Graph = Execution Graph(Control Plane) + Artifact Stream Graph(Data Plane).** edge를 일급 인스턴스로 승격하고, Execution 주체(hand_off)·WorkflowGraph 평가 단위·Property Chain·Provenance·Trust 계산까지 온톨로지 레이어 v0.7~v0.10을 한 릴리스로 담았다.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| Rail/Stream 온톨로지 | `wf:Edge ⊃ Rail(제어)/Stream(공급망)` reification. railType: default/reads/delegates_to/escalates_to/measured_by/measures/evolves_to/tests_to. streamType: consumed_by/produces_to/evidence_of. 소스 SSOT는 `references/schemas/v07/{tbox,shapes}.ttl`, `schemas_to_tbox.py`가 생성·drift 가드. |
+| Execution 모델 | `wf:Execution ⊃ Task/Decision/Eval` + `hasSubject`(self\|human\|model\|system\|workflow, 기본 self) + `subjectDetail`/`realizedBy`(Skill=sub-workflow). hand_off는 Execution→Execution 주체 전환 — HITL은 `escalates_to → Decision(human)` rail로 파생. |
+| Terminal | `wf:Terminal ⊃ Start/End`. workflow당 Start=1, End≥1. Task out default-Rail 정확히 1 — 다중 분기는 shape 수준에서 불가능. |
+| WorkflowGraph 평가 | `Eval --measures--> Workflow` = 소비 Artifact + Execution + 생산 Artifact closure 측정. `metricDimension` 7종. oracle 대상(evolves_to/tests_to)은 Workflow ∪ **Artifact** — 지식 artifact(prompt/ontology/KB)도 개선 대상. |
+| Property Chain | `consumed_by ∘ produces_to = evidence_of` — OWL 공리(술어 projection) + `materialize_v07.py` SPARQL 파생. derived Stream은 `wf:derived`+`derivedFrom`로 표시, `.inferred.ttl` sibling 출력(정본 불변·멱등), 관측 `evidence_of*` 표기. |
+| Provenance | Artifact: author/version/timestamp/validation/coverage/confidence (PROV-O 정렬 주석). Execution: method/policy/timestamp. SHACL은 값 형식만 오류, 충족은 validator 커버리지 경고. |
+| Trust 계산 | `trust_v07.py` — Trust Policy(내장+YAML 재정의) 기반 Artifact/Execution/WorkflowGraph/repository trust + evidence 계보 전파(GIGO) + `measures` rail별 Oracle Decision 제안. **Trust는 저장하지 않는다** — 산출물은 리포트/JSON뿐. |
+| validate_abox.py | TTL ABox(SSOT) 직접 검증 진입점. v0.6/v0.7 파일 단위 자동 감지 이중 스택. v0.7: SHACL + oracle disjoint/partition/loop control python 검사. v0.6: SHACL + directory shape + step multi-outgoing/legacy YAML 거버넌스 경고. |
+| migrate_abox_v06_to_v07.py | v0.6→v0.7 변환. legacy Phase→Workflow 승격, judge→hasSubject, goto 문자열 전역 해석, usesTool→위임 Execution 합성, Start/End 합성, wf:target→measures rail. |
+| observe_v07.py | Rail/Stream native 렌더러 — 호환 projection 없이 직접 순회. Start/End 정본 렌더, hand_off/measures edge, artifactType 무추론(unspecified 표기), provenance 열. |
+| workflow-check.sh | hook 자산: `.abox.ttl` 저장 시 validate → materialize → trust report → observe 체인 자동 실행. |
 
 ### Changed
 
 | 변경 | 내용 |
 |------|------|
-| artifact edge ownership | `wf:produces` domain을 `Workflow`에서 `Node`로, `wf:consumes` range를 `Workflow`에서 `Node`로 정렬. Eval은 consume/check 대상이 아니라 `wf:measures`로 연결. |
-| decision branch shape | Decision은 최소 2개 branch를 요구하고, branch `gotoNode`와 같은 방향의 `wf:next` 중복을 validator가 실패 처리. |
-| eval measured artifact shape | Eval의 `targetArtifact`/measured artifact가 target workflow 안의 Task/Decision 생산물과 일치해야 함. |
-| graph observability | workflow graph, artifact-stream graph, repository graph를 workflow scope별로 분리하고, produced artifact와 measured artifact가 같은 Mermaid data node를 공유. |
-| migration path | legacy `phases`→`workflows`, `type: validation`→`type: eval` 정리를 위한 `migrate_phases_to_workflows.py` 안내와 테스트 보강. |
-| 버전 정렬 | README, changelog, 모든 MSO skill frontmatter, repository interaction test 기대값을 v0.6.6으로 정렬. |
+| 출력 규약 | 분석 리포트는 `agent-context/observability/*`, 시각화 md는 `agent-context/observability/graph/*`로 분리. 구 배치 리포트 잔재는 자동 제거. |
+| 경계 정리 (v0.6.7) | Mermaid 렌더 규칙 서술을 observability SKILL 단일 소유로 이동. 관측기의 Step→Decision 조용한 승격 제거(shape-violation 표기). artifact_type은 TTL 명시 선언(`wf:artifactType`) > index > 추론. SSOT 거버넌스 판정은 validate_abox 소유. |
+| v0.6 호환 | `wf_v07.project_v06_compat`는 deprecated — 외부 v0.6 소비자 전환 지원용만 유지. |
+
+
+## v0.6.6 (2026-07-02) — Workflow shape and observability hardening
+
+> **Workflow는 workflow로, 선택은 Decision으로, 산출물 측정은 Eval로 고정.** phase/validation 잔재를 정본 topology에서 제거하고, graph observability가 Mermaid 문서형 노드와 Eval target/measured artifact 관계를 명확히 렌더링하도록 강화했다.
+
+### Changed
+
+| 변경 | 내용 |
+|------|------|
+| workflow shape guard | Eval은 target workflow와 targetArtifact를 가져야 하며, targetArtifact는 target workflow의 Task/Decision 산출물이어야 한다. Eval/Decision은 2개 이상의 branch를 가져야 하고, branch와 같은 방향의 중복 `next` edge를 금지한다. |
+| decision/eval wording | 선택·판단·라우팅은 Decision, 산출물 측정·평가·검증은 Eval이라는 설명을 `mso-workflow-design`에 정렬했다. |
+| legacy migration | YAML의 `phases`를 `workflows`로, `type: validation`을 `type: eval`로 전환하는 migration script와 regression test를 추가했다. |
+| observability renderer | repository/workflow/artifact graph가 Mermaid 문서형 artifact, Eval `target` edge, measured artifact identity, dotted `delegates_to` edge를 안정적으로 렌더링하도록 개선했다. |
+| TBox/SHACL sync | workflow TBox와 generated SHACL shape를 새 Eval/Decision/Artifact stream 제약에 맞춰 재생성했다. |
+| 민감정보 정리 | 배포 파일에 남아 있던 개인 식별 예시 owner/evaluator를 generic fixture로 치환하고, secret/token/absolute path 후보 스캔을 통과했다. |
+| 버전 정렬 | README, changelog, 모든 MSO skill frontmatter 버전을 v0.6.6으로 정렬. |
 
 ## v0.6.5 (2026-07-01) — Eval artifact provenance
 

@@ -1,0 +1,191 @@
+@prefix wf:   <https://mso.dev/ontology/workflow#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MSO Workflow TBox v0.7.0-r2 — Execution/hand_off/WorkflowGraph (SOURCE fragment)
+#
+# SPEC: planning/mso-v0.7.0-SPEC-rail-stream-ontology.md (§6-B r2, D-13~D-16)
+# ROADMAP: planning/mso-ROADMAP-v0.x-repository-graph.md (§0 연구 기원)
+# Repository Graph = Execution Graph(Control Plane, wf:Rail)
+#                  + Artifact Stream Graph(Data Plane, wf:Stream)
+#
+# r2 핵심 (2026-07-02 확정):
+# - 실행 노드의 상위 개념은 wf:Execution. Task/Decision/Eval은 그 유형 (D-13).
+# - 모든 Execution은 hasSubject(self|human|model|system|workflow)를 가진다.
+#   기본값 self — 자기 실행 환경에서 직접 수행 (D-14).
+# - 주체 전환은 hand_off rail(delegates_to|escalates_to) — Execution → Execution.
+#   Workflow 형태는 바뀌지 않는다, 주체만 바뀐다. HITL = escalates_to →
+#   Execution(hasSubject=human, type=Decision) (D-15). Executor 클래스는 제거되고
+#   hasSubject 어휘 + subjectDetail/realizedBy 로 이동했다.
+# - 평가 단위는 WorkflowGraph = Consumed Artifact + Execution Graph + Produced
+#   Artifact. Eval --measures--> Workflow 는 그 graph closure를 측정한다 (D-16).
+#
+# 이 파일이 v0.7 어휘의 SSOT다. schemas_to_tbox.py 가
+# references/tbox/workflow-tbox-v07.ttl 로 생성한다.
+# ⚠ v0.6 어휘와 클래스명 일부 공유(wf:Task/Decision/Eval) — Q-4(a) 확정.
+#   v0.6/v0.7 판별은 클래스명이 아니라 wf:Rail/wf:Stream/wf:Execution 존재로 한다.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Node 층 ────────────────────────────────────────────────────────────────
+
+wf:Node a owl:Class ; rdfs:label "Node"@ko ;
+    rdfs:comment "Repository Graph의 정점. Execution/Artifact/Terminal(Start/End)의 상위."@ko .
+
+wf:Execution a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Execution"@ko ;
+    rdfs:comment "실행 단위의 상위 개념 (D-13). Task/Decision/Eval의 상위. 모든 Execution은 hasSubject를 가진다(기본 self). '무엇을 실행하는가'뿐 아니라 '누가 실행하는가'를 함께 표현한다."@ko .
+
+wf:Task a owl:Class ; rdfs:subClassOf wf:Execution ; rdfs:label "Task"@ko ;
+    rdfs:comment "순차 실행 Execution. out default-Rail 정확히 1. 분기 불가 — 분기는 Decision. (r2: Execution의 한 유형, v0.6 Step 승계)"@ko .
+
+wf:Decision a owl:Class ; rdfs:subClassOf wf:Execution ; rdfs:label "Decision"@ko ;
+    rdfs:comment "선택/판단/라우팅 Execution. hasBranch Rail 2개 이상, 각 Rail에 on 필수. HITL은 이 노드의 속성이 아니라 escalates_to rail + hasSubject=human 으로 파생된다."@ko .
+
+wf:Eval a owl:Class ; rdfs:subClassOf wf:Execution ; rdfs:label "Eval"@ko ;
+    rdfs:comment "측정/평가/검증 Execution. in measured_by Rail(증거) + measures Rail(평가 단위: WorkflowGraph closure) 필수. OracleWorkflow에만 속한다."@ko .
+
+wf:Artifact a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Artifact"@ko ;
+    rdfs:comment "공급망 산출물 정식 노드 (Artifact First — Document/Prompt/Policy/Ontology/KB/Dataset/DB 전부). locator + artifactType 보유."@ko .
+
+wf:Terminal a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Terminal"@ko ;
+    rdfs:comment "Execution Graph의 경계 노드 상위 개념 (ROADMAP §2). Start/End의 상위. Execution이 아니며 Stream에 참여하지 않는다."@ko .
+
+wf:Start a owl:Class ; rdfs:subClassOf wf:Terminal ; rdfs:label "Start"@ko ;
+    rdfs:comment "Execution Graph 진입 terminal. workflow당 정확히 1. in-Rail 0, out default-Rail 1 이상."@ko .
+
+wf:End a owl:Class ; rdfs:subClassOf wf:Terminal ; rdfs:label "End"@ko ;
+    rdfs:comment "Execution Graph 종료 terminal. workflow당 1 이상. out-Rail 0."@ko .
+
+# ─── Edge 층 (reification) ──────────────────────────────────────────────────
+
+wf:Edge a owl:Class ; rdfs:label "Edge"@ko ;
+    rdfs:comment "일급 edge. Rail(제어)/Stream(공급망)의 상위. from/to로 정점 연결."@ko .
+
+wf:Rail a owl:Class ; rdfs:subClassOf wf:Edge ; rdfs:label "Rail"@ko ;
+    rdfs:comment "Execution Graph(Control Plane) edge. railType ∈ default|reads|delegates_to|escalates_to|measured_by|measures|evolves_to|tests_to. 파생 분류: layer(base: default/reads/delegates_to/escalates_to · oracle: measured_by/measures/evolves_to/tests_to), hand_off(delegates_to|escalates_to) — 저장하지 않는다."@ko .
+
+wf:Stream a owl:Class ; rdfs:subClassOf wf:Edge ; rdfs:label "Stream"@ko ;
+    rdfs:comment "Artifact Stream Graph(Data Plane) edge. streamType ∈ consumed_by|produces_to|evidence_of. bipartite: Artifact↔Execution 또는 Artifact→Artifact(evidence_of). property chain: consumed_by ∘ produces_to = evidence_of (추론, v0.8.0)."@ko .
+
+wf:from a owl:ObjectProperty ; rdfs:label "from"@ko ;
+    rdfs:domain wf:Edge ; rdfs:range wf:Node ;
+    rdfs:comment "edge 출발 정점."@ko .
+
+wf:to a owl:ObjectProperty ; rdfs:label "to"@ko ;
+    rdfs:domain wf:Edge ; rdfs:range wf:Node ;
+    rdfs:comment "edge 도착 정점."@ko .
+
+wf:railType a owl:DatatypeProperty ; rdfs:label "railType"@ko ;
+    rdfs:domain wf:Rail ; rdfs:range xsd:string ;
+    rdfs:comment "default | reads | delegates_to | escalates_to | measured_by | measures | evolves_to | tests_to. hand_off = delegates_to|escalates_to의 상위 개념(파생). tests_to는 v0.6 exercises 완전 흡수(Q-1). evolves_to/tests_to의 to는 Workflow|Artifact (D-12). measures의 to는 Workflow — graph closure 측정 (D-16)."@ko .
+
+wf:streamType a owl:DatatypeProperty ; rdfs:label "streamType"@ko ;
+    rdfs:domain wf:Stream ; rdfs:range xsd:string ;
+    rdfs:comment "consumed_by | produces_to | evidence_of (D-11 확정: consumed_by 표준)."@ko .
+
+wf:on a owl:DatatypeProperty ; rdfs:label "on"@ko ;
+    rdfs:domain wf:Rail ; rdfs:range xsd:string ;
+    rdfs:comment "branch routing case (예: approved/rejected, fail/pass). hasBranch로 연결된 Rail에 필수."@ko .
+
+wf:criteria a owl:DatatypeProperty ; rdfs:label "criteria"@ko ;
+    rdfs:comment "판단/평가 기준. hasSubject가 human이 아닌 Decision의 branch Rail에 필수."@ko .
+
+wf:hasBranch a owl:ObjectProperty ; rdfs:label "hasBranch"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range wf:Rail ;
+    rdfs:comment "Execution → 분기 out-Rail 링크. branch는 별도 노드가 아니라 on/criteria를 가진 Rail이다 (D-8)."@ko .
+
+# ─── Execution 주체 (D-14, D-15) ─────────────────────────────────────────────
+
+wf:hasSubject a owl:DatatypeProperty ; rdfs:label "hasSubject"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range xsd:string ;
+    rdfs:comment "실행 주체: self | human | model | system | workflow. 기본값 self(자기 실행 환경에서 직접 수행 — 미선언 시 self로 해석). v0.6 매핑: user→human, agent→self, metric→system (Q-6 확정). hand_off rail의 to Execution은 self가 아닌 주체를 가진다."@ko .
+
+wf:subjectDetail a owl:DatatypeProperty ; rdfs:label "subjectDetail"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range xsd:string ;
+    rdfs:comment "주체 식별 상세 (예: 모델명, tool 식별자 '[[nlu engine]]', 시스템명). 선택."@ko .
+
+wf:realizedBy a owl:ObjectProperty ; rdfs:label "realizedBy"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range wf:Workflow ;
+    rdfs:comment "hasSubject=workflow인 위임 Execution이 자기 Execution Graph를 가진 Workflow(=Skill)로 실현됨. Skill = sub-workflow (D-3, r2에서 domain을 Executor→Execution으로 이동)."@ko .
+
+# ─── Artifact property ──────────────────────────────────────────────────────
+
+wf:locator a owl:DatatypeProperty ; rdfs:label "locator"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range xsd:string ;
+    rdfs:comment "물리 위치 (상대 경로 / URI / db#table). v0.6 dirPath 승계."@ko .
+
+# wf:artifactType 은 v0.6.7 정의(workflow-tbox.ttl)를 공유한다.
+
+# ─── Eval 측정 (D-16) ────────────────────────────────────────────────────────
+
+wf:metricDimension a owl:DatatypeProperty ; rdfs:label "metricDimension"@ko ;
+    rdfs:domain wf:Eval ; rdfs:range xsd:string ;
+    rdfs:comment "다목적 측정 차원: trust | quality | cost | speed | safety | robustness | resource_usage. 0..n. Evaluation은 WorkflowGraph 전체를 이 차원들로 측정한다 (ROADMAP §0)."@ko .
+
+# ─── Provenance 층 (v0.9.0, ROADMAP §6·§7 / SPEC mso-v0.9.0) ─────────────────
+# 모든 Artifact와 Execution은 Provenance를 가진다. 어휘 정본은 MSO(wf:)이며
+# W3C PROV-O 정렬은 주석으로 문서화한다 (D-23, 운영 원칙 3). 소비 팩(MSM 등)은
+# 이 어휘로 정렬한다. 충족 강제는 SHACL 오류가 아니라 validate_abox 커버리지
+# 경고다 (D-22 — A-phase에서 knowledge_store 계열부터 필수 승격 검토).
+
+wf:author a owl:DatatypeProperty ; rdfs:label "author"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range xsd:string ;
+    rdfs:comment "작성/생성 주체 식별 (§6). PROV-O 정렬: ≈ prov:wasAttributedTo."@ko .
+wf:version a owl:DatatypeProperty ; rdfs:label "version"@ko ;
+    rdfs:comment "artifact 버전 (§6). Workflow의 version(v0.6 meta)과 어휘 공유."@ko .
+wf:timestamp a owl:DatatypeProperty ; rdfs:label "timestamp"@ko ;
+    rdfs:range xsd:dateTime ;
+    rdfs:comment "생성/갱신/실행 시각 (§6·§7). Artifact·Execution 공용. 실행 도구가 기록한다 — LLM 추정 생성 금지 (운영 원칙 4). PROV-O 정렬: ≈ prov:generatedAtTime."@ko .
+wf:validation a owl:DatatypeProperty ; rdfs:label "validation"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range xsd:string ;
+    rdfs:comment "검증 상태/참조 (§6) — 예: 'validate_abox pass @sha', SHACL report 경로."@ko .
+wf:coverage a owl:DatatypeProperty ; rdfs:label "coverage"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range xsd:decimal ;
+    rdfs:comment "커버리지 0..1 (§6)."@ko .
+wf:confidence a owl:DatatypeProperty ; rdfs:label "confidence"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range xsd:decimal ;
+    rdfs:comment "선언된 신뢰 확신도 0..1 (§6). Trust Score가 아니다 — Trust는 계산값(§8, v0.10.0)이며 저장하지 않는다 (D-24)."@ko .
+
+wf:method a owl:DatatypeProperty ; rdfs:label "method"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range xsd:string ;
+    rdfs:comment "ExecutionMethod (§7): prompt | script | workflow | api | manual."@ko .
+wf:policy a owl:DatatypeProperty ; rdfs:label "policy"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range xsd:string ;
+    rdfs:comment "실행에 적용된 정책 식별/참조 (§7). Trust Policy(§8)의 입력."@ko .
+
+# ─── Property Chain 층 (v0.8.0, ROADMAP §5 / SPEC mso-v0.8.0) ────────────────
+# 저장 관계 vs 추론 관계의 분리. Stream은 reified 인스턴스이므로 chain 공리는
+# 술어-레벨 projection에 선언(semantic-web interop, MSM RBox 정렬 — D-17)하고,
+# 실제 파생은 materialize_v07.py 가 derived Stream 인스턴스로 합성한다.
+
+wf:consumed_by a owl:ObjectProperty ; rdfs:label "consumed_by"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range wf:Execution ;
+    rdfs:comment "Stream(consumed_by)의 술어 projection. materialize가 인스턴스에서 파생 emit."@ko .
+wf:produces_to a owl:ObjectProperty ; rdfs:label "produces_to"@ko ;
+    rdfs:domain wf:Execution ; rdfs:range wf:Artifact ;
+    rdfs:comment "Stream(produces_to)의 술어 projection."@ko .
+wf:evidence_of a owl:ObjectProperty ; rdfs:label "evidence_of"@ko ;
+    rdfs:domain wf:Artifact ; rdfs:range wf:Artifact ;
+    owl:propertyChainAxiom ( wf:consumed_by wf:produces_to ) ;
+    rdfs:comment "근거 관계. consumed_by ∘ produces_to = evidence_of (ROADMAP §5). 소비된 Artifact는 그 Execution이 생산한 Artifact의 근거다."@ko .
+
+wf:derived a owl:DatatypeProperty ; rdfs:label "derived"@ko ;
+    rdfs:domain wf:Edge ; rdfs:range xsd:boolean ;
+    rdfs:comment "true면 추론으로 합성된 edge — 저장 관계가 아니다 (D-18). materialize_v07.py 출력(.inferred.ttl)에만 존재하며 SSOT .abox.ttl에 두지 않는다 (D-19)."@ko .
+wf:derivedFrom a owl:ObjectProperty ; rdfs:label "derivedFrom"@ko ;
+    rdfs:domain wf:Edge ; rdfs:range wf:Edge ;
+    rdfs:comment "파생의 근거가 된 원본 edge 인스턴스 (파생 provenance, §6 선행)."@ko .
+
+# ─── Workflow 층 ────────────────────────────────────────────────────────────
+
+wf:workflowType a owl:DatatypeProperty ; rdfs:label "workflowType"@ko ;
+    rdfs:domain wf:Workflow ; rdfs:range xsd:string ;
+    rdfs:comment "base | oracle. Eval은 oracle workflow에만 속할 수 있다 (D-9)."@ko .
+
+wf:has a owl:ObjectProperty ; rdfs:label "has"@ko ;
+    rdfs:domain wf:Workflow ; rdfs:range wf:Node ;
+    rdfs:comment "workflow membership. WorkflowGraph = 소비 Artifact + Execution Graph + 생산 Artifact (D-16) — has는 Execution/Terminal/Artifact 전반을 담고, 소비/생산 closure는 Stream에서 유도한다. 서로 다른 Workflow는 같은 Execution을 공유할 수 없다 (partition, D-10)."@ko .
+
+# wf:Workflow, wf:has_subWorkflow 는 v0.6 TBox 정의를 공유한다.
