@@ -1,6 +1,6 @@
 ---
 name: mso-repository-setup
-version: "0.6.6"
+version: "0.6.7"
 description: >
   MSO 스킬 팩의 init 진입점. 새 프로젝트(또는 기존 프로젝트)에 agent-context/
   표준 디렉토리 트리를 부트스트랩하고 mso-scaffold-design + mso-workflow-design +
@@ -12,7 +12,10 @@ description: >
   (4) work-memory hook(auditlog·worklog·work-memory-check) 과 scaffold-check hook 을
       .claude/ 또는 .codex/ 에 copy-form 으로 자동 등록 (--hook, --provider),
   (5) artifact stream TTL이 있으면 index/sub_index/data_registry 스캔·연결을 점검할
-      후속 진입점(mso-scaffold-design, mso-graph-observability)을 안내.
+      후속 진입점(mso-scaffold-design, mso-graph-observability)을 안내,
+  (6) uug-grounding 연동: UserPromptSubmit 시 UUG가 grounding한 target_project 가
+      현재 레포와 다르면 그 프로젝트 agent-context 위치를 넛지(uug-context-hook,
+      Claude 전용, --hook 시 자동 등록).
 ---
 
 # MSO Repository Setup
@@ -43,8 +46,8 @@ python scripts/init.py --target /path/to/project [--name "Project Name"]
 │       └── insight-record/{episodes, patterns, principles}/
 ├── .gitignore                        # agent-context/work-memory/.zvec/, .claude/state/ 등록
 ├── .claude/                          # --hook --provider claude 시 (copy-form)
-│   ├── settings.json                 # Stop·PreCompact·PostToolUse hook 등록
-│   ├── scripts/                      # auditlog.py · commit-work-memory.sh · work-memory-check.sh · stop-check.sh · scaffold-check.sh · sf_node.py 사본
+│   ├── settings.json                 # Stop·PreCompact·PostToolUse·UserPromptSubmit hook 등록
+│   ├── scripts/                      # auditlog.py · commit-work-memory.sh · work-memory-check.sh · stop-check.sh · scaffold-check.sh · sf_node.py · uug-context-hook.py 사본
 │   └── references/schemas/           # scaffold index schema 사본
 └── .codex/                           # --hook --provider codex 시 (copy-form)
     ├── config.toml                   # Stop·PreCompact·SessionStart hook 등록
@@ -70,6 +73,11 @@ Codex는 `.codex/scripts/` 로 복사하고 `.codex/config.toml`을 `$CODEX_PROJ
 함께 갱신한다. `scaffold-check.sh` 는 `sf_node.py validate/inventory` 를 실행해
 index SSOT 와 실제 디렉토리의 불일치를 non-blocking guardrail 로 알린다.
 `--worthy-paths` 는 "결정 가치 있는" 경로(`WM_WORTHY_PATHS`)를 주입한다(미지정 시 기본값).
+`uug-context-hook.py` (Claude 전용) 는 UUG 가 grounding한 `target_project` 가 현재
+레포와 다르고 그 프로젝트에 `agent-context/` 가 있을 때만 1줄 넛지를 주입한다.
+uug-grounding 이 이 머신에 없으면 `--hook` 이 이 훅의 복사·등록 자체를 생략한다
+(MSO만 설치한 사용자의 settings.json 에는 흔적을 남기지 않음). 게이팅은
+`MSO_UUG_CONTEXT_INTENTS`(기본 `work-on-project`), 비활성화는 `MSO_UUG_CONTEXT_DISABLED=1`.
 
 ## Flow (다음 진입점)
 
@@ -102,7 +110,7 @@ mso-repository-setup
 | `init.py --target <path>` | 표준 디렉토리 + 최소 index.yaml/schema.yaml 생성 |
 | `init.py --check <path>` | 기존 구조가 표준에 부합하는지 진단 |
 | `init.py --migrate <path>` | 기존 평탄 구조 → agent-context/ 이전 (단순 mv) |
-| `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook + scaffold-check hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop stop-check/commit·PreCompact·PostToolUse·SessionStart) 등록 (copy-form) |
+| `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook + scaffold-check hook + uug-context-hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop stop-check/commit·PreCompact·PostToolUse·SessionStart·UserPromptSubmit) 등록 (copy-form) |
 | `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook + scaffold-check hook 을 `.codex/scripts/` 로 복사하고 config.toml(Stop·PreCompact commit-work-memory + SessionStart check) 등록, hooks.json은 빈 compatibility 파일로 갱신 (copy-form) |
 
 ## Non-Goals
@@ -110,7 +118,7 @@ mso-repository-setup
 - index.yaml 의 모듈·subdir 정의 → `mso-scaffold-design`
 - workflow yaml 작성 → `mso-workflow-design`
 - 작업 기록 (entry CRUD, 검색, 그래프) → `mso-work-memory`
-- hook **스크립트 구현**(auditlog/commit-work-memory/work-memory-check/stop-check 의 로직) → `mso-work-memory`.
+- hook **스크립트 구현**(auditlog/commit-work-memory/work-memory-check/stop-check/uug-context-hook 의 로직) → `mso-work-memory`.
 - scaffold index/inventory guardrail 구현(scaffold-check.sh, sf_node.py, schema) → `mso-scaffold-design`.
   본 스킬은 해당 스크립트와 의존 파일을 프로젝트 `.claude/` 또는 `.codex/` 로 복사·등록만 한다(`--hook`).
   단 provider 설정 디렉토리 변경은 HITL 대상이므로 사용자 승인 후 실행.

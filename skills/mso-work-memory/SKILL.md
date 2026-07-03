@@ -1,6 +1,6 @@
 ---
 name: mso-work-memory
-version: "0.6.6"
+version: "0.6.7"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 7종 entry (issue-note, agent-decision,
@@ -197,6 +197,22 @@ python wm_node.py reindex
 4. **세션 회고 넛지** *(SessionStart 전용)* — 미커밋 소스 변경(WM 밖)이 남아 있고 IN/TS 기록 대기가 없으면 → "직전 세션 통틀어 IN/TS 점검" 권유. 미커밋 작업의 의도(버그/기능)는 git 으로 알 수 없어 Stop(매 턴)에 두면 나그가 되므로, 컴팩트/재개 직후의 회고 시점에만 띄운다.
 
 판단 *기준* 텍스트는 [assets/work-memory-judgment.md](assets/work-memory-judgment.md) 를 프로젝트의 상시 로드 rules(CLAUDE.md/AGENTS.md)에 드롭인한다 — 핵심 원리 6(always-on 위임)과 일치. *상시 로드 텍스트가 주 레버이고, 이 훅은 도달하는 백스톱이다.* `mso-repository-setup` 의 `init.py --hook` 가 이 훅을 SessionStart(compact/resume)에 자동 등록한다.
+
+## UUG 연동 넛지 (hooks/uug-context-hook.py, `UserPromptSubmit`)
+
+uug-grounding 의 `ug.py dispatch --json` 을 read-only subprocess 로 호출해 매 발화의
+`intent_id`/`target_project` 를 읽는다. 게이팅 intent(기본 `work-on-project`)에 걸리고
+`target_project` 가 현재 레포(`$CLAUDE_PROJECT_DIR`)와 다르며 그 프로젝트에
+`agent-context/` 가 있을 때만 위치를 1줄 넛지한다 — 그 외에는 항상 침묵.
+
+uug-grounding SKILL.md 의 "MSO는 UUG를 모른다(단방향)" 원칙에 대한 의도적 예외이며
+(user-decision 승인, 2026-07-03). uug-grounding 이 이 머신에 없으면 `mso-repository-setup`
+의 `init.py --hook` 이 이 훅의 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부의
+런타임 no-op degrade(`ug.py` 부재/오류/timeout 시 침묵, `work-memory-check.sh` 와 동일
+원칙)는 그 위의 이중 안전장치다. `UserPromptSubmit` stdout 전달은
+UUG 자신의 훅(`ug-prompt-hook.py`)이 이미 검증한 경로이므로 여기서는 Claude 전용으로만
+등록한다(Codex 는 SessionStart 밖에서 미검증 — 위 전달 의미론 원칙과 동일 근거로 보류).
+게이팅 intent 는 `MSO_UUG_CONTEXT_INTENTS`, 비활성화는 `MSO_UUG_CONTEXT_DISABLED=1`.
 
 ## Hook 통합 (auditlog 자동)
 

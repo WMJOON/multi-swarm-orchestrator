@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.7.0
+# Multi-Swarm Orchestrator (MSO) v0.7.1
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,33 +13,21 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
+### v0.7.1 (2026-07-03) — UUG grounding 연동 넛지
+
+UUG(uug-grounding)가 발화에서 grounding한 `target_project`가 현재 레포와 다를 때, 해당 프로젝트의 agent-context 위치를 `UserPromptSubmit` 훅으로 1줄 넛지한다.
+
+- **uug-context-hook.py**: `ug.py dispatch --json`을 read-only subprocess로 호출해 `intent_id`/`target_project`를 읽는다. `target_project ≠ $CLAUDE_PROJECT_DIR`이고 그 프로젝트에 `agent-context/`가 있을 때만 침묵을 깬다. 그 외에는 항상 침묵, 항상 exit 0.
+- **이중 게이팅**: `init.py --hook`은 이 머신에 uug-grounding이 없으면 파일 복사·등록 자체를 생략한다(설치 시점). 등록됐더라도 `ug.py` 부재/오류/timeout이면 훅이 조용히 no-op한다(런타임). MSO만 설치하고 UUG는 세팅하지 않은 사용자의 `settings.json`에는 아무 흔적도 남지 않는다.
+- **경계**: uug-grounding SKILL.md의 "MSO는 UUG를 모른다(단방향)" 원칙에 대한 의도적 예외(read-only 호출만). Claude provider 전용 등록 — Codex는 `SessionStart` 밖 stdout 전달 의미론이 미검증이라 보류(`work-memory-check.sh`와 동일 근거).
+
+상세는 [docs/changelog.md](docs/changelog.md).
+
 ### v0.7.0 (2026-07-02) — Repository Graph: edge-first ontology
 
-> **Repository는 파일을 저장하는 곳이 아니라, 실행(Execution)과 산출물(Artifact)의 관계를 저장하는 그래프다.**
->
-> ```
-> Repository Graph = Execution Graph (Control Plane, wf:Rail)
->                  + Artifact Stream Graph (Data Plane, wf:Stream)
-> ```
+edge를 일급 인스턴스(`wf:Rail`/`wf:Stream`)로 승격한 온톨로지 재설계. Execution 중심 모델(`hasSubject`), hand_off rail, WorkflowGraph 평가 단위(`measures`), Property Chain(`evidence_of`), Provenance, 계산되는 Trust까지 포함. 상세는 [docs/changelog.md](docs/changelog.md).
 
-edge를 일급 인스턴스(`wf:Rail`/`wf:Stream`)로 승격한 온톨로지 재설계다. v0.6.x의 반복 결함(Step 다중 분기 승격, Eval self-target, Branch 반쪽 reification)이 shape 수준에서 구조적으로 불가능해졌다.
-
-- **Execution 중심 모델**: `wf:Execution ⊃ Task | Decision | Eval`. 모든 Execution은 `hasSubject`(self|human|model|system|workflow, 기본 self)를 가진다 — "무엇을"뿐 아니라 "누가" 실행하는가.
-- **hand_off**: 주체 전환은 `delegates_to`(실행 가능 주체 위임)/`escalates_to`(Human 승격) rail이다. Workflow 형태는 바뀌지 않고 Execution의 주체만 바뀐다. **HITL = `escalates_to → Decision(hasSubject=human)`** — 노드 속성이 아니라 rail.
-- **Start/End Terminal**: workflow당 Start 정확히 1, End 1 이상. Task는 out default-Rail 정확히 1 — 분기는 Decision 외 표현 불가.
-- **WorkflowGraph 평가 단위**: `Eval --measures--> Workflow`는 소비 Artifact + Execution + 생산 Artifact의 graph closure를 측정한다. 평가 대상은 개별 Output이 아니라 WorkflowGraph 전체다. `metricDimension ∈ trust|quality|cost|speed|safety|robustness|resource_usage`.
-- **Property Chain (저장 vs 추론)**: `consumed_by ∘ produces_to = evidence_of`. `materialize_v07.py`가 derived Stream(`wf:derived` + `derivedFrom` provenance)을 `.inferred.ttl` sibling로 합성한다 — 정본 불변, 관측은 `evidence_of*` 표기.
-- **Provenance**: Artifact는 `author/version/timestamp/validation/coverage/confidence`, Execution은 `hasSubject/method/policy/timestamp`. 충족은 SHACL 오류가 아니라 validator 커버리지 경고.
-- **Trust는 계산되는 값**: `trust_v07.py`가 Trust Policy(내장 + YAML 재정의)로 Artifact/Execution/WorkflowGraph/repository trust를 계산하고 `measures` rail별 Oracle Decision(pass/fail)을 **제안**한다. Trust를 저장하는 property는 존재하지 않는다.
-- **도구 체인**: `validate_abox.py`(TTL SSOT 직접 검증, v0.6/v0.7 자동 감지) → `materialize_v07.py` → `trust_v07.py` → `observe_graph.py`(v0.7 native 렌더). hook `hooks/workflow-check.sh`가 이 체인을 `.abox.ttl` 저장 시 자동 실행한다.
-- **출력 규약**: 분석 리포트는 `agent-context/observability/*`, 시각화 md는 `agent-context/observability/graph/*`.
-- **마이그레이션**: `migrate_abox_v06_to_v07.py`가 v0.6 ABox(legacy Phase/goto 문자열/judge 포함)를 v0.7로 변환한다. v0.6 어휘는 파일 단위 자동 감지로 병존 지원.
-
-### v0.6.6 (2026-07-02) — Workflow shape and observability hardening
-
-Decision/Eval 역할 분리 정렬, phase/validation 잔재 마이그레이션 도구, shape guard 보강, Mermaid 렌더링 명확화. 상세는 [docs/changelog.md](docs/changelog.md).
-
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계다 (ontology 레이어 v0.7~v0.10 포함).
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 

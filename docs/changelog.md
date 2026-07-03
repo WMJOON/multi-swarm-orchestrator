@@ -1,5 +1,22 @@
 # 변경 이력
 
+## v0.7.1 (2026-07-03) — UUG grounding 연동 넛지
+
+> UUG(uug-grounding)가 발화에서 grounding한 `target_project`가 현재 레포와 다를 때만, 그 프로젝트의 `agent-context/` 위치를 `UserPromptSubmit` 훅으로 1줄 넛지한다. MSO만 설치하고 UUG를 세팅하지 않은 사용자에게는 어떤 흔적도 남기지 않는다(설치 시점 + 런타임 이중 게이팅).
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `hooks/uug-context-hook.py` (mso-work-memory) | `UserPromptSubmit` 훅. `ug.py dispatch --json`을 read-only subprocess로 호출해 `intent_id`/`target_project`를 읽는다. 게이팅 intent(기본 `work-on-project`)에 걸리고 `target_project ≠ $CLAUDE_PROJECT_DIR`이며 그 프로젝트에 `agent-context/`가 있을 때만 1줄 넛지, 그 외에는 항상 침묵·항상 exit 0. `ug.py` 부재/오류/timeout 시 조용히 no-op. 게이팅은 `MSO_UUG_CONTEXT_INTENTS`, 비활성화는 `MSO_UUG_CONTEXT_DISABLED=1`. |
+| `init.py --hook` 설치 시점 게이팅 (mso-repository-setup) | `_find_uug_ug()`로 이 머신에 uug-grounding이 있는지 먼저 확인한다. 없으면 `uug-context-hook.py` 복사와 `settings.json` `UserPromptSubmit` 등록 자체를 생략한다 — MSO만 쓰는 사용자의 설정 파일에는 이 훅이 전혀 나타나지 않는다. |
+
+### Design
+
+- uug-grounding SKILL.md의 "MSO는 UUG를 모른다(단방향)" 경계에 대한 의도적 예외 — MSO가 UUG의 안정된 public CLI(`ug.py`)를 **read-only**로만 호출한다(역방향 없음, UUG는 여전히 MSO를 모름).
+- 참조 대상은 cwd 프로젝트가 아니라 **UUG가 grounding한 target_project** — UUG 도입 목적 자체가 발화가 가리키는 프로젝트가 cwd와 다를 수 있다는 것이므로, cwd 비교만으로는 UUG를 쓰는 의미가 없다.
+- Claude provider 전용 등록 — Codex는 `SessionStart` 밖 `UserPromptSubmit` stdout 전달 의미론이 미검증이라 보류(`work-memory-check.sh`가 SessionStart에만 넛지를 거는 것과 동일한 근거).
+
 ## v0.7.0 (2026-07-02) — Repository Graph: edge-first ontology (Rail/Stream)
 
 > **Repository Graph = Execution Graph(Control Plane) + Artifact Stream Graph(Data Plane).** edge를 일급 인스턴스로 승격하고, Execution 주체(hand_off)·WorkflowGraph 평가 단위·Property Chain·Provenance·Trust 계산까지 온톨로지 레이어 v0.7~v0.10을 한 릴리스로 담았다.

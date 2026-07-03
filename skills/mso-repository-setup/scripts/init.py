@@ -260,6 +260,13 @@ def cmd_migrate(target: Path):
 
 WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh"]
 SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
+# uug-context-hook.py: UUG grounding 연동 넛지 (optional). uug-grounding 이 이 머신에
+# 없으면 cmd_hook 이 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부에도 동일한
+# no-op degrade 가 있지만(런타임 게이팅), MSO만 쓰는 사용자의 settings.json 에 죽은
+# 항목을 남기지 않기 위해 이중으로 거른다. Claude provider 전용 등록 — Codex 는
+# SessionStart 밖 stdout 전달 의미론이 미검증이라 보류(work-memory-check.sh 와 동일한
+# 근거, SKILL.md 참조).
+UUG_CONTEXT_HOOK_FILES = ["uug-context-hook.py"]
 
 
 def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "claude"):
@@ -314,6 +321,17 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             shutil.copy(src, scripts_dst / fn)
             (scripts_dst / fn).chmod(0o755)
             copied.append(fn)
+    # uug-context-hook.py 는 uug-grounding 이 이 머신에 설치돼 있을 때만 복사·등록한다.
+    # MSO만 설치하고 UUG 를 세팅하지 않은 사용자의 settings.json 에는 아예 흔적을 남기지
+    # 않는다 (런타임 no-op degrade 와 별개로, 설치 시점 자체에서 거른다).
+    uug_present = _find_uug_ug() is not None
+    if uug_present:
+        for fn in UUG_CONTEXT_HOOK_FILES:
+            src = hooks_dir / fn
+            if src.exists():
+                shutil.copy(src, scripts_dst / fn)
+                (scripts_dst / fn).chmod(0o755)
+                copied.append(fn)
 
     # scaffold-check.sh uses sf_node.py and its schema directory. Copy them into
     # the provider dir so project hooks do not depend on the original skill path.
@@ -362,6 +380,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     check_cmd = f"{prefix}{worthy_env}{workmem_env} bash {pd}/{provider_dir_name}/scripts/work-memory-check.sh"
     stop_check_cmd = f"{prefix}bash {pd}/{provider_dir_name}/scripts/stop-check.sh"
     scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
+    uug_context_cmd = f"{prefix}python3 {pd}/{provider_dir_name}/scripts/uug-context-hook.py"
 
     # Claude Code supports tool-level PostToolUse audit logging. Codex hook examples
     # available locally are lifecycle-only, so Codex keeps commit/check hooks only.
@@ -369,6 +388,12 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", scaffold_cmd, "scaffold-check.sh")
         _upsert_hook(hooks_section, "Stop", None, stop_check_cmd, "stop-check.sh")
+        # UUG grounding target_project ≠ 현재 레포일 때만 agent-context 위치를 넛지.
+        # UserPromptSubmit stdout 은 UUG 자신의 훅이 이미 검증한 전달 경로(SKILL.md 참조).
+        # uug_present 가 False 면 등록 자체를 생략 — UUG 미설치 사용자의 settings.json 에는
+        # 이 훅이 존재하지 않는다.
+        if uug_present:
+            _upsert_hook(hooks_section, "UserPromptSubmit", None, uug_context_cmd, "uug-context-hook.py")
 
         # Stop / PreCompact — work-memory 변경분을 훅 안에서 커밋한다.
         # 훅 커밋은 PostToolUse 를 재트리거하지 않아 auditlog append 무한루프를 피한다.
@@ -393,7 +418,11 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
+        uug_note = " + UserPromptSubmit uug-context-hook" if uug_present else ""
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check{uug_note})")
+        if not uug_present:
+            print("  · uug-grounding 미설치 감지 — uug-context-hook(UserPromptSubmit) 등록 생략. "
+                  "UUG 설치 후 이 명령을 재실행하면 자동 등록된다.")
     else:
         print(f"  + .codex/config.toml 갱신 (Stop·PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
         print(f"  + .codex/hooks.json 갱신 (empty compatibility)")
@@ -421,6 +450,16 @@ def _hook_candidates() -> list[Path]:
 
 def _find_hooks_dir() -> Path | None:
     return next((p for p in _hook_candidates() if (p / "auditlog.py").exists()), None)
+
+
+def _find_uug_ug() -> Path | None:
+    """uug-grounding 의 ug.py 탐색 (전역 스킬 심링크 표준 위치). 없으면 이 머신에
+    uug-grounding 이 세팅되지 않은 것으로 간주 — uug-context-hook 등록을 생략한다."""
+    candidates = [
+        Path.home() / ".claude" / "skills" / "uug-grounding" / "scripts" / "ug.py",
+        Path.home() / ".codex" / "skills" / "uug-grounding" / "scripts" / "ug.py",
+    ]
+    return next((p for p in candidates if p.exists()), None)
 
 
 def _scaffold_skill_candidates() -> list[Path]:

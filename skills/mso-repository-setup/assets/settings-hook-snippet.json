@@ -4,6 +4,7 @@
   "//scaffold-check": "scaffold-check.sh 는 sf_node.py validate/inventory 로 index SSOT 와 실제 디렉토리 불일치를 non-blocking 으로 알린다. 강제 실패가 필요하면 MSO_SCAFFOLD_CHECK_STRICT=1 을 설정한다.",
   "//stop-check": "stop-check.sh 는 Stop 안내를 1회 출력한 뒤 다음 Stop 1회를 상태 파일(.claude/state/stop-check.state)로 억제한다. 상태 파일은 gitignore 대상이다.",
   "//worthy-paths": "WM_WORTHY_PATHS 는 프로젝트의 '결정 가치 있는' 경로. 아래는 오케스트레이션 레이어 기본값 — 프로젝트에 맞게 바꾸고 data/·build 등 고빈도 경로는 뺀다.",
+  "//uug-context-hook": "UUG(uug-grounding)가 grounding한 target_project 가 현재 레포와 다르고 그 프로젝트에 agent-context/ 가 있을 때만 1줄 넛지. init.py --hook 은 uug-grounding 이 이 머신에 없으면 이 훅의 복사·등록 자체를 생략한다(수동 등록 시 직접 이 판단을 해야 함 — 아래 항목은 UUG 설치 머신 전용). 게이팅 intent 는 MSO_UUG_CONTEXT_INTENTS(기본 work-on-project), MSO_UUG_CONTEXT_DISABLED=1 로 비활성화. Claude 전용 — Codex 는 UserPromptSubmit stdout 전달 의미론 미검증이라 보류(work-memory-check 와 동일 근거).",
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "hooks": {
     "PostToolUse": [
@@ -71,6 +72,16 @@
           {
             "type": "command",
             "command": "MSO_SCAFFOLD_TOOL=\"$CLAUDE_PROJECT_DIR/.claude/scripts/sf_node.py\" bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/scaffold-check.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/uug-context-hook.py"
           }
         ]
       }
