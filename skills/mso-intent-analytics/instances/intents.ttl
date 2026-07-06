@@ -15,7 +15,7 @@ mso:query_run_status a mso:Intent ;
     mso:intent_id "query_run_status" ;
     mso:verb_concept mso:QueryVerb ;
     mso:target_concept mso:RunContext ;
-    mso:trigger_keywords ("내 run" "진행률" "지금 어떻게" "run 상태" "어떻게 되고" "현황") ;
+    mso:trigger_keywords ("내 run" "진행률" "지금 어떻게" "run 상태" "어떻게 되고" "run 현황") ;
     mso:example_utterances ("run-2025 어떻게 돼?" "내 run 현황 보여줘" "지금 어떻게 되고 있어?") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -30,7 +30,7 @@ mso:query_ticket_list a mso:Intent ;
     mso:intent_id "query_ticket_list" ;
     mso:verb_concept mso:QueryVerb ;
     mso:target_concept mso:TicketEvent ;
-    mso:trigger_keywords ("ticket" "active 작업" "할 일" "active ticket" "티켓 목록") ;
+    mso:trigger_keywords ("ticket 목록" "active 작업" "할 일 목록" "active ticket" "티켓 목록") ;
     mso:example_utterances ("오늘 active ticket" "지금 진행 중인 작업 보여줘") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -51,7 +51,7 @@ mso:query_audit_log a mso:Intent ;
     mso:intent_id "query_audit_log" ;
     mso:verb_concept mso:QueryVerb ;
     mso:target_concept mso:RunManifest ;
-    mso:trigger_keywords ("audit" "log" "어제 fail" "실패 기록" "로그" "감사") ;
+    mso:trigger_keywords ("audit log" "어제 fail" "실패 기록" "감사 로그") ;
     mso:example_utterances ("어제 fail한 ticket" "audit log 보여줘") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -74,7 +74,7 @@ mso:dispatch_ticket a mso:Intent ;
     mso:intent_id "dispatch_ticket" ;
     mso:verb_concept mso:CreateVerb ;
     mso:target_concept mso:TicketEvent ;
-    mso:trigger_keywords ("재실행" "dispatch" "다시" "retry" "재시도") ;
+    mso:trigger_keywords ("재실행" "ticket dispatch" "다시 실행" "다시 시도" "ticket retry" "재시도") ;
     mso:example_utterances ("ticket-217 재실행" "방금 fail한 티켓 다시 실행해줘") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -94,7 +94,7 @@ mso:create_ticket a mso:Intent ;
     mso:intent_id "create_ticket" ;
     mso:verb_concept mso:CreateVerb ;
     mso:target_concept mso:TicketEvent ;
-    mso:trigger_keywords ("새 작업" "ticket 추가" "작업 추가" "티켓 만들어") ;
+    mso:trigger_keywords ("ticket 추가" "작업 추가" "티켓 만들어") ;
     mso:example_utterances ("ticket 새로 만들어" "새 작업 추가해줘") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -121,7 +121,7 @@ mso:pause_workflow a mso:Intent ;
     mso:intent_id "pause_workflow" ;
     mso:verb_concept mso:UpdateVerb ;
     mso:target_concept mso:WorkflowEntity ;
-    mso:trigger_keywords ("멈춰" "pause" "대기" "일시정지" "중단해") ;
+    mso:trigger_keywords ("워크플로우 멈춰" "pause해줘" "일시정지" "워크플로우 중단해") ;
     mso:example_utterances ("이 워크플로우 멈춰" "잠깐 pause해줘") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -135,7 +135,7 @@ mso:resume_workflow a mso:Intent ;
     mso:intent_id "resume_workflow" ;
     mso:verb_concept mso:UpdateVerb ;
     mso:target_concept mso:WorkflowEntity ;
-    mso:trigger_keywords ("재개" "resume" "다시 진행" "계속해") ;
+    mso:trigger_keywords ("재개" "resume 해줘" "워크플로우 resume" "다시 진행" "워크플로우 계속해") ;
     mso:example_utterances ("다시 진행해" "워크플로우 resume") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -149,7 +149,7 @@ mso:override_hitl_gate a mso:Intent ;
     mso:intent_id "override_hitl_gate" ;
     mso:verb_concept mso:UpdateVerb ;
     mso:target_concept mso:HITLGateContext ;
-    mso:trigger_keywords ("gate 통과" "H1 해제" "override" "gate 해제" "H2 해제" "gate skip") ;
+    mso:trigger_keywords ("gate 통과" "H1 해제" "gate override" "gate 해제" "H2 해제" "gate skip") ;
     mso:example_utterances ("H1 gate 해제해줘" "gate 통과시켜") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
@@ -190,7 +190,7 @@ mso:cancel_run a mso:Intent ;
     mso:intent_id "cancel_run" ;
     mso:verb_concept mso:DeleteVerb ;
     mso:target_concept mso:RunContext ;
-    mso:trigger_keywords ("취소" "중단" "abort" "cancel" "run 취소" "stop") ;
+    mso:trigger_keywords ("run 취소" "run 중단" "실행 중단" "abort" "cancel run" "stop run") ;
     mso:example_utterances ("이 run 취소해줘" "실행 중단해") ;
     mso:slot_specs (
         [ a mso:SlotSpec ;
