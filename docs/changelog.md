@@ -1,5 +1,22 @@
 # 변경 이력
 
+## v0.8.0 (2026-07-06) — Hermes Bridge: 외부 Executor 위임
+
+> Hermes Agent를 MSO workflow의 외부 Executor로 위임하는 `mso-hermes-bridge` 스킬 추가. `wf:delegates_to :hermes-executor`로 선언된 step을 Hermes API Server(OpenAI-compatible, port 8642)로 HTTP 위임하고 Runs API 폴링으로 결과를 수집한다. MSO ROADMAP §7 Execution Metadata의 ExecutionMethod=api 구현 사례.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `skills/mso-hermes-bridge/` | Hermes Agent 외부 Executor 위임 스킬. `scripts/hermes_bridge.py`(HTTP 위임 + Runs API 폴링), `scripts/setup-with-hermes.sh`(MSO init + Hermes 세팅 통합), `scripts/workflow_context.py`, `scripts/bridge.sh`(cron/launchd 호출용 wrapper), `hooks/hermes-repo-setup.sh`(기존 repository에 Hermes만 추가), `references/cron-examples.md`(crontab/launchd 예시). |
+| `mso-orchestration` 라우팅 | Hermes 위임 트리거(`hermes 위임`, `hermes-bridge`, `외부 에이전트 위임`, `delegates_to hermes`)와 초기화 커맨드를 SKILL.md에 등록. |
+| `install.sh` | `SKILLS` 배열에 `mso-hermes-bridge` 등록. |
+| README `## Skills` 테이블 | `mso-hermes-bridge` 행 추가. |
+
+### Design
+
+- ExecutionSubject=Agent(Hermes), ExecutionMethod=api — MSO ROADMAP §7 Execution Metadata에서 선언한 실행 방식의 첫 구현체.
+
 ## v0.7.1 (2026-07-03) — UUG grounding 연동 넛지
 
 > UUG(uug-grounding)가 발화에서 grounding한 `target_project`가 현재 레포와 다를 때만, 그 프로젝트의 `agent-context/` 위치를 `UserPromptSubmit` 훅으로 1줄 넛지한다. MSO만 설치하고 UUG를 세팅하지 않은 사용자에게는 어떤 흔적도 남기지 않는다(설치 시점 + 런타임 이중 게이팅).
