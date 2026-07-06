@@ -143,6 +143,7 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 | `mso-workflow-optimizer` | TTL workflow를 실행 가능한 graph artifact로 컴파일하는 방향을 담당한다. |
 | `mso-intent-analytics` | UUG가 제공한 intent를 MSO action으로 dispatch하고 분석한다. |
 | `mso-conversation-analytics` | de-routed 레거시 기능이다. 사용자/turn 패턴 분석은 UUG `uug-pattern-analytics` 흡수 대상이고, MSO runtime tier 신호는 `mso-intent-analytics`가 받는다. |
+| `mso-hermes-bridge` | Hermes Agent를 외부 Executor로 위임한다 (`delegates_to: hermes-executor`, API Server port 8642 HTTP 위임 + Runs API 폴링). |
 
 ## Generated Structure
 
