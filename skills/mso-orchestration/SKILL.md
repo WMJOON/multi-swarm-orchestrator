@@ -214,3 +214,24 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 - 각 sub-skill 의 SKILL.md (실제 사용법은 거기로)
 - [docs/contracts/GroundedCommand.md](../../docs/contracts/GroundedCommand.md) — Grounded Command 계약 (governance)
 - [references/routing-rules.md](references/routing-rules.md) — 트리거 매칭 상세 (v0.5.0+ 추가 예정)
+
+
+## Hermes Bridge (v0.8.0 추가)
+
+| Skill | 책임 | 주요 트리거 |
+|---|---|---|
+| **mso-hermes-bridge** | Hermes Agent를 외부 Executor로 위임. workflow step의 delegates_to: hermes-executor 실행. API Server(port 8642)로 HTTP 위임 + Runs API 폴링 | hermes 위임, hermes-bridge, 외부 에이전트 위임, delegates_to hermes |
+
+### Hermes 포함 초기화
+
+MSO repository 세팅 시 Hermes도 함께 구성:
+
+```bash
+bash skills/mso-hermes-bridge/scripts/setup-with-hermes.sh . --provider claude
+```
+
+기존 init.py --hook 실행 후 Hermes만 추가:
+
+```bash
+bash skills/mso-hermes-bridge/hooks/hermes-repo-setup.sh --root .
+```
