@@ -17,7 +17,7 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 `mso-workflow-observation`은 workflow 관측을 좁고 명시적인 public rail로 노출한다. Control plane만 보고 싶을 때는 `execution-rail.md`, artifact 소비/생산까지 포함한 전체 흐름은 `repository-graph.md`를 본다.
 
-- **Execution Rail**: `agent-context/observability/graph/<scope>/execution-rail.md`는 `wf:Rail` 기반 control-only 뷰다.
+- **Execution Rail**: `agent-context/observability/graph/<scope>/execution-rail.md`는 `wf:Rail` 기반 control-only 뷰다. Artifact node와 Artifact Node Index는 제외한다.
 - **Artifact Stream**: `artifact-stream-graph.md`는 `wf:Stream` 기반 artifact 소비/생산 뷰다.
 - **Repository Graph**: `repository-graph.md`는 execution rail + artifact stream을 통합해 보여준다.
 - **Renderer 호환성**: Mermaid node label line break를 `<br/>`로 통일해 GitHub/Obsidian 계열 renderer에서 깨질 가능성을 낮췄다.

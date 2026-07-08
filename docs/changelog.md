@@ -17,6 +17,7 @@
 - `install.sh` 설치 대상에 `mso-workflow-observation`을 포함했다.
 - Mermaid node label line break를 `<br/>`로 통일해 GitHub/Obsidian 계열 Mermaid renderer에서 graph가 깨질 가능성을 낮췄다.
 - control-only 뷰는 `workflow-graph.md` 대신 `execution-rail.md`로 생성한다. artifact 소비/생산까지 포함한 통합 뷰는 `repository-graph.md`가 담당한다.
+- `execution-rail.md`는 Artifact node와 Artifact Node Index를 제외한다. Artifact 소비/생산 및 provenance는 `artifact-stream-graph.md`와 `repository-graph.md`에서 확인한다.
 
 ## v0.8.1 (2026-07-08) — Hermes Bridge 지원 폐기
 
