@@ -16,7 +16,6 @@ SKILLS=(
   mso-work-memory
   mso-intent-analytics
   mso-conversation-analytics
-  mso-hermes-bridge
 )
 
 # Parse args

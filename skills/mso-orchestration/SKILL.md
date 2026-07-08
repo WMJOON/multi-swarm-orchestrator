@@ -41,6 +41,9 @@ triggers:
   - "conversation analytics"
   - "전환 분석"
   - "reprompt 분석"
+  - "v0.8.1 적용"
+  - "Hermes 설정 정리"
+  - "hermes cleanup"
 ---
 
 # MSO Orchestration (v0.5.0)
@@ -119,7 +122,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 
 | Skill | 책임 | 주요 트리거 |
 |---|---|---|
-| **mso-repository-setup** | agent-context/ 부트스트랩 (init/check/migrate). artifact stream TTL이 있으면 scaffold/observability 후속 점검으로 연결 | "mso init", "agent-context 부트스트랩", "워크플로우 디렉토리 생성" |
+| **mso-repository-setup** | agent-context/ 부트스트랩 (init/check/migrate). v0.8.1 적용 시 폐기된 Hermes Bridge 설정 정리. artifact stream TTL이 있으면 scaffold/observability 후속 점검으로 연결 | "mso init", "agent-context 부트스트랩", "워크플로우 디렉토리 생성", "v0.8.1 적용", "Hermes 설정 정리" |
 | **mso-scaffold-design** | index.yaml SSOT, 계층 sub_index, data_registry. artifact stream TTL 경로를 index/sub-module에 연결 | "스캐폴드 설계", "index.yaml", "모듈 추가", "디렉토리 등록", "artifact registry" |
 | **mso-workflow-design** | workflow/artifact/eval TTL ABox node-edge 생성 및 shape 점검. legacy YAML은 import input | "워크플로우 설계", "workflow TTL", "artifact stream", "eval 노드", "decision 노드", "validation 노드" |
 | **mso-graph-observability** | TTL 가시화와 개선 리포트 생성. workflow view, artifact-stream view, eval edge, runtime analysis를 읽기 전용 산출물로 생성 | "그래프 관측", "워크플로우 관측", "artifact stream report", "work-memory 분석", "auditlog 분석", "이상행동 관측", "실패 흐름 분석" |
@@ -135,7 +138,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 사용자 발화의 의도를 다음 우선순위로 매칭한다.
 
 0. **[§11 재편] 자연어 운영 명령** (예: "ticket-217 재실행", "run-abc 상태 확인", "audit 로그 조회") → UUG `ug ground` 로 intent_id 해석(앞단) → `mso-intent-analytics` `pipeline.ground(utterance, intent_id)` 로 GroundedCommand 조립(뒷단) → intent_id 기반 Smart Tool 디스패치
-1. **init·부트스트랩 의도** (예: "프로젝트 처음 셋업", "agent-context 만들어") → `mso-repository-setup`
+1. **init·부트스트랩·버전 적용 의도** (예: "프로젝트 처음 셋업", "agent-context 만들어", "v0.8.1 적용", "Hermes 설정 정리") → `mso-repository-setup`
 2. **구조 정의 의도** (예: "모듈 추가", "subdir 등록", "디렉토리 패턴") → `mso-scaffold-design`
 3. **흐름 정의 의도** (예: "워크플로우 만들어", "결정 게이트", "검증 단계") → `mso-workflow-design`
 4. **graph 관측·분석 의도** (예: "워크플로우 관측", "workflow topology 보여줘", "어떤 흐름에서 실패가 많아?", "agent 이상행동 관측", "work-memory/auditlog 분석") → `mso-graph-observability`
@@ -214,24 +217,3 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 - 각 sub-skill 의 SKILL.md (실제 사용법은 거기로)
 - [docs/contracts/GroundedCommand.md](../../docs/contracts/GroundedCommand.md) — Grounded Command 계약 (governance)
 - [references/routing-rules.md](references/routing-rules.md) — 트리거 매칭 상세 (v0.5.0+ 추가 예정)
-
-
-## Hermes Bridge (v0.8.0 추가)
-
-| Skill | 책임 | 주요 트리거 |
-|---|---|---|
-| **mso-hermes-bridge** | Hermes Agent를 외부 Executor로 위임. workflow step의 delegates_to: hermes-executor 실행. API Server(port 8642)로 HTTP 위임 + Runs API 폴링 | hermes 위임, hermes-bridge, 외부 에이전트 위임, delegates_to hermes |
-
-### Hermes 포함 초기화
-
-MSO repository 세팅 시 Hermes도 함께 구성:
-
-```bash
-bash skills/mso-hermes-bridge/scripts/setup-with-hermes.sh . --provider claude
-```
-
-기존 init.py --hook 실행 후 Hermes만 추가:
-
-```bash
-bash skills/mso-hermes-bridge/hooks/hermes-repo-setup.sh --root .
-```

@@ -1,8 +1,30 @@
 # 변경 이력
 
-## v0.8.0 (2026-07-06) — Hermes Bridge: 외부 Executor 위임
+## v0.8.1 (2026-07-08) — Hermes Bridge 지원 폐기
+
+> `mso-hermes-bridge`를 MSO 기본 실행 plane에서 제거한다. Hermes Agent를 외부 Executor로 붙이는 방식은 skill/runtime 배선을 늘려 오류 표면이 커졌으므로, work-memory/workflow 정리와 실행 자동화는 LangGraph 기반 artifact 경로로 집중한다.
+
+### Removed
+
+| 제거 | 내용 |
+|------|------|
+| `skills/mso-hermes-bridge/` | Hermes Agent 외부 Executor 위임 스킬 디렉토리를 제거했다. |
+| `mso-orchestration` 라우팅 | Hermes Bridge 트리거와 초기화 커맨드를 제거했다. |
+| `install.sh` | `SKILLS` 배열에서 `mso-hermes-bridge`를 제거했다. |
+| README `## Skills` 테이블 | `mso-hermes-bridge` 행을 제거했다. |
+| `mso-repository-setup` | `init.py --cleanup-hermes <project>`를 추가해 v0.8.0 적용 후 남은 Hermes Bridge 설정을 정리할 수 있게 했다. |
+
+### Direction
+
+- execution plane은 `mso-workflow-optimizer`를 통해 TTL workflow를 LangGraph artifact로 컴파일하는 경로를 우선한다.
+- 외부 agent 위임은 MSO core skill을 늘리는 방식이 아니라 provider policy / generated graph adapter 수준에서 재검토한다.
+- cleanup은 MSO가 만든 `.hermes/mso-context.md`, `.hermes/bridge.sh`, 전역 `mso-hermes-bridge` skill symlink만 대상으로 하며, Hermes 본체 설정(`~/.hermes/.env`, gateway/launchd)은 건드리지 않는다.
+
+## v0.8.0 (2026-07-06) — 폐기됨: Hermes Bridge 외부 Executor 위임
 
 > Hermes Agent를 MSO workflow의 외부 Executor로 위임하는 `mso-hermes-bridge` 스킬 추가. `wf:delegates_to :hermes-executor`로 선언된 step을 Hermes API Server(OpenAI-compatible, port 8642)로 HTTP 위임하고 Runs API 폴링으로 결과를 수집한다. MSO ROADMAP §7 Execution Metadata의 ExecutionMethod=api 구현 사례.
+
+> 상태: v0.8.1에서 기본 지원 폐기. 이 항목은 실험 이력으로만 유지한다.
 
 ### Added
 

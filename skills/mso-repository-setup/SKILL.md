@@ -15,7 +15,14 @@ description: >
       후속 진입점(mso-scaffold-design, mso-graph-observability)을 안내,
   (6) uug-grounding 연동: UserPromptSubmit 시 UUG가 grounding한 target_project 가
       현재 레포와 다르면 그 프로젝트 agent-context 위치를 넛지(uug-context-hook,
-      Claude 전용, --hook 시 자동 등록).
+      Claude 전용, --hook 시 자동 등록),
+  (7) v0.8.1 적용 시 폐기된 Hermes Bridge 설정과 전역 skill 링크를 정리한다.
+triggers:
+  - "v0.8.1 적용"
+  - "Hermes 설정 정리"
+  - "hermes cleanup"
+  - "mso-hermes-bridge 정리"
+  - "Hermes Bridge 폐기"
 ---
 
 # MSO Repository Setup
@@ -112,6 +119,28 @@ mso-repository-setup
 | `init.py --migrate <path>` | 기존 평탄 구조 → agent-context/ 이전 (단순 mv) |
 | `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook + scaffold-check hook + uug-context-hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop stop-check/commit·PreCompact·PostToolUse·SessionStart·UserPromptSubmit) 등록 (copy-form) |
 | `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook + scaffold-check hook 을 `.codex/scripts/` 로 복사하고 config.toml(Stop·PreCompact commit-work-memory + SessionStart check) 등록, hooks.json은 빈 compatibility 파일로 갱신 (copy-form) |
+| `init.py --cleanup-hermes <path>` | v0.8.1 적용: 폐기된 `mso-hermes-bridge` 전역 skill symlink와 프로젝트 `.hermes/mso-context.md`, `.hermes/bridge.sh` 정리 |
+
+### v0.8.1 Hermes Bridge cleanup
+
+Hermes Bridge는 v0.8.1에서 기본 지원을 폐기했다. 이미 v0.8.0을 적용한 프로젝트는 다음 명령으로 MSO가 만든 Hermes Bridge 흔적을 정리한다.
+
+```bash
+python scripts/init.py --cleanup-hermes /path/to/project
+```
+
+정리 대상:
+
+- `~/.claude/skills/mso-hermes-bridge`, `~/.codex/skills/mso-hermes-bridge`, `~/.gemini/antigravity/skills/mso-hermes-bridge` symlink 또는 broken symlink
+- `<project>/.hermes/mso-context.md`
+- `<project>/.hermes/bridge.sh`
+- 위 파일 제거 후 비어 있는 `<project>/.hermes/`
+
+보수적 경계:
+
+- `~/.hermes/.env`, Hermes gateway/launchd, API key는 MSO 소유가 아니므로 자동 삭제하지 않는다.
+- symlink가 아닌 실제 `mso-hermes-bridge` 디렉토리는 기본 유지한다. 정말 삭제하려면 `--force`를 붙인다.
+- `agent-context/artifacts/*hermes*` 산출물은 기록물이므로 자동 삭제하지 않고 경로만 알려준다.
 
 ## Non-Goals
 
