@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-design
-version: "0.7.0"
+version: "0.8.2"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로

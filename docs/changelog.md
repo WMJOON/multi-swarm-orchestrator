@@ -1,5 +1,23 @@
 # 변경 이력
 
+## v0.8.2 (2026-07-09) — Workflow Observation alias
+
+> workflow graph 노출을 `mso-workflow-observation`이라는 좁은 public rail로 제공한다.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `skills/mso-workflow-observation/` | `mso-graph-observability`의 workflow scope를 감싸는 alias skill. `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 관측 산출물로 삼는다. |
+| `scripts/mso-workflow-observation.py` | 내부적으로 `skills/mso-graph-observability/scripts/observe_graph.py`를 호출하는 wrapper. |
+
+### Changed
+
+- `mso-orchestration` 라우팅에 `mso-workflow-observation`, `workflow observation`, `workflow graph 노출` 트리거를 추가했다.
+- `install.sh` 설치 대상에 `mso-workflow-observation`을 포함했다.
+- Mermaid node label line break를 `<br/>`로 통일해 GitHub/Obsidian 계열 Mermaid renderer에서 graph가 깨질 가능성을 낮췄다.
+- control-only 뷰는 `workflow-graph.md` 대신 `execution-rail.md`로 생성한다. artifact 소비/생산까지 포함한 통합 뷰는 `repository-graph.md`가 담당한다.
+
 ## v0.8.1 (2026-07-08) — Hermes Bridge 지원 폐기
 
 > `mso-hermes-bridge`를 MSO 기본 실행 plane에서 제거한다. Hermes Agent를 외부 Executor로 붙이는 방식은 skill/runtime 배선을 늘려 오류 표면이 커졌으므로, work-memory/workflow 정리와 실행 자동화는 LangGraph 기반 artifact 경로로 집중한다.

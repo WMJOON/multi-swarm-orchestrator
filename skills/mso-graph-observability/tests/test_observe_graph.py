@@ -68,8 +68,8 @@ def test_workflow_topology_renders_execution_edges():
     assert "Branch" not in markdown
     assert "((start))" in markdown
     assert "((end))" in markdown
-    assert '["A<br>id: a<br>Step"]' in markdown
-    assert '{{"Gate<br>id: d<br>Decision"}}' in markdown
+    assert '["A<br/>id: a<br/>Step"]' in markdown
+    assert '{{"Gate<br/>id: d<br/>Decision"}}' in markdown
 
 
 def test_oracle_view_normalizes_phase_target_ids_to_workflow():
@@ -142,7 +142,7 @@ def test_workflow_subgraph_renders_dataflow_nodes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '@{ shape: doc, label: "generated/results/<br>DOCUMENT" }' in markdown
+    assert '@{ shape: doc, label: "generated/results/<br/>DOCUMENT" }' in markdown
     assert "## Artifact Node Index" in markdown
     assert "| Artifact Type | Primary Consumer | Id | Medium | Location | Locator | Detail |" in markdown
     assert "`generated/results/`" in markdown
@@ -163,7 +163,7 @@ def test_workflow_subgraph_renders_dataflow_nodes():
         "step_node_demo_consumer_" in line and "-->|next|" in line and "boundary_end_demo_end_" in line
         for line in markdown.splitlines()
     )
-    assert "report.md<br>DOCUMENT" in markdown
+    assert "report.md<br/>DOCUMENT" in markdown
     assert "report.md" in markdown
     assert "classDef document" in markdown
     assert "classDef knowledge_store" in markdown
@@ -192,7 +192,7 @@ def test_step_with_deliverable_and_tool_remains_agent_task():
 
     assert "step_node_demo_nlu_s_101_" in markdown
     assert "Decision / inferred-branch" not in markdown
-    assert "nlu engine process<br>TOOL" in markdown
+    assert "nlu engine process<br/>TOOL" in markdown
     assert "-.->|delegates_to|" in markdown
     assert "|target|" not in markdown
 
@@ -237,9 +237,9 @@ def test_tool_step_can_consume_and_produce_same_table_without_internal_scripts()
         view="artifact-stream",
     )
 
-    assert "labeling.db#labels<br>TABLE" in markdown
+    assert "labeling.db#labels<br/>TABLE" in markdown
     assert "demo.data" not in markdown
-    assert "nlu engine process<br>TOOL" in markdown
+    assert "nlu engine process<br/>TOOL" in markdown
     assert any(
         "labeling.db#labels" not in line
         and "data_local_file_data_labeling_db_labels_" in line
@@ -253,7 +253,7 @@ def test_tool_step_can_consume_and_produce_same_table_without_internal_scripts()
         and "data_local_file_data_labeling_db_labels_" in line
         for line in markdown.splitlines()
     )
-    assert "scripts/<br>" not in markdown
+    assert "scripts/<br/>" not in markdown
 
 
 def test_step_with_multiple_control_targets_is_marked_as_shape_violation():
@@ -311,9 +311,9 @@ def test_eval_tool_target_validates_tool_outputs_and_approves_next_task():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", view="workflow")
 
-    assert "nlu engine process<br>TOOL" in markdown
+    assert "nlu engine process<br/>TOOL" in markdown
     assert "-->|target|" in markdown
-    assert "labeling.db#labels<br>TABLE" in markdown
+    assert "labeling.db#labels<br/>TABLE" in markdown
     assert "-.->|measured_by|" in markdown
     assert "eval_node_demo_eval_" in markdown
     assert "step_node_demo_fix_" in markdown
@@ -505,7 +505,7 @@ def test_workflow_and_artifact_stream_views_are_separated():
     assert "-.->|produces|" not in workflow
 
     assert "`artifact-stream` view" in artifact_stream
-    assert "generated/results/<br>DOCUMENT" in artifact_stream
+    assert "generated/results/<br/>DOCUMENT" in artifact_stream
     assert "-.->|consumes|" in artifact_stream
     assert "-.->|produces|" in artifact_stream
     assert "((start))" not in artifact_stream
@@ -631,7 +631,7 @@ def test_artifact_object_edges_render_and_clear_unconsumed_report():
     report = observe_graph.build_data_stream_report(graph)
     artifact_id = observe_graph.data_id(observe_graph.artifact_node_data_ref(graph, artifact)["id"])
 
-    assert "벤더 URL 목록 (화이트리스트)<br>DOCUMENT" in markdown
+    assert "벤더 URL 목록 (화이트리스트)<br/>DOCUMENT" in markdown
     assert any(
         f"step_node_demo_cur_s_001_" in line and f"-.->|produces| {artifact_id}" in line
         for line in markdown.splitlines()
@@ -731,7 +731,7 @@ def test_artifact_object_consumer_with_tool_renders_tool_actor():
     tool_ref = observe_graph.tool_data_ref({}, tool)
     tool_id = observe_graph.data_id(tool_ref["id"])
 
-    assert "curation crawler agent<br>TOOL" in markdown
+    assert "curation crawler agent<br/>TOOL" in markdown
     assert f"{artifact_id} -.->|consumes| {tool_id}" in markdown
     assert f"-.->|consumes| step_node_demo_cur_s_002_" not in markdown
     assert "-.->|delegates_to|" in markdown
@@ -777,7 +777,7 @@ def test_workflow_subgraph_uses_index_data_ids_for_locations():
     markdown = observe_graph.build_workflow_topology(graph, scope="demo", data_registry=data_registry)
 
     assert "`content.draft`" in markdown
-    assert markdown.count('@{ shape: doc, label: "content/draft/<br>DOCUMENT" }') == 1
+    assert markdown.count('@{ shape: doc, label: "content/draft/<br/>DOCUMENT" }') == 1
     assert "`index:content.draft`" in markdown
     assert "`content/draft/`" in markdown
     assert "-.->|produces|" in markdown
@@ -886,8 +886,8 @@ def test_artifact_nodes_render_document_and_knowledge_store_shapes():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '[("ontology/<br>KNOWLEDGE STORE")]' in markdown
-    assert '@{ shape: doc, label: "brief.md<br>DOCUMENT" }' in markdown
+    assert '[("ontology/<br/>KNOWLEDGE STORE")]' in markdown
+    assert '@{ shape: doc, label: "brief.md<br/>DOCUMENT" }' in markdown
     assert "| knowledge_store | Agent | `local_file:ontology/`" in markdown
     assert "| document | Human + Agent | `deliverable:" in markdown
 
@@ -928,7 +928,7 @@ def test_exporter_writes_per_workflow_graph_outputs_and_deprecated_aliases_absen
     assert (report_dir / "workflow-ssot-report.md").exists()
     assert not (output_dir / "artifact-stream-report.md").exists()
     assert (output_dir / "demo" / "repository-graph.md").exists()
-    assert (output_dir / "demo" / "workflow-graph.md").exists()
+    assert (output_dir / "demo" / "execution-rail.md").exists()
     assert (output_dir / "demo" / "artifact-stream-graph.md").exists()
     assert not (output_dir / "workflow-topology.md").exists()
     assert not (output_dir / "workflow-subgraphs").exists()
@@ -996,8 +996,8 @@ def test_workflow_subgraph_renders_eval_shape():
 
     markdown = observe_graph.build_workflow_topology(graph, scope="demo")
 
-    assert '["Task<br>id: task<br>Step"]' in markdown
-    assert '[/"Quality Gate<br>id: eval<br>Eval"/]' in markdown
+    assert '["Task<br/>id: task<br/>Step"]' in markdown
+    assert '[/"Quality Gate<br/>id: eval<br/>Eval"/]' in markdown
     assert "-->|next|" in markdown
     assert "classDef eval" in markdown
 

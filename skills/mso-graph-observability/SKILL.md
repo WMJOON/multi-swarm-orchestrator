@@ -1,6 +1,6 @@
 ---
 name: mso-graph-observability
-version: "0.7.0"
+version: "0.8.2"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 ---
 
@@ -13,6 +13,8 @@ description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/
 > 같은 scope의 v0.6 렌더 경로는 자동으로 건너뛴다. v0.6 어휘 workflow는 기존 경로 유지.
 
 MSO의 **그래프 관측 레이어**다. `mso-workflow-design`이 workflow/artifact/eval TTL ABox를 설계 원본으로 관리하고 `mso-work-memory`가 작업 기억과 로그를 축적한다면, 이 스킬은 그 그래프들을 읽어 사람이 운영 상태를 빠르게 파악할 수 있는 뷰와 개선 리포트를 만든다.
+
+`mso-workflow-observation`은 이 스킬의 workflow graph scope를 노출하는 공개 alias다. 운영자가 “workflow graph를 보여줘/노출해줘”라고 요청할 때는 alias를 사용하고, artifact stream·runtime·audit까지 포함한 넓은 관측은 본 스킬 이름을 사용한다.
 
 Trigger phrases: graph observability, 그래프 관측, mso graph, workflow observability, 워크플로우 관측, workflow 시각화, work-memory 분석, auditlog 분석, 이상행동 관측, 실패 흐름 분석, workflow 실행 빈도, TTL graph, Mermaid view, ontology view, workflow topology.
 
@@ -95,7 +97,7 @@ agent-context/observability/          # 분석 리포트
 - `README.md` — 생성 결과 인덱스
 - `workflow-subgraph-index.md` — workflow scope별 graph folder 인덱스
 - `<workflow-scope>/repository-graph.md` — 특정 workflow의 **repository graph**. phase 박스, workflow node, artifact stream, eval edge를 함께 보는 통합 뷰
-- `<workflow-scope>/workflow-graph.md` — 특정 workflow의 **workflow graph**. task spine과 next/order/branch/eval control edge 중심
+- `<workflow-scope>/execution-rail.md` — 특정 workflow의 **execution rail**. task spine과 next/order/branch/eval control edge 중심
 - `<workflow-scope>/artifact-stream-graph.md` — 특정 workflow의 **artifact stream graph**. 공급망(produces/consumes) 연결 노드 중심
 - `artifact-stream-report.md` — workflow별 produced-but-unconsumed artifact와 external input checklist. 산출물 과잉, missing consumer, cross-workflow boundary 후보를 점검
 - `workflow-ssot-report.md` — legacy workflow YAML 잔존 여부와 TTL 내부 YAML 참조를 점검. sibling `*.abox.ttl`이 있으면 제거 후보, 없으면 migration blocker로 보고, `wf:ref`가 YAML을 가리키면 TTL/graph anchor로 교체하도록 보고
@@ -109,6 +111,12 @@ agent-context/observability/          # 분석 리포트
 
 ```bash
 python skills/mso-graph-observability/scripts/observe_graph.py --root .
+```
+
+Workflow graph 노출만 명시하고 싶을 때는 alias를 쓴다.
+
+```bash
+python3 skills/mso-workflow-observation/scripts/mso-workflow-observation.py --root .
 ```
 
 > **자동 실행**: `mso-workflow-design`의 hook 자산
@@ -160,7 +168,7 @@ python skills/mso-graph-observability/scripts/observe_graph.py \
 - `wf:next`와 `wf:gotoNode`는 TTL control edge다. workflow view의 `next` spine은 이 두 edge만 렌더링한다. `wf:has_subWorkflow`나 lifecycle 이름(discovery/development/testing)은 계층/이름일 뿐 실행 순서 edge로 그리지 않는다.
 - `wf:directory`는 Artifact node로 파생한다. 현재는 `data_type=local_file`, `location=index:<artifact-id>`, `locator=<dirPath>`로 표시한다. index에 없으면 raw local_file fallback key를 쓴다. `role: input/reference`는 `artifact --upstream--> task`, `role: output`은 `task --downstream--> artifact`, `role: input_output`은 양방향 stream edge로 표현한다. `implementation`/`tool_internal`/`internal`처럼 consume/produce 의미가 없는 role은 관측 stream에서 제외한다.
 - `wf:deliverables`는 downstream Artifact node로 표시한다. 현재는 `data_type=local_file`, `location=declared deliverable`, `detail=<deliverable>`로 렌더링하고 detail 기반으로 `artifact_type`을 추론한다. 이후 schema가 확장되면 `artifact_type`을 TTL metadata로 명시할 수 있다.
-- workflow scope별 graph는 `graph/<scope>/` 폴더에 분리한다. 한 scope 안에는 `repository-graph.md`, `workflow-graph.md`, `artifact-stream-graph.md` 세 뷰를 둔다.
+- workflow scope별 graph는 `graph/<scope>/` 폴더에 분리한다. 한 scope 안에는 `repository-graph.md`, `execution-rail.md`, `artifact-stream-graph.md` 세 뷰를 둔다.
 - sub-graph 분리는 scoped URI(`workflow/<workflow>/<sub-workflow>`, `node/<workflow>/<node>`)를 기준으로 한다. legacy `phase/<workflow>/<phase>` URI는 호환 입력으로만 읽는다. unscoped legacy TTL은 repository graph에는 보이지만 workflow별 sub-graph에는 포함되지 않는다.
 - 대규모 ontology에서는 `property-map.md`가 커질 수 있으므로 CLI 내부에서 보기 좋은 상한을 둔다.
 - legacy workflow YAML이나 TTL 내부 YAML 참조가 있을 때 exporter는 fallback하지 않는다. 관측 그래프에 없는 workflow는 SSOT drift로 보고 TTL 마이그레이션을 먼저 요구하며, migration이 끝난 YAML과 YAML ref는 제거 대상으로 보고한다.
