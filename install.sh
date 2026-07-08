@@ -12,6 +12,7 @@ SKILLS=(
   mso-scaffold-design
   mso-workflow-design
   mso-graph-observability
+  mso-workflow-observation
   mso-workflow-optimizer
   mso-work-memory
   mso-intent-analytics

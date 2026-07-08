@@ -6,7 +6,7 @@ SPEC: planning/mso-v0.7.0-SPEC-rail-stream-ontology.md
 v0.6 렌더러(observe_graph.build_workflow_topology)와 달리 호환 projection 없이
 wf:Rail / wf:Stream 인스턴스를 직접 순회한다. edge가 일급이므로 순회가 자명하다:
 
-  Repository Graph = Workflow Graph(Control/Execution, Rail)
+  Repository Graph = Execution Rail(Control/Execution, Rail)
                    + Data SupplyChain Graph(Artifact Stream, Stream)
 
 렌더 원칙 (v0.6.7에서 확립된 경계 유지):
@@ -23,6 +23,7 @@ from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
 WF = Namespace("https://mso.dev/ontology/workflow#")
 
 MACHINE_NATIVE = {"knowledge_store", "event_store", "local_database", "table"}
+MERMAID_LINE_BREAK = "<br/>"
 
 RAIL_EDGE_STYLE = {
     # railType → (arrow, label)  — on 이 있으면 항상 -.->|on: x|
@@ -158,25 +159,25 @@ def _node_decl(g: Graph, node: URIRef) -> tuple[str, str]:
         return text if text else "self"
 
     if has(WF.Eval):
-        suffix = f"<br>subject: {subject_of(node)}"
-        return f'  {node_id}[/"{label}<br>id: {local}<br>Eval{suffix}"\\]:::eval', "eval"
+        suffix = f"{MERMAID_LINE_BREAK}subject: {subject_of(node)}"
+        return f'  {node_id}[/"{label}{MERMAID_LINE_BREAK}id: {local}{MERMAID_LINE_BREAK}Eval{suffix}"\\]:::eval', "eval"
     if has(WF.Decision):
-        suffix = f"<br>subject: {subject_of(node)}"
-        return f'  {node_id}{{{{"{label}<br>id: {local}<br>Decision{suffix}"}}}}:::decision', "decision"
+        suffix = f"{MERMAID_LINE_BREAK}subject: {subject_of(node)}"
+        return f'  {node_id}{{{{"{label}{MERMAID_LINE_BREAK}id: {local}{MERMAID_LINE_BREAK}Decision{suffix}"}}}}:::decision', "decision"
     if has(WF.Task):
-        return f'  {node_id}["{label}<br>id: {local}<br>Task"]:::task', "task"
+        return f'  {node_id}["{label}{MERMAID_LINE_BREAK}id: {local}{MERMAID_LINE_BREAK}Task"]:::task', "task"
     if has(WF.Execution):
         # 유형 미지정 Execution — hand_off 대상(주체≠self)은 [[...]] subroutine (D-15)
         subject = subject_of(node)
         if subject != "self":
             detail = _text(g.value(node, WF.subjectDetail))
-            extra = f"<br>{_esc(detail, 40)}" if detail else ""
-            return f'  {node_id}[["{label}<br>subject: {subject}{extra}"]]:::executor', "executor"
-        return f'  {node_id}["{label}<br>id: {local}<br>Execution"]:::task', "task"
+            extra = f"{MERMAID_LINE_BREAK}{_esc(detail, 40)}" if detail else ""
+            return f'  {node_id}[["{label}{MERMAID_LINE_BREAK}subject: {subject}{extra}"]]:::executor', "executor"
+        return f'  {node_id}["{label}{MERMAID_LINE_BREAK}id: {local}{MERMAID_LINE_BREAK}Execution"]:::task', "task"
     if has(WF.Artifact):
         artifact_type = _text(g.value(node, WF.artifactType)) or "unspecified"
         locator = _text(g.value(node, WF.locator))
-        body = f"{_esc(locator) or label}<br>{artifact_type.upper()}"
+        body = f"{_esc(locator) or label}{MERMAID_LINE_BREAK}{artifact_type.upper()}"
         if artifact_type in MACHINE_NATIVE:
             return f'  {node_id}[("{body}")]:::artifact', "artifact"
         return f'  {node_id}@{{ shape: doc, label: "{body}" }}', "artifact"
@@ -194,7 +195,7 @@ def _edge_line(edge: dict, style_map: dict) -> str:
     if edge["on"]:
         text = f"on: {edge['on']}"
         if edge["criteria"]:
-            text += f"<br>{_esc(edge['criteria'], 48)}"
+            text += f"{MERMAID_LINE_BREAK}{_esc(edge['criteria'], 48)}"
         return f'  {source_id} -.->|"{_esc(text, 64)}"| {target_id}'
     if label:
         return f"  {source_id} {arrow}|{label}| {target_id}"
@@ -259,11 +260,13 @@ def _executor_links(g: Graph, nodes: list[URIRef]) -> list[str]:
 
 
 def build_view(g: Graph, workflow: URIRef, scope: str, view: str) -> str:
-    """view ∈ {workflow, artifact-stream, repository}."""
+    """view ∈ {execution-rail, artifact-stream, repository}."""
+    if view == "workflow":
+        view = "execution-rail"
     members = _members(g, workflow)
     rail_edges = _scope_edges(rails(g), members) if view != "artifact-stream" else []
     stream_edges: list[dict] = []
-    if view != "workflow":
+    if view in {"artifact-stream", "repository"}:
         # WorkflowGraph closure (D-16): member Execution이 소비/생산하는 Artifact도
         # scope에 포함한다 — artifact↔artifact edge(evidence_of, 파생 * 포함)가
         # 그 closure 안에서 렌더된다.
@@ -283,9 +286,9 @@ def build_view(g: Graph, workflow: URIRef, scope: str, view: str) -> str:
     label = _label(g, workflow)
     workflow_type = _text(g.value(workflow, WF.workflowType))
     header = {
-        "workflow": "Execution Graph (Control Plane — wf:Rail)",
+        "execution-rail": "Execution Rail (Control Plane — wf:Rail)",
         "artifact-stream": "Artifact Stream Graph (Data Plane — wf:Stream)",
-        "repository": "Repository Graph = Execution Graph + Artifact Stream Graph",
+        "repository": "Repository Graph = Execution Rail + Artifact Stream Graph",
     }[view]
 
     lines = [

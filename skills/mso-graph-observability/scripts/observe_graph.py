@@ -42,6 +42,7 @@ except ImportError as exc:  # pragma: no cover - user environment guard
 
 WF = Namespace("https://mso.dev/ontology/workflow#")
 SKOS = Namespace("http://www.w3.org/2004/02/skos/core#")
+MERMAID_LINE_BREAK = "<br/>"
 
 CLASS_TYPES = {OWL.Class, RDFS.Class}
 PROPERTY_TYPES = {OWL.ObjectProperty, OWL.DatatypeProperty, RDF.Property}
@@ -668,7 +669,7 @@ def mermaid_node_label(graph: Graph, term: URIRef, suffix: str = "") -> str:
         parts.append(f"id: {node_id}")
     if suffix:
         parts.append(suffix)
-    return "<br>".join(mermaid_label(p, 140) for p in parts)
+    return MERMAID_LINE_BREAK.join(mermaid_label(p, 140) for p in parts)
 
 
 def mermaid_node(graph: Graph, term: URIRef, prefix: str, suffix: str = "", shape: str = "rect") -> str:
@@ -1103,7 +1104,7 @@ def data_label(
         name = f"{db_name}#{table_name}"
     name = display_name_for_artifact(name, artifact_type)
     parts = [mermaid_label(name, 52), type_label]
-    return "<br>".join(p for p in parts if p)
+    return MERMAID_LINE_BREAK.join(p for p in parts if p)
 
 
 def enrich_artifact_ref(ref: dict[str, str], *, data_type: str, locator: str) -> dict[str, str]:
@@ -1671,7 +1672,7 @@ def build_process_map(
     graph: Graph,
     data_registry: dict[str, dict[str, str]] | None = None,
 ) -> str:
-    """Workflow/sub-workflow process map: [['scope<br>workflow']] subroutine nodes + shared artifact cylinders.
+    """Workflow/sub-workflow process map with subroutine nodes + shared artifact cylinders.
 
     Shows only cross-scope artifacts and machine-native (local_database/event_store/knowledge_store)
     artifacts. Deliverable free-text nodes are intentionally excluded — they have no stable id and
@@ -1786,7 +1787,7 @@ def build_process_map(
             nid = phase_node_ids.get(pstr, "")
             if not nid:
                 continue
-            plabel = f"{scope_label(scope)}<br>{mermaid_label(phase_label_map.get(pstr, ''), 36)}"
+            plabel = f"{scope_label(scope)}{MERMAID_LINE_BREAK}{mermaid_label(phase_label_map.get(pstr, ''), 36)}"
             lines.append(f'    {mermaid_shape(nid, plabel, "subroutine")}')
         lines.append("  end")
         lines.append("")
@@ -2205,7 +2206,7 @@ def build_workflow_topology(
                     shape = "hexagon"
                     subject = decision_subject(term)
                     if subject:
-                        suffix = f"{suffix}<br>subject: {subject}"
+                        suffix = f"{suffix}{MERMAID_LINE_BREAK}subject: {subject}"
                 elif rdf_type == WF.Eval:
                     shape = "trapezoid"
                     judge = first_literal(graph, term, WF.judge)
@@ -2220,12 +2221,12 @@ def build_workflow_topology(
                         elif judge_norm == "METRIC":
                             oracle_subj = "metric"
                     if oracle_subj:
-                        suffix = f"{suffix}<br>oracle: {oracle_subj}"
+                        suffix = f"{suffix}{MERMAID_LINE_BREAK}oracle: {oracle_subj}"
                 elif rdf_type == WF.Event:
                     shape = "stadium"
                     event_kind = first_literal(graph, term, WF.eventKind)
                     if event_kind:
-                        suffix = f"{suffix}<br>kind: {event_kind}"
+                        suffix = f"{suffix}{MERMAID_LINE_BREAK}kind: {event_kind}"
                 elif rdf_type == WF.Validation:
                     shape = "hexagon"
                 else:
@@ -2306,7 +2307,7 @@ def build_workflow_topology(
                         if node_cls in {"decision", "eval"}:
                             _lbl_short = mermaid_node_label(graph, node, node_suffix)
                         else:
-                            _lbl_short = f"{mermaid_label(_lbl, 52)}<br>id: {display_id(node)}"
+                            _lbl_short = f"{mermaid_label(_lbl, 52)}{MERMAID_LINE_BREAK}id: {display_id(node)}"
                         lines.append(f"  {mermaid_shape(node_id, _lbl_short, node_shape)}")
                         node_class = node_cls or css_class
                         lines.append(f"  class {node_id} {node_class}")
@@ -2864,7 +2865,7 @@ def build_workflow_subgraph_index(
     lines = [
         "> Workflow-specific graph views generated from TTL ABox inputs. Each workflow has its own output directory.",
         "",
-        "| Workflow Scope | Repository Graph | Workflow Graph | Artifact Stream Graph | Workflows | Nodes | Artifact Nodes |",
+        "| Workflow Scope | Repository Graph | Execution Rail | Artifact Stream Graph | Workflows | Nodes | Artifact Nodes |",
         "|---|---|---|---|---:|---:|---:|",
     ]
     for scope in scopes:
@@ -2873,7 +2874,7 @@ def build_workflow_subgraph_index(
         data_count = len(data_keys(graph, scope, data_registry))
         folder = scope_dir_name(scope)
         lines.append(
-            f"| `{scope_label(scope)}` | [`repository-graph.md`]({folder}/repository-graph.md) | [`workflow-graph.md`]({folder}/workflow-graph.md) | [`artifact-stream-graph.md`]({folder}/artifact-stream-graph.md) | {phase_count} | {len(node_terms)} | {data_count} |"
+            f"| `{scope_label(scope)}` | [`repository-graph.md`]({folder}/repository-graph.md) | [`execution-rail.md`]({folder}/execution-rail.md) | [`artifact-stream-graph.md`]({folder}/artifact-stream-graph.md) | {phase_count} | {len(node_terms)} | {data_count} |"
         )
     return "\n".join(lines)
 
@@ -3015,7 +3016,7 @@ def build_readme(workflow_dir: Path, ttl_paths: list[Path], output_dir: Path) ->
             "",
             "- [workflow-subgraph-index.md](workflow-subgraph-index.md) — workflow-specific sub-graph index",
             "- `<workflow>/repository-graph.md` — integrated repository graph for one workflow scope",
-            "- `<workflow>/workflow-graph.md` — task workflow spine for one workflow scope",
+            "- `<workflow>/execution-rail.md` — control-plane execution rail for one workflow scope",
             "- `<workflow>/artifact-stream-graph.md` — artifact supply-chain graph for one workflow scope",
             "- [artifact-stream-report.md](artifact-stream-report.md) — produced/unconsumed artifacts and external input checklist",
             "- [workflow-ssot-report.md](workflow-ssot-report.md)",
@@ -3063,6 +3064,7 @@ def clean_generated_graph_views(output_dir: Path) -> None:
             if child.name in legacy_dirs or (
                 (child / "repository-graph.md").exists()
                 or (child / "workflow-graph.md").exists()
+                or (child / "execution-rail.md").exists()
                 or (child / "artifact-stream-graph.md").exists()
             ):
                 shutil.rmtree(child)
@@ -3106,7 +3108,7 @@ def main() -> int:
         flow_dir = output_dir / scope_dir_name(v07_scope)
         for view, filename, view_title in (
             ("repository", "repository-graph.md", "Repository Graph"),
-            ("workflow", "workflow-graph.md", "Workflow Graph"),
+            ("execution-rail", "execution-rail.md", "Execution Rail"),
             ("artifact-stream", "artifact-stream-graph.md", "Artifact Stream Graph"),
         ):
             write_markdown(
@@ -3138,8 +3140,8 @@ def main() -> int:
             build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="integrated"),
         )
         write_markdown(
-            flow_dir / "workflow-graph.md",
-            f"MSO Workflow Graph — {scope_label(scope)}",
+            flow_dir / "execution-rail.md",
+            f"MSO Execution Rail — {scope_label(scope)}",
             build_workflow_topology(graph, scope=scope, data_registry=data_registry, view="workflow"),
         )
         artifact_stream_view = build_workflow_topology(
