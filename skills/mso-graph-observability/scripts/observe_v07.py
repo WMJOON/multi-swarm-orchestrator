@@ -217,6 +217,18 @@ def _collect_nodes(edges: list[dict], members: set[URIRef]) -> list[URIRef]:
     return sorted(nodes, key=str)
 
 
+def _is_artifact(g: Graph, node: URIRef) -> bool:
+    return (node, RDF.type, WF.Artifact) in g
+
+
+def _exclude_artifacts(g: Graph, nodes: list[URIRef]) -> list[URIRef]:
+    return [node for node in nodes if not _is_artifact(g, node)]
+
+
+def _exclude_artifact_edges(g: Graph, edges: list[dict]) -> list[dict]:
+    return [edge for edge in edges if not _is_artifact(g, edge["from"]) and not _is_artifact(g, edge["to"])]
+
+
 def _artifact_index(g: Graph, nodes: list[URIRef]) -> str:
     rows = []
     for node in nodes:
@@ -265,6 +277,8 @@ def build_view(g: Graph, workflow: URIRef, scope: str, view: str) -> str:
         view = "execution-rail"
     members = _members(g, workflow)
     rail_edges = _scope_edges(rails(g), members) if view != "artifact-stream" else []
+    if view == "execution-rail":
+        rail_edges = _exclude_artifact_edges(g, rail_edges)
     stream_edges: list[dict] = []
     if view in {"artifact-stream", "repository"}:
         # WorkflowGraph closure (D-16): member Execution이 소비/생산하는 Artifact도
@@ -282,6 +296,10 @@ def build_view(g: Graph, workflow: URIRef, scope: str, view: str) -> str:
     if view == "artifact-stream":
         # 공급망 관점: stream 연결 노드만
         nodes = _collect_nodes(stream_edges, set())
+    elif view == "execution-rail":
+        # control plane 관점: wf:Rail에 등장하는 실행 노드만.
+        # wf:has 멤버로 선언된 artifact는 repository/artifact-stream 뷰에서만 보인다.
+        nodes = _exclude_artifacts(g, _collect_nodes(rail_edges, set()))
 
     label = _label(g, workflow)
     workflow_type = _text(g.value(workflow, WF.workflowType))
@@ -316,7 +334,8 @@ def build_view(g: Graph, workflow: URIRef, scope: str, view: str) -> str:
         body.append('  empty["(no nodes)"]')
     lines.extend(body)
     lines.append("```")
-    lines.append(_artifact_index(g, nodes))
+    if view != "execution-rail":
+        lines.append(_artifact_index(g, nodes))
     lines.append("")
     lines.append(f"- workflow: `{label}` (`{_local(workflow)}`)")
     lines.append(f"- rail edges: {len(rail_edges)} · stream edges: {len(stream_edges)}")

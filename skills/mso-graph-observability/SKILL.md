@@ -97,7 +97,7 @@ agent-context/observability/          # 분석 리포트
 - `README.md` — 생성 결과 인덱스
 - `workflow-subgraph-index.md` — workflow scope별 graph folder 인덱스
 - `<workflow-scope>/repository-graph.md` — 특정 workflow의 **repository graph**. phase 박스, workflow node, artifact stream, eval edge를 함께 보는 통합 뷰
-- `<workflow-scope>/execution-rail.md` — 특정 workflow의 **execution rail**. task spine과 next/order/branch/eval control edge 중심
+- `<workflow-scope>/execution-rail.md` — 특정 workflow의 **execution rail**. task spine과 next/order/branch/eval control edge 중심이며 Artifact node와 Artifact Node Index는 제외
 - `<workflow-scope>/artifact-stream-graph.md` — 특정 workflow의 **artifact stream graph**. 공급망(produces/consumes) 연결 노드 중심
 - `artifact-stream-report.md` — workflow별 produced-but-unconsumed artifact와 external input checklist. 산출물 과잉, missing consumer, cross-workflow boundary 후보를 점검
 - `workflow-ssot-report.md` — legacy workflow YAML 잔존 여부와 TTL 내부 YAML 참조를 점검. sibling `*.abox.ttl`이 있으면 제거 후보, 없으면 migration blocker로 보고, `wf:ref`가 YAML을 가리키면 TTL/graph anchor로 교체하도록 보고

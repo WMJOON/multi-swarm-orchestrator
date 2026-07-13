@@ -137,11 +137,14 @@ def test_delegation_pair_renders_reads_and_executor():
     assert "-.->|evidence_of|" in md
     # 명시 artifactType 렌더 (추론 아님)
     assert "EVENT_STORE" in md.upper()
+    assert "## Artifact Node Index" in md
 
 
 def test_workflow_view_excludes_streams():
     g = synthetic_delegation_graph()
     md = observe_v07.build_view(g, WF["workflow/t"], "t", "workflow")
-    assert "-.->|reads|" in md            # Rail은 포함
+    assert "-.->|reads|" not in md        # Artifact endpoint rail은 execution rail에서 제외
+    assert "EVENT_STORE" not in md.upper()
+    assert "## Artifact Node Index" not in md
     assert "consumed_by" not in md        # Stream은 제외
     assert "produces_to" not in md
