@@ -1,0 +1,16 @@
+# 재유효 후보 (suspended invalidation)
+# invalidated-by 의 target RN 이 롤백된 경우 — 무효화 근거가 사라져 재검토가 필요한 교훈.
+# 엣지는 삭제하지 않는다 (append-only) — 이 쿼리가 보류 상태를 도출한다.
+PREFIX wm: <https://mso.dev/ontology/work-memory#>
+
+SELECT ?id ?type ?title ?releaseId ?rollbackId
+WHERE {
+  ?entry wm:invalidatedBy ?rn ;
+         wm:entryId ?id ;
+         wm:typeName ?type ;
+         wm:title ?title .
+  ?rn wm:entryId ?releaseId .
+  ?rollback wm:rollsBack ?rn ;
+            wm:entryId ?rollbackId .
+}
+ORDER BY ?id

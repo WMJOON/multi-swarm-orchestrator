@@ -24,6 +24,9 @@ wm:AlternativesRecord a owl:Class ;
 wm:TroubleShooting a owl:Class ;
     rdfs:subClassOf wm:Entry .
 
+wm:ReleaseNote a owl:Class ;
+    rdfs:subClassOf wm:Entry .
+
 wm:Episode a owl:Class ;
     rdfs:subClassOf wm:Entry .
 
@@ -98,6 +101,22 @@ wm:resolvedBy a owl:ObjectProperty ;
 wm:causedBy a owl:ObjectProperty ;
     rdfs:domain wm:TroubleShooting ;
     rdfs:range wm:IssueNote .
+
+wm:releasedIn a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:ReleaseNote .
+
+wm:verifiedIn a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:ReleaseNote .
+
+wm:invalidatedBy a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:ReleaseNote .
+
+wm:rollsBack a owl:ObjectProperty ;
+    rdfs:domain wm:ReleaseNote ;
+    rdfs:range wm:ReleaseNote .
 
 wm:analyzedIn a owl:ObjectProperty ;
     rdfs:domain wm:TroubleShooting ;

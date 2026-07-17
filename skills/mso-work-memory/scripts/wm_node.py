@@ -38,6 +38,7 @@ _DEFAULT_TYPE_PREFIX = {
     "user-decision": "UD",
     "alternatives-record": "AR",
     "trouble-shooting": "TS",
+    "release-note": "RN",
     "episode": "EP",
     "pattern": "PT",
     "principle": "PR",
@@ -54,6 +55,7 @@ _DEFAULT_TYPE_DIR = {
     "user-decision": "track-record",
     "alternatives-record": "track-record",
     "trouble-shooting": "track-record",
+    "release-note": "release-record",
     "episode": "insight-record",
     "pattern": "insight-record",
     "principle": "insight-record",
@@ -68,6 +70,7 @@ REQUIRED_FIELDS = ["id", "type", "title", "text", "tags", "created_at"]  # ìŠ¤ì½
 
 _DEFAULT_ALLOWED_RELATIONS = {
     "raised", "followed-by", "resolved-by", "caused-by",
+    "released-in", "verified-in", "invalidated-by", "rolls-back",
     "analyzed-in", "shows-pattern", "generalized-in", "crystallized-in",
     "references", "supersedes", "refines", "depends-on",
 }

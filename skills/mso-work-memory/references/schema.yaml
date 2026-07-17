@@ -1,8 +1,8 @@
 # Work-Memory JSONL 공통 스키마
 # 모든 entry 는 한 줄(jsonl)로 직렬화. zvec 호환 + 그래프 표현 동시 지원.
 
-version: "1.2.0"
-updated: 2026-06-29
+version: "1.3.0"
+updated: 2026-07-17
 
 # ─── ID 규칙 ─────────────────────────────────────────────
 id_patterns:
@@ -11,6 +11,7 @@ id_patterns:
   UD: "user-decision    (track-record) — UD-NNNN"
   AR: "alternatives-record (track-record) — AR-NNNN"
   TS: "trouble-shooting (track-record) — TS-NNNN"
+  RN: "release-note     (release-record) — RN-NNNN"
   EP: "episode          (insight-record) — EP-NNNN"
   PT: "pattern          (insight-record) — PT-NNNN"
   PR: "principle        (insight-record) — PR-NNNN"
@@ -35,7 +36,7 @@ id_rules:
 #  reader(validate/show/graph/stats/ttl)는 rglob+줄단위 파싱이라 old/new 를 모두 읽지만,
 #  같은 트리 안 공존은 DUP-ID 를 유발하므로 wm_migrate.py 로 일괄 전환 후 old 를 archive 한다.)
 storage_format:
-  track_insight: "타입별 aggregate append JSONL — <dir>/<type>.jsonl"
+  track_insight: "타입별 aggregate append JSONL — <dir>/<type>.jsonl (release-record 도 동일)"
   audit_worklog: "auditlog=시각별 자동 파일, worklog=workflow node 실행 기록 파일 — <dir>/<id>.jsonl (기존 유지)"
   locator: "primary key = record.id. source_path 는 entry 가 담긴 aggregate 파일(containing log)."
 
@@ -53,6 +54,7 @@ types:
   user-decision:    {prefix: UD, dir: track-record}
   alternatives-record: {prefix: AR, dir: track-record}
   trouble-shooting: {prefix: TS, dir: track-record}
+  release-note:     {prefix: RN, dir: release-record}
   episode:          {prefix: EP, dir: insight-record}
   pattern:          {prefix: PT, dir: insight-record}
   principle:        {prefix: PR, dir: insight-record}
@@ -62,7 +64,7 @@ types:
 # ─── 공통 필수 필드 (모든 entry) ────────────────────────
 required_fields:
   id: "예: IN-0042"
-  type: "issue-note | agent-decision | user-decision | alternatives-record | trouble-shooting | episode | pattern | principle | auditlog | worklog"
+  type: "issue-note | agent-decision | user-decision | alternatives-record | trouble-shooting | release-note | episode | pattern | principle | auditlog | worklog"
   title: "한 줄 요약 (60자 이내 권장)"
   text: "본문 (markdown 가능, 임베딩 대상)"
   tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.AI-Chatbot-Policy')"
@@ -82,6 +84,14 @@ relation_types:
   followed-by:         "다음 단계로 이어짐 (AD → UD, UD → TS 등)"
   resolved-by:         "이 issue 가 해당 trouble-shooting 으로 해결됨 (IN ← TS)"
   caused-by:           "이 entry 의 원인이 다른 entry"
+
+  # 릴리스·유효성 (release-record) — v1.3.0
+  # 상태는 append-only 로 표현한다: is_current 는 저장하지 않고 derived view 로,
+  # 롤백은 별도 RN entry(kind=rollback) + rolls-back 엣지로 기록한다.
+  released-in:         "이 entry(주로 TS, UD/AD 도 가능)가 해당 릴리스에 포함됨 (TS → RN)"
+  verified-in:         "이 entry(UD/AD/TS/PT/PR)가 해당 릴리스 시점에도 유효함을 확인 (* → RN)"
+  invalidated-by:      "이 entry(UD/AD/TS/PT/PR)가 해당 릴리스로 인해 더 이상 성립하지 않음 (* → RN)"
+  rolls-back:          "롤백 RN 이 이전 릴리스 RN 을 되돌림 (RN → RN)"
 
   # 인사이트 추출 (insight-record)
   analyzed-in:         "특정 사건이 episode 로 회고됨 (TS → EP)"
@@ -133,6 +143,17 @@ type_specific:
       - root_cause: "근본 원인 (가설/검증)"
       - prevention: "재발 방지 조치"
 
+  release-note:
+    # 프로젝트 상태 축의 앵커. append-only — 아래 파생 규칙으로 상태를 도출한다:
+    #   current  = rolls-back 대상이 아니고 자신이 rollback 이 아닌 RN 중 released_at 최신 (derived view, 저장 금지)
+    #   rollback = kind=rollback 인 새 RN entry + relations 의 rolls-back 엣지 (이벤트로 기록)
+    #   롤백된 RN 을 target 으로 한 invalidated-by 는 '재유효 후보'로 파생된다 (엣지 삭제 금지)
+    metadata:
+      - version: "semver 등 릴리스 식별 버전 (예: 0.7.0)"
+      - released_at: "릴리스/롤백 시각 (ISO 8601)"
+      - kind: "release | rollback"
+      - scope: "적용 범위 (project | module id 등)"
+
   episode:
     metadata:
       - event_date: "사건 발생 시각"
@@ -176,3 +197,19 @@ examples:
       reporter: user
     relations:
       - {type: resolved-by, target: TS-0001}
+
+  release_note:
+    id: RN-0001
+    type: release-note
+    title: "v0.7.0 릴리스 — 라우팅 정책 timeout 복원"
+    text: "TS-0001 의 timeout 복원이 포함된 릴리스. UD-0003 의 기준은 이 버전에서도 유효함을 확인."
+    tags: ["release", "02.AI-Chatbot-Policy"]
+    created_at: "2026-07-17T10:00:00Z"
+    metadata:
+      version: "0.7.0"
+      released_at: "2026-07-17T10:00:00Z"
+      kind: release
+      scope: project
+    # 역방향 엣지는 각 entry 쪽에서: TS-0001 --released-in--> RN-0001,
+    # UD-0003 --verified-in--> RN-0001. 롤백 시에는 새 RN(kind=rollback)이
+    # {type: rolls-back, target: RN-0001} 을 가진다.

@@ -1,0 +1,15 @@
+# 더 이상 유효하지 않은 기록 (active invalidation)
+# invalidated-by 의 target RN 이 롤백되지 않은 경우 — 무효화가 살아있는 교훈 목록.
+PREFIX wm: <https://mso.dev/ontology/work-memory#>
+
+SELECT ?id ?type ?title ?releaseId ?version
+WHERE {
+  ?entry wm:invalidatedBy ?rn ;
+         wm:entryId ?id ;
+         wm:typeName ?type ;
+         wm:title ?title .
+  ?rn wm:entryId ?releaseId .
+  OPTIONAL { ?rn wm:metadataVersion ?version }
+  FILTER NOT EXISTS { ?rollback wm:rollsBack ?rn }
+}
+ORDER BY ?id

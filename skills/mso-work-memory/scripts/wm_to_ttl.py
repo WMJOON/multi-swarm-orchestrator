@@ -25,6 +25,7 @@ TYPE_CLASS = {
     "user-decision": WM.UserDecision,
     "alternatives-record": WM.AlternativesRecord,
     "trouble-shooting": WM.TroubleShooting,
+    "release-note": WM.ReleaseNote,
     "episode": WM.Episode,
     "pattern": WM.Pattern,
     "principle": WM.Principle,
@@ -37,6 +38,10 @@ RELATION_PREDICATE = {
     "followed-by": WM.followedBy,
     "resolved-by": WM.resolvedBy,
     "caused-by": WM.causedBy,
+    "released-in": WM.releasedIn,
+    "verified-in": WM.verifiedIn,
+    "invalidated-by": WM.invalidatedBy,
+    "rolls-back": WM.rollsBack,
     "analyzed-in": WM.analyzedIn,
     "shows-pattern": WM.showsPattern,
     "generalized-in": WM.generalizedIn,
@@ -87,7 +92,11 @@ def iter_jsonl(path: Path) -> Iterable[tuple[Path, int, dict[str, Any] | None, s
 
 
 def discover_entry_files(workmem_dir: Path, include_runtime: bool = False) -> list[Path]:
-    roots = [workmem_dir / "track-record", workmem_dir / "insight-record"]
+    roots = [
+        workmem_dir / "track-record",
+        workmem_dir / "release-record",
+        workmem_dir / "insight-record",
+    ]
     if include_runtime:
         roots.extend([workmem_dir / "auditlog", workmem_dir / "worklog"])
     files: list[Path] = []

@@ -7,7 +7,6 @@ init.py — MSO Repository Setup CLI
   init.py --check <path>
   init.py --migrate <path>
   init.py --hook <path>
-  init.py --cleanup-hermes <path>
 
 생성 구조:
   <target>/agent-context/
@@ -259,7 +258,7 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh"]
+WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh", "release-context.sh"]
 SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # uug-context-hook.py: UUG grounding 연동 넛지 (optional). uug-grounding 이 이 머신에
 # 없으면 cmd_hook 이 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부에도 동일한
@@ -268,11 +267,6 @@ SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # SessionStart 밖 stdout 전달 의미론이 미검증이라 보류(work-memory-check.sh 와 동일한
 # 근거, SKILL.md 참조).
 UUG_CONTEXT_HOOK_FILES = ["uug-context-hook.py"]
-HERMES_SKILL_NAME = "mso-hermes-bridge"
-HERMES_PROJECT_FILES = [
-    ".hermes/mso-context.md",
-    ".hermes/bridge.sh",
-]
 
 
 def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "claude"):
@@ -320,6 +314,13 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             shutil.copy(src, scripts_dst / fn)
             (scripts_dst / fn).chmod(0o755)
             copied.append(fn)
+    # release-context.sh 가 호출하는 wm_release.py (derived release view, stdlib only)
+    # 도 copy-form 으로 동봉한다 — 훅은 자기 옆의 wm_release.py 를 우선 탐색한다.
+    wm_release_src = hooks_dir.parent / "scripts" / "wm_release.py"
+    if wm_release_src.exists():
+        shutil.copy(wm_release_src, scripts_dst / "wm_release.py")
+        (scripts_dst / "wm_release.py").chmod(0o755)
+        copied.append("wm_release.py")
     scaffold_hooks_dir = scaffold_skill_dir / "hooks"
     for fn in SCAFFOLD_HOOK_FILES:
         src = scaffold_hooks_dir / fn
@@ -385,6 +386,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     commit_cmd = f"{prefix}{workmem_env} bash {pd}/{provider_dir_name}/scripts/commit-work-memory.sh"
     check_cmd = f"{prefix}{worthy_env}{workmem_env} bash {pd}/{provider_dir_name}/scripts/work-memory-check.sh"
     stop_check_cmd = f"{prefix}bash {pd}/{provider_dir_name}/scripts/stop-check.sh"
+    release_ctx_cmd = f"{prefix}{workmem_env} bash {pd}/{provider_dir_name}/scripts/release-context.sh"
     scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
     uug_context_cmd = f"{prefix}python3 {pd}/{provider_dir_name}/scripts/uug-context-hook.py"
 
@@ -410,6 +412,11 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         for matcher in ("compact", "resume"):
             _upsert_hook(hooks_section, "SessionStart", matcher, check_cmd, "work-memory-check.sh")
             _upsert_hook(hooks_section, "SessionStart", matcher, scaffold_cmd, "scaffold-check.sh")
+        # release-context — 현재 릴리스(RN) derived view 를 컨텍스트로 주입.
+        # 릴리스 상태는 세션 최초 시작에 가장 가치가 크므로 startup 도 포함한다.
+        # RN entry 가 없는 프로젝트에서는 훅이 무출력이라 등록해도 잡음이 없다.
+        for matcher in ("startup", "compact", "resume"):
+            _upsert_hook(hooks_section, "SessionStart", matcher, release_ctx_cmd, "release-context.sh")
 
     settings_path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
@@ -425,7 +432,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
         uug_note = " + UserPromptSubmit uug-context-hook" if uug_present else ""
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check{uug_note})")
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check + SessionStart[startup,compact,resume] release-context{uug_note})")
         if not uug_present:
             print("  · uug-grounding 미설치 감지 — uug-context-hook(UserPromptSubmit) 등록 생략. "
                   "UUG 설치 후 이 명령을 재실행하면 자동 등록된다.")
@@ -601,109 +608,6 @@ def _remove_managed_block(text: str, name: str) -> str:
     return (before.rstrip() + "\n\n" + after.lstrip()).rstrip() + "\n"
 
 
-def cmd_cleanup_hermes(target: Path, force: bool = False):
-    """v0.8.1 Hermes Bridge 폐기에 따른 로컬 설정 흔적을 정리한다.
-
-    Hermes 자체 설치(~/.hermes, launchd, API key)는 MSO 소유가 아니므로 건드리지
-    않는다. 이 명령은 MSO Hermes Bridge가 만든 project-local 파일과 전역 skill
-    symlink만 정리한다. 실제 디렉토리는 --force 없이는 삭제하지 않는다.
-    """
-    print(f"\nCleaning MSO Hermes Bridge settings for v0.8.1 at: {target}\n")
-    removed: list[str] = []
-    skipped: list[str] = []
-
-    # 1) 프로젝트 내부 .hermes 산출물: MSO bridge가 만든 파일만 제거.
-    for rel in HERMES_PROJECT_FILES:
-        path = target / rel
-        if not path.exists() and not path.is_symlink():
-            continue
-        if _is_managed_hermes_project_file(path) or force:
-            _remove_path(path)
-            removed.append(str(path))
-        else:
-            skipped.append(f"{path} (managed Hermes Bridge file로 확인되지 않음)")
-
-    hermes_dir = target / ".hermes"
-    if hermes_dir.exists() and hermes_dir.is_dir():
-        try:
-            hermes_dir.rmdir()
-            removed.append(str(hermes_dir))
-        except OSError:
-            skipped.append(f"{hermes_dir} (비어 있지 않아 유지)")
-
-    # 2) 전역 skill 설치 흔적: symlink/broken symlink은 제거, 실제 디렉토리는 --force 때만.
-    for root in _global_skill_roots():
-        skill_path = root / HERMES_SKILL_NAME
-        if not skill_path.exists() and not skill_path.is_symlink():
-            continue
-        if skill_path.is_symlink():
-            skill_path.unlink()
-            removed.append(str(skill_path))
-        elif skill_path.is_dir() and force:
-            shutil.rmtree(skill_path)
-            removed.append(str(skill_path))
-        else:
-            skipped.append(f"{skill_path} (symlink가 아닌 실제 디렉토리라 유지; 삭제하려면 --force)")
-
-    # 3) 산출물은 삭제하지 않고 알려만 준다.
-    artifact_hits = sorted(target.glob("agent-context/artifacts/*hermes*"))
-    if artifact_hits:
-        skipped.extend(f"{p} (artifact라 자동 삭제하지 않음)" for p in artifact_hits)
-
-    if removed:
-        print("[removed]")
-        for p in removed:
-            print(f"  - {p}")
-    else:
-        print("[removed]")
-        print("  - 없음")
-
-    if skipped:
-        print("\n[kept]")
-        for p in skipped:
-            print(f"  - {p}")
-
-    print("\n✓ Hermes Bridge cleanup 완료")
-    print("  · Hermes 본체 설정(~/.hermes/.env, gateway/launchd)은 MSO 소유가 아니므로 유지했습니다.")
-    print("  · 이후 MSO 실행 plane은 mso-workflow-optimizer → LangGraph artifact 경로를 우선합니다.")
-    return 0
-
-
-def _global_skill_roots() -> list[Path]:
-    return [
-        Path.home() / ".claude" / "skills",
-        Path.home() / ".codex" / "skills",
-        Path.home() / ".gemini" / "antigravity" / "skills",
-    ]
-
-
-def _is_managed_hermes_project_file(path: Path) -> bool:
-    if path.is_symlink():
-        target = str(path.readlink())
-        return HERMES_SKILL_NAME in target or "hermes" in path.name.lower()
-    if not path.is_file():
-        return False
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return False
-    markers = [
-        "Auto-generated by mso-hermes-bridge setup",
-        "Source: mso-hermes-bridge",
-        HERMES_SKILL_NAME,
-        "Hermes Agent",
-        "hermes-executor",
-    ]
-    return any(marker in text for marker in markers)
-
-
-def _remove_path(path: Path):
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        shutil.rmtree(path)
-
-
 def main():
     parser = argparse.ArgumentParser(description="MSO Repository Setup", formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     g = parser.add_mutually_exclusive_group(required=True)
@@ -711,7 +615,6 @@ def main():
     g.add_argument("--check", help="기존 구조 점검")
     g.add_argument("--migrate", help="평탄 구조 → agent-context/ 이전")
     g.add_argument("--hook", help="provider 설정 디렉토리에 work-memory hook 복사·등록 (copy-form)")
-    g.add_argument("--cleanup-hermes", help="v0.8.1 적용: MSO Hermes Bridge 설정/skill 링크 정리")
     parser.add_argument("--name", default="TODO Project", help="프로젝트 표시 이름")
     parser.add_argument("--id", default="TODO-project-id", dest="project_id", help="프로젝트 id")
     parser.add_argument("--provider", choices=("claude", "codex"), default="claude",
@@ -719,8 +622,6 @@ def main():
     parser.add_argument("--worthy-paths", dest="worthy_paths", default=None,
                         help="--hook 시 WM_WORTHY_PATHS 주입 (공백 구분 경로 목록). "
                              "예: \"scripts config .github/workflows .claude README.md\"")
-    parser.add_argument("--force", action="store_true",
-                        help="--cleanup-hermes 시 symlink가 아닌 mso-hermes-bridge 디렉토리도 삭제")
 
     args = parser.parse_args()
     if args.target:
@@ -731,8 +632,6 @@ def main():
         cmd_migrate(Path(args.migrate).resolve())
     elif args.hook:
         sys.exit(cmd_hook(Path(args.hook).resolve(), args.worthy_paths, args.provider))
-    elif args.cleanup_hermes:
-        sys.exit(cmd_cleanup_hermes(Path(args.cleanup_hermes).resolve(), args.force))
 
 
 if __name__ == "__main__":

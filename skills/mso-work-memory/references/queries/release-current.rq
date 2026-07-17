@@ -1,0 +1,17 @@
+# 현재 릴리스 RN 도출 (derived view — 저장된 is_current 없음)
+# 조건: kind != rollback 이고, 어떤 RN 의 rolls-back 대상도 아닌 RN 중 released_at 최신.
+# 대상 그래프: wm_to_ttl.py project 산출물 (work-memory.abox.ttl)
+PREFIX wm: <https://mso.dev/ontology/work-memory#>
+
+SELECT ?id ?version ?releasedAt ?title
+WHERE {
+  ?rn a wm:ReleaseNote ;
+      wm:entryId ?id ;
+      wm:title ?title .
+  OPTIONAL { ?rn wm:metadataVersion ?version }
+  OPTIONAL { ?rn wm:metadataReleasedAt ?releasedAt }
+  FILTER NOT EXISTS { ?rn wm:metadataKind "rollback" }
+  FILTER NOT EXISTS { ?rollback wm:rollsBack ?rn }
+}
+ORDER BY DESC(?releasedAt)
+LIMIT 1

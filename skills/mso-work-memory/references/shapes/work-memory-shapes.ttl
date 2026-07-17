@@ -56,6 +56,18 @@ wm:EntryShape a sh:NodeShape ;
     sh:property [
         sh:path wm:dependsOn ;
         sh:class wm:Entry
+    ] ;
+    sh:property [
+        sh:path wm:releasedIn ;
+        sh:class wm:ReleaseNote
+    ] ;
+    sh:property [
+        sh:path wm:verifiedIn ;
+        sh:class wm:ReleaseNote
+    ] ;
+    sh:property [
+        sh:path wm:invalidatedBy ;
+        sh:class wm:ReleaseNote
     ] .
 
 wm:IssueNoteShape a sh:NodeShape ;
@@ -94,6 +106,18 @@ wm:EpisodeShape a sh:NodeShape ;
         sh:path wm:generalizedIn ;
         sh:class wm:Pattern
     ] .
+
+wm:ReleaseNoteShape a sh:NodeShape ;
+    sh:targetClass wm:ReleaseNote ;
+    sh:property [
+        sh:path wm:rollsBack ;
+        sh:class wm:ReleaseNote
+    ] .
+
+# rolls-back 은 ReleaseNote 에서만 출발할 수 있다 (subject 제약)
+wm:RollsBackSubjectShape a sh:NodeShape ;
+    sh:targetSubjectsOf wm:rollsBack ;
+    sh:class wm:ReleaseNote .
 
 wm:PatternShape a sh:NodeShape ;
     sh:targetClass wm:Pattern ;
