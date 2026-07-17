@@ -1,5 +1,27 @@
 # 변경 이력
 
+## v0.9.0 (2026-07-17) — Work-Memory Release Governance
+
+> 교훈에 유효기간을 부여한다. release-note(RN)가 상태 축의 앵커가 되어, 릴리스가 전제를 바꿀 때 어떤 UD/AD/TS/PT/PR 이 더 이상 동작하지 않는지를 append-only 그래프에서 도출한다.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `release-record/release-note.jsonl` (RN) | work-memory 9번째 entry 타입. `metadata.version/released_at/kind(release\|rollback)/scope`. current 는 저장하지 않고 derived view 로 도출한다. |
+| relation 4종 | `released-in`(TS/UD/AD → RN), `verified-in` / `invalidated-by`(UD/AD/TS/PT/PR → RN), `rolls-back`(RN → RN). 롤백은 기존 RN 수정이 아니라 `kind=rollback` RN append + `rolls-back` 엣지다. |
+| `skills/mso-work-memory/scripts/wm_release.py` | `current` / `validity` / `context` CLI. stdlib-only — copy-form hook 배포를 위해 wm_node.py 와 독립. |
+| `skills/mso-work-memory/references/queries/` | TTL projection 용 SPARQL 3종 (`release-current`, `release-invalidated-active`, `release-revalidation-candidates`). JSONL CLI 와 같은 파생 규칙의 두 구현. |
+| `skills/mso-work-memory/hooks/release-context.sh` | SessionStart(startup/compact/resume) 훅. 현재 릴리스·무효화 교훈·재유효 후보를 컨텍스트로 주입. RN 미사용 프로젝트에서는 무출력. |
+
+### Changed
+
+- `mso-work-memory` schema v1.3.0 / SKILL.md v0.7.0 — "릴리스·유효성 거버넌스" 섹션 신설 (derived current, 롤백 이벤트, 롤백 캐스케이드 derived, PR.status 근거 트레일).
+- TBox 에 `wm:ReleaseNote` 클래스와 4개 ObjectProperty 추가, SHACL 에 RN target 제약 + `rolls-back` subject 제약(`sh:targetSubjectsOf`) 추가.
+- `wm_node.py` 기본 어휘와 `wm_to_ttl.py` TYPE_CLASS/RELATION_PREDICATE/디스커버리에 `release-record/` 반영.
+- `mso-repository-setup` `init.py --hook` 이 `release-context.sh` + `wm_release.py` 를 copy-form 으로 복사하고 SessionStart(startup 포함)에 등록한다.
+- 테스트 확장: release lifecycle e2e(릴리스→무효화→롤백→재유효 후보), `rolls-back` subject 제약, hook 전달 의미론 (10 passed).
+
 ## v0.8.2 (2026-07-09) — Workflow Observation alias
 
 > workflow graph 노출을 `mso-workflow-observation`이라는 좁은 public rail로 제공한다.
