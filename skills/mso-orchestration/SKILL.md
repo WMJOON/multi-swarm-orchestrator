@@ -1,6 +1,6 @@
 ---
 name: mso-orchestration
-version: "0.8.2"
+version: "0.9.1"
 description: "MSO 스킬 팩 라우터. v0.5.0: workflow/artifact/eval graph 역할을 분리하고, §11 NLU 재편에 따라 utterance→intent 는 UUG, MSO 는 intent→action 및 MSO runtime 신호만 담당한다."
 triggers:
   - "mso 시작"

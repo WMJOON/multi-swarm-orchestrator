@@ -1,6 +1,6 @@
 ---
 name: mso-workflow-observation
-version: "0.8.2"
+version: "0.9.1"
 description: "Workflow observation alias. `mso-graph-observability`의 workflow scope를 감싸 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다."
 triggers:
   - "mso-workflow-observation"

@@ -1,6 +1,6 @@
 ---
 name: mso-repository-setup
-version: "0.8.2"
+version: "0.9.1"
 description: >
   MSO 스킬 팩의 init 진입점. 새 프로젝트(또는 기존 프로젝트)에 agent-context/
   표준 디렉토리 트리를 부트스트랩하고 mso-scaffold-design + mso-workflow-design +

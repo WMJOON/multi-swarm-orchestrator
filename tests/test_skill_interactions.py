@@ -121,7 +121,7 @@ def test_dissolved_utterance_grounding_not_routed():
 def test_readme_reflects_current_version_and_structure():
     """README 헤더 버전과 핵심 구조 어휘가 현재 패치와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.8.2" in readme, "README header is not v0.8.2"
+    assert "MSO) v0.9.1" in readme, "README header is not v0.9.1"
     assert "Repository Execution System" in readme
     assert "Core Philosophy" in readme
     assert "Artifact Supply Chain" in readme
@@ -131,11 +131,18 @@ def test_readme_reflects_current_version_and_structure():
     assert "docs/changelog.md" in readme
 
 
+# mso-work-memory 는 재사용 fat skill 로 프로젝트 전체 버전과 별도의 자체 semver
+# 트랙을 가진다(changelog v0.9.0: "SKILL.md v0.7.0") — lockstep 검증에서 제외한다.
+INDEPENDENT_VERSIONING_SKILLS = {"mso-work-memory"}
+
+
 def test_skill_versions_are_current_patch():
-    """정식 repository 스킬 메타가 현재 패치 버전으로 정렬되어 있다."""
+    """정식 repository 스킬 메타가 현재 패치 버전으로 정렬되어 있다 (mso-work-memory 제외)."""
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
+        if skill_md.parent.name in INDEPENDENT_VERSIONING_SKILLS:
+            continue
         text = skill_md.read_text()
-        assert 'version: "0.8.2"' in text, f"{skill_md.parent.name} version is not 0.8.2"
+        assert 'version: "0.9.1"' in text, f"{skill_md.parent.name} version is not 0.9.1"
 
 
 def test_work_memory_decision_governance_schema_contract():

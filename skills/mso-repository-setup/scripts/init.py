@@ -27,6 +27,7 @@ init.py — MSO Repository Setup CLI
 import argparse
 import datetime as dt
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -42,6 +43,7 @@ AGENT_CONTEXT_TREE = [
     "work-memory/auditlog",
     "work-memory/worklog",
     "work-memory/track-record",
+    "work-memory/release-record",
     "work-memory/insight-record",
 ]
 
@@ -268,6 +270,29 @@ SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # 근거, SKILL.md 참조).
 UUG_CONTEXT_HOOK_FILES = ["uug-context-hook.py"]
 
+_WORTHY_PATHS_RE = re.compile(r'WM_WORTHY_PATHS="([^"]*)"')
+
+
+def _find_worthy_paths_in_text(text: str) -> str | None:
+    """임의 텍스트(raw config.toml 등)에서 WM_WORTHY_PATHS="..." 값을 회수한다."""
+    m = _WORTHY_PATHS_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _find_worthy_paths_in_hooks(hooks_section: dict) -> str | None:
+    """이미 등록된 Claude settings.json hooks 트리에서 work-memory-check.sh 커맨드에
+    실려있는 WM_WORTHY_PATHS 값을 회수한다. --worthy-paths 미지정 재실행 시
+    기존 커스터마이징을 보존하기 위한 용도 — 값 자체는 재구성하지 않고 원문 그대로 재사용한다."""
+    for event_list in hooks_section.values():
+        if not isinstance(event_list, list):
+            continue
+        for group in event_list:
+            for h in group.get("hooks", []):
+                found = _find_worthy_paths_in_text(h.get("command", ""))
+                if found:
+                    return found
+    return None
+
 
 def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "claude"):
     """프로젝트의 provider 설정 디렉토리에 work-memory hook 을 등록한다 (copy-form).
@@ -278,8 +303,14 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     (스킬의 로컬 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
     박지 않으므로 다른 머신·CI·경로 이동에도 견딘다.
 
-    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다(미지정 시 스크립트 기본값 =
-    오케스트레이션 레이어). data/·build 처럼 고빈도 경로는 제외하는 게 좋다.
+    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다. 미지정 시 이미 등록된 값을
+    (Claude: settings.json, Codex: config.toml) 그대로 회수해 보존하고, 등록된
+    적이 없으면 스크립트 기본값(오케스트레이션 레이어)을 따른다. data/·build 처럼
+    고빈도 경로는 제외하는 게 좋다.
+
+    v0.9.1 이전에는 --worthy-paths 없이 재실행하면 이미 커스터마이징된 값이
+    marker 기반 커맨드 재작성 과정에서 조용히 사라졌다(회귀). 이제는 재실행 시
+    값을 먼저 회수한 뒤 커맨드를 재구성하므로 idempotent 하다.
     """
     if provider not in {"claude", "codex"}:
         print(f"[ERROR] 지원하지 않는 provider: {provider}")
@@ -380,6 +411,19 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         pd = '"$PROJECT_DIR"'
         workmem_env = 'WORKMEM_DIR="$PROJECT_DIR/agent-context/work-memory"'
         prefix = 'export PROJECT_DIR="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"; '
+
+    # --worthy-paths 미지정 시, 마커 재작성으로 덮어쓰기 전에 기존 등록값을 회수해
+    # 보존한다 (그렇지 않으면 재실행마다 WM_WORTHY_PATHS 가 조용히 리셋된다).
+    if worthy_paths is None:
+        if provider == "claude":
+            worthy_paths = _find_worthy_paths_in_hooks(hooks_section)
+        else:
+            toml_path = target / provider_dir_name / "config.toml"
+            if toml_path.exists():
+                worthy_paths = _find_worthy_paths_in_text(toml_path.read_text(encoding="utf-8"))
+        if worthy_paths:
+            print(f"  · WM_WORTHY_PATHS 기존값 보존: {worthy_paths}")
+
     worthy_env = f'WM_WORTHY_PATHS="{worthy_paths}" ' if worthy_paths else ""
 
     auditlog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/auditlog.py"
@@ -428,6 +472,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             commit_cmd=commit_cmd,
             check_cmd=check_cmd,
             scaffold_cmd=scaffold_cmd,
+            release_ctx_cmd=release_ctx_cmd,
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
@@ -538,7 +583,13 @@ def _ensure_codex_hooks_feature(text: str) -> str:
     return prefix + text
 
 
-def _upsert_codex_config_toml(config_path: Path, commit_cmd: str, check_cmd: str, scaffold_cmd: str):
+def _upsert_codex_config_toml(
+    config_path: Path,
+    commit_cmd: str,
+    check_cmd: str,
+    scaffold_cmd: str,
+    release_ctx_cmd: str,
+):
     """Add a managed MSO hook block to .codex/config.toml."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
@@ -579,6 +630,11 @@ type = "command"
 command = {_toml_literal(scaffold_cmd)}
 statusMessage = "Checking MSO scaffold inventory"
 
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(release_ctx_cmd)}
+statusMessage = "Loading MSO release context"
+
 [[hooks.SessionStart]]
 matcher = "resume"
 
@@ -591,6 +647,19 @@ statusMessage = "Checking MSO work-memory reminders"
 type = "command"
 command = {_toml_literal(scaffold_cmd)}
 statusMessage = "Checking MSO scaffold inventory"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(release_ctx_cmd)}
+statusMessage = "Loading MSO release context"
+
+[[hooks.SessionStart]]
+matcher = "startup"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(release_ctx_cmd)}
+statusMessage = "Loading MSO release context"
 # END MSO_WORK_MEMORY_HOOKS
 """
     config_path.write_text(text + block, encoding="utf-8")

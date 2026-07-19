@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.9.0
+# Multi-Swarm Orchestrator (MSO) v0.9.1
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,16 +13,15 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.9.0 (2026-07-17) — Work-Memory Release Governance
+### v0.9.1 (2026-07-20) — init.py --hook WM_WORTHY_PATHS 보존 + v0.9.0 codex parity 완결
 
-work-memory에 상태 축(`release-record/`)을 추가했다. 릴리스가 전제를 바꿀 때 어떤 교훈(UD/AD/TS/PT/PR)이 더 이상 동작하지 않는지를 그래프에서 도출한다.
+`init.py --hook`을 `--worthy-paths` 없이 재실행하면 이미 등록된 `WM_WORTHY_PATHS` 값이 marker 기반 커맨드 재작성 과정에서 조용히 사라지던 회귀를 고쳤다. 또한 v0.9.0 릴리스 커밋에서 빠졌던 codex provider parity(release-record AGENT_CONTEXT_TREE, config.toml release_ctx_cmd 배선)를 완결한다.
 
-- **release-note(RN) 타입** (schema v1.3.0): `IN → TS ──released-in──> RN` 체인으로 해결의 릴리스 귀속을 추적하고, `verified-in`(유효 확인) / `invalidated-by`(더 이상 성립 안 함) 엣지로 교훈의 유효기간을 기록한다.
-- **상태는 derived, 저장 금지**: current 릴리스는 쿼리로 도출하고, 롤백은 `kind=rollback` RN + `rolls-back` 엣지(이벤트)로 append 한다 — append-only SSOT 유지. 롤백된 RN 을 향한 무효화는 자동으로 "재유효 후보"로 파생된다.
-- **`wm_release.py`**: `current` / `validity` / `context` CLI (stdlib-only). TTL projection 쪽에는 동치 SPARQL 3종(`references/queries/`).
-- **`release-context.sh`**: SessionStart(startup 포함) 훅이 현재 릴리스 버전·무효화된 교훈·재유효 후보를 세션 컨텍스트로 주입한다. RN 미사용 프로젝트에서는 무출력. `init.py --hook` 이 copy-form 으로 배선한다.
+- **WM_WORTHY_PATHS 보존**: `--worthy-paths` 미지정 재실행 시, 덮어쓰기 전에 기존 등록값을 회수한다(Claude: `settings.json`의 `work-memory-check.sh` 커맨드, Codex: `config.toml`). 등록 이력이 없으면 기존과 동일하게 스크립트 기본값을 따른다.
+- **codex parity 완결**: `AGENT_CONTEXT_TREE`에 `work-memory/release-record`가 codex 경로에서도 생성되고, `_upsert_codex_config_toml`이 `release_ctx_cmd`를 받아 `config.toml`에도 release-context 훅을 배선한다. v0.9.0 당시 Claude 경로에만 반영되고 커밋에서 누락됐던 부분이다.
+- **skill 버전 lockstep 복구**: v0.9.0에서 갱신되지 않았던 8개 skill(mso-work-memory 제외)의 SKILL.md `version`을 현재 패치로 재정렬.
 
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance(RN 타입 + derived release view + release-context 훅)다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance(RN 타입 + derived release view + release-context 훅), v0.9.1은 init.py --hook WM_WORTHY_PATHS 보존 버그 수정 + v0.9.0 codex parity 완결이다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 

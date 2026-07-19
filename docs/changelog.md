@@ -1,5 +1,22 @@
 # 변경 이력
 
+## v0.9.1 (2026-07-20) — init.py --hook 회귀 수정 + v0.9.0 codex parity 완결
+
+> `init.py --hook` 재실행이 프로젝트별 커스터마이징을 조용히 리셋하던 회귀를 고친다. v0.9.0 릴리스 커밋에서 누락된 codex provider parity도 함께 완결한다.
+
+### Fixed
+
+| 수정 | 내용 |
+|------|------|
+| `init.py --hook` 의 `WM_WORTHY_PATHS` 유실 회귀 | `_upsert_hook`/`_upsert_codex_config_toml` 은 marker 매치 시 커맨드 문자열을 통째로 교체한다. `--worthy-paths` 를 다시 지정하지 않고 재실행하면 이미 등록된 값이 빈 문자열로 덮어써졌다. `cmd_hook` 이 재작성 전에 기존 등록값을 (Claude: `settings.json` 의 `work-memory-check.sh` 커맨드, Codex: `config.toml` 원문) 회수해 보존하도록 수정 — `--worthy-paths` 미지정 재실행이 값 측면에서도 idempotent 해졌다. |
+| v0.9.0 codex provider parity 누락 | v0.9.0 릴리스 당시 Claude 경로에만 반영되고 커밋되지 않았던 변경 2건을 완결: `AGENT_CONTEXT_TREE` 에 `work-memory/release-record` 추가(codex `--target` 경로도 생성), `_upsert_codex_config_toml` 이 `release_ctx_cmd` 파라미터를 받아 `config.toml` 의 `SessionStart` 에 release-context 훅을 배선. |
+
+### Changed
+
+- `install.sh` 배너 문자열 v0.5.0 → v0.9.1 (실제 릴리스 버전과 불일치하던 잔재 정리).
+- `mso-work-memory` 를 제외한 8개 skill 의 `SKILL.md` `version` 을 0.8.2 → 0.9.1 로 재정렬(v0.9.0 릴리스에서 갱신 누락). `mso-work-memory` 는 자체 semver 트랙(현재 0.7.0)을 유지 — 재사용 fat skill 이라 프로젝트 전체 버전과 lockstep 하지 않는다.
+- `tests/test_skill_interactions.py`: README/skill 버전 검증 리터럴을 0.9.1 로 갱신하고, `mso-work-memory` 를 lockstep 검증에서 명시적으로 제외.
+
 ## v0.9.0 (2026-07-17) — Work-Memory Release Governance
 
 > 교훈에 유효기간을 부여한다. release-note(RN)가 상태 축의 앵커가 되어, 릴리스가 전제를 바꿀 때 어떤 UD/AD/TS/PT/PR 이 더 이상 동작하지 않는지를 append-only 그래프에서 도출한다.
