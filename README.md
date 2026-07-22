@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.9.1
+# Multi-Swarm Orchestrator (MSO) v0.9.2
 
 MSO는 **Repository Execution System**이다.
 
@@ -12,6 +12,14 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 ## Current Version Update
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
+
+### v0.9.2 (2026-07-22) — Nested Work-Memory Repository Hooks
+
+work-memory가 프로젝트 루트와 별도의 Git 저장소에 있어도, hook이 실제 소유 저장소를 자동 탐색하도록 보정했다.
+
+- **중첩 저장소 자동 선택**: `commit-work-memory.sh`는 `WORKMEM_DIR`의 Git root를 찾아 해당 저장소에만 stage·commit한다.
+- **SessionStart 지연 방지**: `work-memory-check.sh`는 중첩 work-memory를 상위 저장소 pathspec으로 탐색하지 않고, 소유 저장소에서 log/status를 수행한다.
+- **회귀 테스트**: 중첩 `agent-context` 저장소에서 자동 커밋과 SessionStart 점검이 정상 동작하는 테스트를 추가했다.
 
 ### v0.9.1 (2026-07-20) — init.py --hook WM_WORTHY_PATHS 보존 + v0.9.0 codex parity 완결
 

@@ -121,7 +121,7 @@ def test_dissolved_utterance_grounding_not_routed():
 def test_readme_reflects_current_version_and_structure():
     """README 헤더 버전과 핵심 구조 어휘가 현재 패치와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.9.1" in readme, "README header is not v0.9.1"
+    assert "MSO) v0.9.2" in readme, "README header is not v0.9.2"
     assert "Repository Execution System" in readme
     assert "Core Philosophy" in readme
     assert "Artifact Supply Chain" in readme
@@ -142,7 +142,7 @@ def test_skill_versions_are_current_patch():
         if skill_md.parent.name in INDEPENDENT_VERSIONING_SKILLS:
             continue
         text = skill_md.read_text()
-        assert 'version: "0.9.1"' in text, f"{skill_md.parent.name} version is not 0.9.1"
+        assert 'version: "0.9.2"' in text, f"{skill_md.parent.name} version is not 0.9.2"
 
 
 def test_work_memory_decision_governance_schema_contract():

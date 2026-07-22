@@ -29,14 +29,19 @@ set -uo pipefail
 ROOT="${CLAUDE_PROJECT_DIR:-${CODEX_PROJECT_DIR:-${PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}}"
 WM="${WORKMEM_DIR:-$ROOT/agent-context/work-memory}"
 
-git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 [ -d "$WM" ] || exit 0
 
-# work-memory 경로를 repo 루트 상대 pathspec 으로 변환 (절대경로 박지 않음).
-REL=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WM" "$ROOT" 2>/dev/null) || REL="agent-context/work-memory"
+# work-memory가 프로젝트 루트와 다른 중첩 저장소에 있을 수 있다. 이 경우
+# 루트 저장소에는 해당 경로가 gitlink/비추적 경로로만 보이므로, 실제 소유
+# 저장소를 기준으로 stage/commit 해야 한다.
+WM_REPO=$(git -C "$WM" rev-parse --show-toplevel 2>/dev/null) || exit 0
+git -C "$WM_REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
-git -C "$ROOT" add -- "$REL" 2>/dev/null || exit 0
-if ! git -C "$ROOT" diff --cached --quiet -- "$REL" 2>/dev/null; then
-  git -C "$ROOT" commit -q -m "chore(work-memory): auto log trail [hook]" -- "$REL" 2>/dev/null || true
+# work-memory 경로를 repo 루트 상대 pathspec 으로 변환 (절대경로 박지 않음).
+REL=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WM" "$WM_REPO" 2>/dev/null) || REL="work-memory"
+
+git -C "$WM_REPO" add -- "$REL" 2>/dev/null || exit 0
+if ! git -C "$WM_REPO" diff --cached --quiet -- "$REL" 2>/dev/null; then
+  git -C "$WM_REPO" commit -q -m "chore(work-memory): auto log trail [hook]" -- "$REL" 2>/dev/null || true
 fi
 exit 0

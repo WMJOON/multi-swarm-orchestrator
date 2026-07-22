@@ -1,5 +1,15 @@
 # 변경 이력
 
+## v0.9.2 (2026-07-22) — Nested Work-Memory Repository Hooks
+
+> work-memory가 별도 Git 저장소여도 hook이 상위 저장소를 오인하지 않는다.
+
+### Fixed
+
+- `commit-work-memory.sh`가 `WORKMEM_DIR`을 소유한 Git 저장소를 자동 탐색해, 중첩 `agent-context` 저장소의 work-memory만 stage·commit하도록 수정했다.
+- `work-memory-check.sh`가 중첩 work-memory를 상위 저장소 pathspec으로 조회해 SessionStart가 지연되는 문제를 수정했다. 이제 work-memory 소유 저장소에서만 Git 이력과 working tree를 검사한다.
+- 중첩 저장소 자동 커밋·SessionStart 점검 회귀 테스트를 추가했다.
+
 ## v0.9.1 (2026-07-20) — init.py --hook 회귀 수정 + v0.9.0 codex parity 완결
 
 > `init.py --hook` 재실행이 프로젝트별 커스터마이징을 조용히 리셋하던 회귀를 고친다. v0.9.0 릴리스 커밋에서 누락된 codex provider parity도 함께 완결한다.

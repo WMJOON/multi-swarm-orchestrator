@@ -69,6 +69,15 @@ else
 fi
 [ -d "$WM" ] || exit 0
 
+# work-memory가 중첩 Git 저장소에 속하면, 그 저장소를 기준으로만 log/status를
+# 조회한다. 상위 저장소에서 agent-context/를 pathspec으로 찾으면 비추적 중첩
+# 저장소의 전체 이력을 탐색해 SessionStart가 지연될 수 있다.
+WM_REPO=$(git -C "$WM" rev-parse --show-toplevel 2>/dev/null) || exit 0
+if [ "$WM_REPO" != "$ROOT" ]; then
+  WM=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WM" "$WM_REPO" 2>/dev/null) || WM="work-memory"
+  ROOT="$WM_REPO"
+fi
+
 # 결정 가치 있는 경로. work-memory 자체와 worklog 는 제외 (자동 스냅샷 오탐 방지).
 WORTHY_PATHS="${WM_WORTHY_PATHS:-agent-context/workflow agent-context/index .claude .gitmodules CLAUDE.md}"
 

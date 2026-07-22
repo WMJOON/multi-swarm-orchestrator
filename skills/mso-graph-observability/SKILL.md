@@ -1,6 +1,6 @@
 ---
 name: mso-graph-observability
-version: "0.9.1"
+version: "0.9.2"
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 ---
 
