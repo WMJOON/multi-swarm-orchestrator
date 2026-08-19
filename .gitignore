@@ -24,3 +24,9 @@ skills/mso-workflow-optimizer/.env.*
 !skills/mso-workflow-optimizer/.env.example
 .venv/
 *.egg-info/
+
+# MSO work-memory zvec index (regenerable)
+agent-context/work-memory/.zvec/
+
+# MSO hook runtime state (local)
+.claude/state/

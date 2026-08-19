@@ -1,6 +1,6 @@
 ---
 name: mso-work-memory
-version: "0.7.0"
+version: "0.8.0"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 9종 entry (issue-note, agent-decision,
@@ -15,7 +15,9 @@ description: >
   (4) 정기 회고 (episode → pattern → principle 추출),
   (5) 자동 hook (session 이벤트 → auditlog jsonl append),
   (6) 릴리스 기록 + 교훈 유효성 추적 ("이 UD/원칙이 v0.7.0 에서도 유효한가?",
-      release-note + verified-in/invalidated-by/rolls-back).
+      release-note + verified-in/invalidated-by/rolls-back),
+  (7) 실행 시점 context pack 검색 — workflow node/자유 질의로 연관 기억 호출
+      (wm_context.py, lexical, zvec 불필요; "context pack", "연관 기억 호출").
 ---
 
 # MSO Work Memory
@@ -125,7 +127,7 @@ IN ──raised──> AD/UD ──followed-by──> ... ──resolved-by─�
 }
 ```
 
-상세 스키마: [references/schema.yaml](references/schema.yaml).
+상세 스키마: [references/schema.yaml](references/schema.yaml). 타입별 `metadata` 권장 필드(AR 의 `options`/`recommended`, RN 의 `version`/`kind` 등)는 `wm_node.py new` 의 `--meta key=value`(스칼라, 반복) 또는 `--metadata '<json>'`(리스트·중첩)으로 채운다. `--meta` 는 semver·식별자 보존을 위해 값을 JSON 파싱하지 않고 `true`/`false`/`null` 만 리터럴로 변환한다.
 
 ## 의사결정 거버넌스 컨벤션 (v0.5.0)
 
@@ -156,6 +158,12 @@ IN ──raised──> AD/UD ──followed-by──> ... ──resolved-by─�
 # 새 entry 작성 (대화형 stub 출력)
 python wm_node.py new <type> --title "..." [--tags a,b,c] [--related TS-0017:resolved-by]
 
+# 타입별 metadata 지정 — 스칼라는 --meta key=value (반복), 리스트/중첩은 --metadata JSON
+python wm_node.py new release-note --title "v0.10.0" --tags release \
+    --meta version=0.10.0 --meta kind=release --meta scope=00_multi-swarm-orchestrator
+python wm_node.py new alternatives-record --title "..." --tags decision \
+    --metadata '{"provided_by":"agent","recommended":1,"options":[{"n":1,"name":"A","trade_off":"..."}]}'
+
 # 검증 (단일 파일 또는 디렉토리 전체)
 python wm_node.py validate <path>
 
@@ -169,12 +177,55 @@ python wm_node.py search "비슷한 timeout 사고" [--type episode] [--tag poli
 # 그래프 traversal (특정 entry 의 조상/자손)
 python wm_node.py graph <id> [--depth 3] [--direction in|out|both]
 
+# 기존 entry 에 relation 추가 — target 이 나중에 생기는 엣지 확정용
+python wm_node.py relate AR-0002 followed-by UD-0015
+python wm_node.py relate UD-0015 verified-in RN-0003
+
 # 통계
 python wm_node.py stats
 
 # zvec 인덱스 재빌드
 python wm_node.py reindex
 ```
+
+## CLI: `wm_context.py` (런타임 Context Pack, v0.8.0)
+
+mono/umbrella-repo 에서 workflow 가 많아지면 task 수행 시 스코프 밖 기록이 스코프 안 기록을 밀어내는 문제가 생긴다. `wm_context.py` 는 **workflow node id 또는 자유 질의를 받아 연관 entry 를 lexical 랭킹으로 반환하는 런타임 호출 스크립트**다. mso-workflow-optimizer 의 컴파일 타임 ContextPack 과 같은 로직을 쓰며, **스코어링 정본은 이 스크립트다** (optimizer 가 이 모듈을 로드해 재사용).
+
+```bash
+# node 모드 — TTL 에서 label/instruction/phase 를 selector 재료로 해석 (rdflib 필요)
+python wm_context.py node --node development-s-001 \
+    --ttl agent-context/workflow/root-workflow.abox.ttl
+
+# node 모드 (TTL 없이) — node id 만 tag+query seed 로 쓰는 저비용 경로 (rdflib 불필요)
+python wm_context.py node --node development-s-001
+
+# query 모드 — workflow 레일 밖 execution 단위
+python wm_context.py query "compile step timeout 재발 사례" --module mso-workflow-optimizer --json
+```
+
+- **하드 필터 vs 소프트 부스트** — `--filter-tag`(반복, AND)/`--filter-module` 은 스코어링·relation 확장 **이전에** 풀을 자르는 하드 필터다. 스코프 밖 entry 가 높은 스코어나 relation 을 타고 재진입할 수 없다 — mono-repo 오염의 핵심 차단점. `--tags`/`--module` 은 selector tags 에 더해 랭킹만 올리는 소프트 부스트.
+- **umbrella-repo** — `--extra-root <path>` (반복) 로 다른 프로젝트의 work-memory 루트를 병합. id 충돌은 first-seen-wins (메인 루트 우선).
+- **랭킹** — lexical 전용 (타입 우선순위 + 18×태그 교집합 + 토큰 매치 + module 보너스). zvec 불필요 — `search` 명령과 달리 인덱스 없이 동작한다.
+- **가중치 감각** — 태그 1개 교집합 = 18점, 타입 우선순위 = 12~30점, 토큰 매치 = 개당 1점이다. 즉 **자유 텍스트 매치만으로는 타입 격차를 넘지 못한다.** 타입을 가로지르는 랭킹을 원하면 `--tags` 로 잡아야 한다. 토큰화는 ASCII 3자·한글 2자 이상을 잡지만, 한국어는 교착어라 조사가 붙으면 다른 토큰이 되므로(`결정` ≠ `결정을`) ASCII id 태그 병용이 여전히 안정적이다.
+- **출력** — plain 은 컨텍스트 주입용 컴팩트 블록, 빈 결과면 무출력·exit 0 (hook 안전). `--json` 은 항상 유효한 pack (`entries: []` 포함) — 기계 소비용.
+- 공통 플래그: `--include-types` (기본 8종 curated 타입, `all`=게이트 해제), `--top-k 5`, `--relation-depth 1`, `--max-entry-chars 1200`, `--root` (WORKMEM_DIR 오버라이드).
+
+### workflow cursor 와 자동 주입 (UD-0015)
+
+비-컴파일 실행 경로(에이전트가 TTL 을 직접 따라가는 경우)에서는 **cursor** 가 "지금 어느 node 를 수행 중인가"를 들고, `UserPromptSubmit` 훅이 매 발화마다 그 node 의 pack 을 주입한다. 검색 키는 사용자 발화가 아니라 **workflow 실행 위치**다.
+
+```bash
+python wm_context.py cursor set development-s-001 --ttl agent-context/workflow/root-workflow.abox.ttl
+python wm_context.py cursor show     # 없으면 무출력
+python wm_context.py cursor clear    # node 이탈 시
+```
+
+- **cursor 위치**: `.claude/state/workflow-cursor.json` — `stop-check.state` 선례를 따른 gitignore 대상. 가변 상태이므로 append-only JSONL 에 두지 않는다 (RN 의 "current 는 derived view — 저장 금지" 와 같은 경계).
+- **훅**: `hooks/workflow-context-hook.py` (`UserPromptSubmit`). cursor 가 없으면 — 즉 workflow 레일 밖 작업이면 — 무출력이라 등록해도 잡음이 없다. `MSO_WORKFLOW_CONTEXT_TOP_K`(기본 3, 매 턴 주입이라 보수적), `MSO_WORKFLOW_CONTEXT_DISABLED=1`.
+- **판단은 없어지지 않고 분할상환된다** — cursor 를 쓰려면 'node 진입'을 이미 알아야 한다. 대신 한 번 쓰면 그 node 에 머무는 이후 턴은 자동으로 받는다.
+- **왜 PreToolUse 가 아닌가**: plain stdout 이 모델에 주입되는 이벤트는 `SessionStart`/`UserPromptSubmit` 뿐이다. PreToolUse 는 tool 을 차단해야만 모델에 닿고 타이밍도 결정 이후여서 provisioning 에 부적합 (AR-0002 에서 기각, 향후 drift guard 로 분리).
+- 컴파일된 LangGraph 경로는 cursor 가 불필요하다 — `_run_node` 가 node 진입 시 pack 을 `active_context` 에 붙인다.
 
 ## CLI: `wm_release.py` (release derived view, v0.7.0)
 
@@ -215,6 +266,8 @@ TTL projection 쪽에는 동일 view 의 SPARQL 정의가 [references/queries/](
 | `supersedes` | new → old | 대체 |
 | `refines` | new → old | 정교화 |
 | `depends-on` | * → * | 의존 |
+
+> **사후 엣지가 정상이다.** `followed-by`(AR→UD), `resolved-by`(IN→TS), `released-in`/`verified-in`/`invalidated-by`(*→RN) 는 target 이 나중에 생기므로 entry 작성 시점에 달 수 없다. `wm_node.py relate <source> <type> <target>` 로 사후 확정한다. 이때 기존 줄을 갱신하는데, append-only 는 *일어난 일(entry)을 지우거나 고쳐 쓰지 않는다*는 뜻이고 `relations` 는 그 entry 의 현재 그래프 상태라서다. (중복 entry 를 append 하는 방식은 reader 의 first-seen-wins dedup 이 옛 줄을 돌려주므로 애초에 동작하지 않는다.)
 
 ## 기록 판단 넛지 (work-memory-check.sh)
 
@@ -286,6 +339,7 @@ UUG 자신의 훅(`ug-prompt-hook.py`)이 이미 검증한 경로이므로 여�
 | **mso-scaffold-design** | work-memory 디렉토리가 scaffold(index.yaml) 에 등록되어 있어야 함. |
 | **mso-workflow-design** | workflow 의 decision/validation/eval 노드 변경 시 UD/AD entry 자동 생성 권장. 반복 IN/TS/EP/PT는 workflow TTL ABox 업데이트 후보 evidence로 사용한다. |
 | **mso-graph-observability** | work-memory JSONL runtime analysis와 별도로 TTL projection을 graph 관측 입력으로 확장 가능. artifact-stream graph 누락은 Markdown 직접 수정이 아니라 workflow TTL edge 보강으로 환류한다. |
+| **mso-workflow-optimizer** | 컴파일 타임 ContextPack 이 `wm_context.py` 를 로드해 스코어링/선택을 위임한다 (정본은 이 스킬). stale snapshot 의 런타임 갱신도 `wm_context.py` 직접 호출로 해결. |
 | **simple-knowledge-zvec** | 본 스킬의 zvec 인덱싱 기반 라이브러리. |
 
 ## 의존성
@@ -306,6 +360,7 @@ zvec  (simple-knowledge-zvec 스킬 통해)
 - [references/cli.md](references/cli.md) — wm_node.py 상세 사용법
 - [references/lifecycle.md](references/lifecycle.md) — track → insight 흐름 가이드
 - [scripts/wm_node.py](scripts/wm_node.py) — CLI 도구
+- [scripts/wm_context.py](scripts/wm_context.py) — 런타임 context-pack 검색 (lexical; 스코어링 정본)
 - [scripts/wm_release.py](scripts/wm_release.py) — release derived view (current/validity/context)
 - [scripts/wm_to_ttl.py](scripts/wm_to_ttl.py) — JSONL → TTL projection + SHACL validation
 - [references/queries/](references/queries/) — release view SPARQL (current/invalidated/revalidation)

@@ -27,7 +27,6 @@ init.py — MSO Repository Setup CLI
 import argparse
 import datetime as dt
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -43,7 +42,6 @@ AGENT_CONTEXT_TREE = [
     "work-memory/auditlog",
     "work-memory/worklog",
     "work-memory/track-record",
-    "work-memory/release-record",
     "work-memory/insight-record",
 ]
 
@@ -260,7 +258,7 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh", "release-context.sh"]
+WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh", "release-context.sh", "workflow-context-hook.py"]
 SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # uug-context-hook.py: UUG grounding 연동 넛지 (optional). uug-grounding 이 이 머신에
 # 없으면 cmd_hook 이 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부에도 동일한
@@ -269,29 +267,6 @@ SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # SessionStart 밖 stdout 전달 의미론이 미검증이라 보류(work-memory-check.sh 와 동일한
 # 근거, SKILL.md 참조).
 UUG_CONTEXT_HOOK_FILES = ["uug-context-hook.py"]
-
-_WORTHY_PATHS_RE = re.compile(r'WM_WORTHY_PATHS="([^"]*)"')
-
-
-def _find_worthy_paths_in_text(text: str) -> str | None:
-    """임의 텍스트(raw config.toml 등)에서 WM_WORTHY_PATHS="..." 값을 회수한다."""
-    m = _WORTHY_PATHS_RE.search(text)
-    return m.group(1) if m else None
-
-
-def _find_worthy_paths_in_hooks(hooks_section: dict) -> str | None:
-    """이미 등록된 Claude settings.json hooks 트리에서 work-memory-check.sh 커맨드에
-    실려있는 WM_WORTHY_PATHS 값을 회수한다. --worthy-paths 미지정 재실행 시
-    기존 커스터마이징을 보존하기 위한 용도 — 값 자체는 재구성하지 않고 원문 그대로 재사용한다."""
-    for event_list in hooks_section.values():
-        if not isinstance(event_list, list):
-            continue
-        for group in event_list:
-            for h in group.get("hooks", []):
-                found = _find_worthy_paths_in_text(h.get("command", ""))
-                if found:
-                    return found
-    return None
 
 
 def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "claude"):
@@ -303,14 +278,8 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     (스킬의 로컬 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
     박지 않으므로 다른 머신·CI·경로 이동에도 견딘다.
 
-    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다. 미지정 시 이미 등록된 값을
-    (Claude: settings.json, Codex: config.toml) 그대로 회수해 보존하고, 등록된
-    적이 없으면 스크립트 기본값(오케스트레이션 레이어)을 따른다. data/·build 처럼
-    고빈도 경로는 제외하는 게 좋다.
-
-    v0.9.1 이전에는 --worthy-paths 없이 재실행하면 이미 커스터마이징된 값이
-    marker 기반 커맨드 재작성 과정에서 조용히 사라졌다(회귀). 이제는 재실행 시
-    값을 먼저 회수한 뒤 커맨드를 재구성하므로 idempotent 하다.
+    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다(미지정 시 스크립트 기본값 =
+    오케스트레이션 레이어). data/·build 처럼 고빈도 경로는 제외하는 게 좋다.
     """
     if provider not in {"claude", "codex"}:
         print(f"[ERROR] 지원하지 않는 provider: {provider}")
@@ -352,6 +321,13 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         shutil.copy(wm_release_src, scripts_dst / "wm_release.py")
         (scripts_dst / "wm_release.py").chmod(0o755)
         copied.append("wm_release.py")
+    # workflow-context-hook.py 가 호출하는 wm_context.py (context pack 검색, stdlib core)
+    # 도 같은 이유로 동봉한다 — 훅은 자기 옆의 wm_context.py 를 우선 탐색한다.
+    wm_context_src = hooks_dir.parent / "scripts" / "wm_context.py"
+    if wm_context_src.exists():
+        shutil.copy(wm_context_src, scripts_dst / "wm_context.py")
+        (scripts_dst / "wm_context.py").chmod(0o755)
+        copied.append("wm_context.py")
     scaffold_hooks_dir = scaffold_skill_dir / "hooks"
     for fn in SCAFFOLD_HOOK_FILES:
         src = scaffold_hooks_dir / fn
@@ -411,19 +387,6 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         pd = '"$PROJECT_DIR"'
         workmem_env = 'WORKMEM_DIR="$PROJECT_DIR/agent-context/work-memory"'
         prefix = 'export PROJECT_DIR="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"; '
-
-    # --worthy-paths 미지정 시, 마커 재작성으로 덮어쓰기 전에 기존 등록값을 회수해
-    # 보존한다 (그렇지 않으면 재실행마다 WM_WORTHY_PATHS 가 조용히 리셋된다).
-    if worthy_paths is None:
-        if provider == "claude":
-            worthy_paths = _find_worthy_paths_in_hooks(hooks_section)
-        else:
-            toml_path = target / provider_dir_name / "config.toml"
-            if toml_path.exists():
-                worthy_paths = _find_worthy_paths_in_text(toml_path.read_text(encoding="utf-8"))
-        if worthy_paths:
-            print(f"  · WM_WORTHY_PATHS 기존값 보존: {worthy_paths}")
-
     worthy_env = f'WM_WORTHY_PATHS="{worthy_paths}" ' if worthy_paths else ""
 
     auditlog_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/auditlog.py"
@@ -433,6 +396,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     release_ctx_cmd = f"{prefix}{workmem_env} bash {pd}/{provider_dir_name}/scripts/release-context.sh"
     scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
     uug_context_cmd = f"{prefix}python3 {pd}/{provider_dir_name}/scripts/uug-context-hook.py"
+    workflow_ctx_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/workflow-context-hook.py"
 
     # Claude Code supports tool-level PostToolUse audit logging. Codex hook examples
     # available locally are lifecycle-only, so Codex keeps commit/check hooks only.
@@ -446,6 +410,11 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         # 이 훅이 존재하지 않는다.
         if uug_present:
             _upsert_hook(hooks_section, "UserPromptSubmit", None, uug_context_cmd, "uug-context-hook.py")
+        # workflow-context — cursor 가 가리키는 workflow node 의 work-memory context pack 을
+        # 주입한다(UD-0015). 검색 키는 사용자 발화가 아니라 workflow 실행 위치다.
+        # cursor 가 없으면(=workflow 레일 밖) 무출력이라 등록해도 잡음이 없다.
+        # PreToolUse 는 stdout 이 모델에 미도달이라 AR-0002 에서 기각됨.
+        _upsert_hook(hooks_section, "UserPromptSubmit", None, workflow_ctx_cmd, "workflow-context-hook.py")
 
         # Stop / PreCompact — work-memory 변경분을 훅 안에서 커밋한다.
         # 훅 커밋은 PostToolUse 를 재트리거하지 않아 auditlog append 무한루프를 피한다.
@@ -472,12 +441,11 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             commit_cmd=commit_cmd,
             check_cmd=check_cmd,
             scaffold_cmd=scaffold_cmd,
-            release_ctx_cmd=release_ctx_cmd,
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
         uug_note = " + UserPromptSubmit uug-context-hook" if uug_present else ""
-        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check + SessionStart[startup,compact,resume] release-context{uug_note})")
+        print(f"  + .claude/settings.json 갱신 (PostToolUse auditlog/scaffold-check + Stop stop-check/commit-work-memory + PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check + SessionStart[startup,compact,resume] release-context + UserPromptSubmit workflow-context{uug_note})")
         if not uug_present:
             print("  · uug-grounding 미설치 감지 — uug-context-hook(UserPromptSubmit) 등록 생략. "
                   "UUG 설치 후 이 명령을 재실행하면 자동 등록된다.")
@@ -583,13 +551,7 @@ def _ensure_codex_hooks_feature(text: str) -> str:
     return prefix + text
 
 
-def _upsert_codex_config_toml(
-    config_path: Path,
-    commit_cmd: str,
-    check_cmd: str,
-    scaffold_cmd: str,
-    release_ctx_cmd: str,
-):
+def _upsert_codex_config_toml(config_path: Path, commit_cmd: str, check_cmd: str, scaffold_cmd: str):
     """Add a managed MSO hook block to .codex/config.toml."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
@@ -630,11 +592,6 @@ type = "command"
 command = {_toml_literal(scaffold_cmd)}
 statusMessage = "Checking MSO scaffold inventory"
 
-[[hooks.SessionStart.hooks]]
-type = "command"
-command = {_toml_literal(release_ctx_cmd)}
-statusMessage = "Loading MSO release context"
-
 [[hooks.SessionStart]]
 matcher = "resume"
 
@@ -647,19 +604,6 @@ statusMessage = "Checking MSO work-memory reminders"
 type = "command"
 command = {_toml_literal(scaffold_cmd)}
 statusMessage = "Checking MSO scaffold inventory"
-
-[[hooks.SessionStart.hooks]]
-type = "command"
-command = {_toml_literal(release_ctx_cmd)}
-statusMessage = "Loading MSO release context"
-
-[[hooks.SessionStart]]
-matcher = "startup"
-
-[[hooks.SessionStart.hooks]]
-type = "command"
-command = {_toml_literal(release_ctx_cmd)}
-statusMessage = "Loading MSO release context"
 # END MSO_WORK_MEMORY_HOOKS
 """
     config_path.write_text(text + block, encoding="utf-8")

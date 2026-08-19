@@ -67,6 +67,10 @@ _DEFAULT_TYPE_DIR = {
 _TIME_SERIES_TYPES = ("auditlog", "worklog")
 
 REQUIRED_FIELDS = ["id", "type", "title", "text", "tags", "created_at"]  # 스코프 불변
+# list[str] 로 규정된 필드는 '비어 있음'이 아니라 '타입'으로 검사한다. 빈 tags 는
+# 스키마상 유효한 list[str] 이며, truthiness 로 보면 wm_node.py new 가 만든 entry 가
+# 자기 validate 를 통과하지 못한다(IN-0004).
+LIST_REQUIRED_FIELDS = {"tags"}
 
 _DEFAULT_ALLOWED_RELATIONS = {
     "raised", "followed-by", "resolved-by", "caused-by",
@@ -165,6 +169,32 @@ def next_id(entry_type: str) -> str:
 
 # ─── new ─────────────────────────────────────────────────
 
+# --meta 는 semver("0.10.0")·식별자를 문자열로 보존해야 하므로 값을 JSON 파싱하지
+# 않는다. bool/null 만 예외로 변환한다 (schema 의 structural 등이 bool 이라서).
+_META_LITERALS = {"true": True, "false": False, "null": None}
+
+
+def _build_metadata(args) -> dict:
+    """metadata 조립 — module(단축) → --metadata(JSON) → --meta(개별) 순으로 덮어쓴다."""
+    metadata: dict = {}
+    if args.module:
+        metadata["module"] = args.module
+    if getattr(args, "metadata", None):
+        try:
+            loaded = json.loads(args.metadata)
+        except json.JSONDecodeError as e:
+            sys.exit(f"[ERROR] --metadata 가 유효한 JSON 이 아님: {e}")
+        if not isinstance(loaded, dict):
+            sys.exit('[ERROR] --metadata 는 JSON 객체여야 함 (예: \'{"kind":"release"}\')')
+        metadata.update(loaded)
+    for pair in (getattr(args, "meta", None) or []):
+        if "=" not in pair:
+            sys.exit(f"[ERROR] --meta 형식 잘못됨: {pair} (예: kind=release)")
+        key, value = pair.split("=", 1)
+        metadata[key] = _META_LITERALS[value] if value in _META_LITERALS else value
+    return metadata
+
+
 def cmd_new(args):
     t = args.type
     if t not in TYPE_PREFIX:
@@ -200,10 +230,8 @@ def cmd_new(args):
         "source_path": source_path,
         "author": args.author or "agent",
         "relations": relations,
-        "metadata": {},
+        "metadata": _build_metadata(args),
     }
-    if args.module:
-        entry["metadata"]["module"] = args.module
 
     # aggregate append-only JSONL (한 줄 = 한 entry). 같은 id 가 파일 끝에 이미
     # 있으면(중복 append) skip — auditlog/worklog 의 EOF dedup 과 동일한 안전장치.
@@ -225,6 +253,9 @@ def cmd_new(args):
         f.write("\n")
     print(f"✓ append: {file_path}")
     print(f"  id={new_id}")
+    if not tags:
+        print("  · tags 없음 — context pack 검색의 태그 교집합 가중치(18×)를 못 받아 "
+              "회수되기 어렵다. --tags 로 node id·모듈을 넣어두는 편이 좋다.", file=sys.stderr)
     if args.print:
         print(json.dumps(entry, ensure_ascii=False, indent=2))
 
@@ -260,6 +291,53 @@ def _load_entries(path: Path):
         yield from _load_entries(jf)
 
 
+# ─── relate ──────────────────────────────────────────────
+
+
+def cmd_relate(args):
+    """기존 entry 에 relation 을 추가한다 (라이프사이클 엣지 확정).
+
+    AR→UD(followed-by), IN→TS(resolved-by), *→RN(released-in/verified-in/
+    invalidated-by) 처럼 target 이 나중에 생기는 엣지는 사후에만 달 수 있다.
+    append-only 는 '일어난 일(entry)을 지우거나 고쳐 쓰지 않는다'는 뜻이고,
+    relations 는 그 entry 의 현재 그래프 상태다 — 그래서 줄을 갱신한다.
+    (중복 entry 를 append 하면 reader 의 first-seen-wins dedup 이 옛 줄을
+    돌려주므로 애초에 동작하지 않는다.)
+    """
+    if args.type not in ALLOWED_RELATIONS:
+        print(f"[WARN] 알 수 없는 relation: {args.type}", file=sys.stderr)
+
+    root = workmem_root()
+    hit = None
+    known_ids = set()
+    for src, line_num, entry in _load_entries(root):
+        if "_parse_error" in entry:
+            continue
+        eid = entry.get("id")
+        if eid:
+            known_ids.add(eid)
+        if eid == args.source:
+            hit = (src, line_num, entry)
+
+    if hit is None:
+        sys.exit(f"[ERROR] source entry 를 찾지 못함: {args.source}")
+    if args.target not in known_ids:
+        print(f"[WARN] target entry 를 찾지 못함: {args.target} (dangling edge)", file=sys.stderr)
+
+    src, line_num, entry = hit
+    relations = entry.setdefault("relations", [])
+    if any(r.get("type") == args.type and r.get("target") == args.target for r in relations):
+        print(f"이미 존재: {args.source} ──{args.type}──> {args.target}")
+        return 0
+    relations.append({"type": args.type, "target": args.target})
+
+    lines = src.read_text(encoding="utf-8").splitlines()
+    lines[line_num - 1] = json.dumps(entry, ensure_ascii=False)
+    src.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"✓ {args.source} ──{args.type}──> {args.target}  ({src.name}:{line_num})")
+    return 0
+
+
 def cmd_validate(args):
     target = Path(args.path).resolve()
     if not target.exists():
@@ -278,7 +356,11 @@ def cmd_validate(args):
             continue
 
         for field in REQUIRED_FIELDS:
-            if not entry.get(field):
+            value = entry.get(field)
+            if field in LIST_REQUIRED_FIELDS:
+                if not isinstance(value, list):
+                    issues.append(f"[TYPE] {ctx}: {field} 는 list 여야 함")
+            elif not value:
                 issues.append(f"[MISSING] {ctx}: {field}")
 
         eid = entry.get("id")
@@ -498,8 +580,18 @@ def main():
     p_new.add_argument("--module", help="관련 모듈 id")
     p_new.add_argument("--author", default="agent")
     p_new.add_argument("--related", action="append", help="<target_id>:<relation_type> (반복 가능)")
+    p_new.add_argument("--metadata", help='타입별 metadata JSON 객체 (예: \'{"kind":"release","version":"0.10.0"}\')')
+    p_new.add_argument("--meta", action="append", default=[],
+                       help="metadata 를 key=value 로 지정 (반복 가능). true/false/null 만 JSON 리터럴로 "
+                            "해석하고 나머지는 문자열 — 리스트/숫자는 --metadata 사용")
     p_new.add_argument("--print", action="store_true", help="생성된 entry 출력")
     p_new.set_defaults(func=cmd_new)
+
+    p_rel = sub.add_parser("relate", help="기존 entry 에 relation 추가 (AR→UD, IN→TS, *→RN 등)")
+    p_rel.add_argument("source", help="relation 을 붙일 entry id")
+    p_rel.add_argument("type", help=f"relation type ({', '.join(sorted(ALLOWED_RELATIONS))})")
+    p_rel.add_argument("target", help="대상 entry id")
+    p_rel.set_defaults(func=cmd_relate)
 
     p_val = sub.add_parser("validate", help="단일 파일 또는 디렉토리 검증")
     p_val.add_argument("path", help="파일 또는 디렉토리")

@@ -1,7 +1,7 @@
 ---
 name: mso-workflow-optimizer
 metadata:
-  version: "0.9.2"
+  version: "0.7.0"
 description: >
   MSO workflow TTL ABox를 실행 가능한 LangGraph artifact로 컴파일하는 optimizer 스킬.
   TTL을 SSOT로 유지하면서 Vertex별 instruction, work-memory ContextPack,
@@ -29,6 +29,7 @@ workflow/*.abox.ttl  ->  optimizer IR  ->  generated/langgraph/workflow-id/graph
 
 - TTL ABox를 직접 실행 정본으로 둔다. 생성된 LangGraph 코드는 수동 편집하지 않는다.
 - workflow node의 `wf:instruction`은 Vertex instruction이고, work-memory는 Vertex별 ContextPack으로 주입한다.
+- ContextPack 스코어링/선택 로직의 정본은 **mso-work-memory 의 `wm_context.py`** 다 (v0.7.0). `compile_workflow.py` 는 이를 로드해 위임한다 — sibling `skills/` 디렉토리 우선, `~/.claude/skills/` fallback. 따라서 이 스킬은 mso-work-memory 가 해석 가능한 환경을 전제한다.
 - secret/API key/OAuth token은 TTL에 넣지 않는다. provider 선택은 정책 파일에 이름으로만 남긴다.
 - `cost | speed | quality | privacy` 실행 모드를 정책으로 받아 node별 provider를 고른다.
 - LangGraph 미설치 환경에서도 생성물 import와 fallback `invoke()`가 동작해야 한다.
@@ -51,7 +52,7 @@ python scripts/compile_workflow.py workflow/my-flow.abox.ttl \
 
 - `graph.py`: LangGraph가 있으면 `StateGraph`를 compile하고, 없으면 deterministic fallback graph를 제공한다.
 - `workflow_ir.json`: TTL에서 추출한 phase/node/edge/provider routing IR.
-- `context_packs`: node별 work-memory snapshot. 없거나 오래된 경우 런타임에서 `context_overrides`로 교체 가능.
+- `context_packs`: node별 work-memory snapshot. 없거나 오래된 경우 런타임에서 `context_overrides`로 교체 가능 — 교체용 pack 은 `wm_context.py node --node <id> --ttl <abox> --json` 으로 동일 스코어링에서 재생성한다 (`context_overrides` 와 상보).
 - `optimizer_policy.json`: 적용된 provider 선택 정책.
 - `manifest.json`: 입력 TTL 해시, 생성 시각, artifact 경로.
 

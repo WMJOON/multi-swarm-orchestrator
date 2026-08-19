@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.9.2
+# Multi-Swarm Orchestrator (MSO) v0.10.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,23 +13,17 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.9.2 (2026-07-22) — Nested Work-Memory Repository Hooks
+### v0.10.0 (2026-08-20) — Runtime Context-Pack Retrieval
 
-work-memory가 프로젝트 루트와 별도의 Git 저장소에 있어도, hook이 실제 소유 저장소를 자동 탐색하도록 보정했다.
+mono/umbrella-repo에서 workflow가 많아지면 task 수행 시 적합한 work-memory가 컨텍스트로 안 딸려오던 문제를 해결했다. 검색 키는 **사용자 발화가 아니라 workflow 실행 위치**다.
 
-- **중첩 저장소 자동 선택**: `commit-work-memory.sh`는 `WORKMEM_DIR`의 Git root를 찾아 해당 저장소에만 stage·commit한다.
-- **SessionStart 지연 방지**: `work-memory-check.sh`는 중첩 work-memory를 상위 저장소 pathspec으로 탐색하지 않고, 소유 저장소에서 log/status를 수행한다.
-- **회귀 테스트**: 중첩 `agent-context` 저장소에서 자동 커밋과 SessionStart 점검이 정상 동작하는 테스트를 추가했다.
+- **`wm_context.py`**: workflow node id(`node --node <id> [--ttl <abox>]`) 또는 자유 질의(`query`)로 연관 entry를 lexical 랭킹해 반환한다. zvec 인덱스 불필요. 이제 ContextPack 스코어링의 **단일 정본**이며, `mso-workflow-optimizer`의 컴파일 타임 ContextPack이 이 모듈을 로드해 위임한다.
+- **스코프 오염 차단**: `--filter-tag`/`--filter-module`은 스코어링·relation 확장 *이전에* 풀을 자르는 하드 필터라, 스코프 밖 entry가 높은 점수나 relation을 타고 재진입하지 못한다. umbrella-repo는 `--extra-root`로 다른 루트를 병합한다(id는 메인 루트 우선).
+- **workflow cursor + 자동 주입**: `wm_context.py cursor set <node>`로 `.claude/state/workflow-cursor.json`에 실행 위치를 남기면, `UserPromptSubmit` 훅(`workflow-context-hook.py`)이 매 발화마다 그 node의 pack을 주입한다. cursor가 없으면 무출력. 컴파일된 LangGraph 경로는 cursor 없이도 `_run_node`가 pack을 붙인다.
+- **왜 UserPromptSubmit인가**: plain stdout이 모델에 주입되는 이벤트는 `SessionStart`/`UserPromptSubmit` 뿐이다. PreToolUse는 tool을 차단해야만 모델에 닿고 타이밍도 결정 이후여서 provisioning에 부적합하다.
+- **work-memory CLI 보강**: `new --metadata '<json>'` / `--meta key=value`(스키마 필수 metadata를 CLI로 기록), `relate <source> <type> <target>`(AR→UD, IN→TS, *→RN 처럼 target이 나중에 생기는 사후 엣지 확정). 둘 다 이전에는 JSONL 수작업 편집이 필요했다.
 
-### v0.9.1 (2026-07-20) — init.py --hook WM_WORTHY_PATHS 보존 + v0.9.0 codex parity 완결
-
-`init.py --hook`을 `--worthy-paths` 없이 재실행하면 이미 등록된 `WM_WORTHY_PATHS` 값이 marker 기반 커맨드 재작성 과정에서 조용히 사라지던 회귀를 고쳤다. 또한 v0.9.0 릴리스 커밋에서 빠졌던 codex provider parity(release-record AGENT_CONTEXT_TREE, config.toml release_ctx_cmd 배선)를 완결한다.
-
-- **WM_WORTHY_PATHS 보존**: `--worthy-paths` 미지정 재실행 시, 덮어쓰기 전에 기존 등록값을 회수한다(Claude: `settings.json`의 `work-memory-check.sh` 커맨드, Codex: `config.toml`). 등록 이력이 없으면 기존과 동일하게 스크립트 기본값을 따른다.
-- **codex parity 완결**: `AGENT_CONTEXT_TREE`에 `work-memory/release-record`가 codex 경로에서도 생성되고, `_upsert_codex_config_toml`이 `release_ctx_cmd`를 받아 `config.toml`에도 release-context 훅을 배선한다. v0.9.0 당시 Claude 경로에만 반영되고 커밋에서 누락됐던 부분이다.
-- **skill 버전 lockstep 복구**: v0.9.0에서 갱신되지 않았던 8개 skill(mso-work-memory 제외)의 SKILL.md `version`을 현재 패치로 재정렬.
-
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance(RN 타입 + derived release view + release-context 훅), v0.9.1은 init.py --hook WM_WORTHY_PATHS 보존 버그 수정 + v0.9.0 codex parity 완결이다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance(RN 타입 + derived release view + release-context 훅), v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 런타임 context-pack 검색(workflow 실행 위치 기반 기억 회수 + cursor 자동 주입)이다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 

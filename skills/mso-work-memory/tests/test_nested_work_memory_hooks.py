@@ -11,7 +11,14 @@ HOOKS = Path(__file__).resolve().parents[1] / "hooks"
 
 
 def run(*args: str, cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, env=env, check=True, text=True, capture_output=True)
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        env=env,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
 
 
 def init_git(path: Path) -> None:
@@ -39,11 +46,24 @@ def test_commit_hook_commits_to_nested_work_memory_repository(tmp_path: Path) ->
     run("git", "commit", "-qm", "initial work-memory", cwd=nested)
 
     note.write_text('{"id":"IN-0001"}\n{"id":"IN-0002"}\n', encoding="utf-8")
-    env = {**os.environ, "PROJECT_DIR": str(project), "WORKMEM_DIR": str(workmem)}
-    subprocess.run(["bash", str(HOOKS / "commit-work-memory.sh")], cwd=project, env=env, check=True, text=True, capture_output=True)
+    env = {
+        **os.environ,
+        "PROJECT_DIR": str(project),
+        "WORKMEM_DIR": str(workmem),
+    }
+    subprocess.run(
+        ["bash", str(HOOKS / "commit-work-memory.sh")],
+        cwd=project,
+        env=env,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
 
     assert run("git", "status", "--short", "--", "work-memory", cwd=nested).stdout == ""
-    assert "chore(work-memory): auto log trail [hook]" in run("git", "log", "-1", "--format=%s", cwd=nested).stdout
+    assert "chore(work-memory): auto log trail [hook]" in run(
+        "git", "log", "-1", "--format=%s", cwd=nested
+    ).stdout
     assert "auto log trail" not in run("git", "log", "-1", "--format=%s", cwd=project).stdout
 
 
@@ -62,6 +82,19 @@ def test_check_hook_accepts_nested_work_memory_repository(tmp_path: Path) -> Non
     run("git", "add", "work-memory", cwd=nested)
     run("git", "commit", "-qm", "initial work-memory", cwd=nested)
 
-    env = {**os.environ, "PROJECT_DIR": str(project), "WORKMEM_DIR": str(workmem), "WM_WORTHY_PATHS": "workflow index"}
-    result = subprocess.run(["bash", str(HOOKS / "work-memory-check.sh")], cwd=project, env=env, input='{"hook_event_name":"SessionStart"}', check=True, text=True, capture_output=True)
+    env = {
+        **os.environ,
+        "PROJECT_DIR": str(project),
+        "WORKMEM_DIR": str(workmem),
+        "WM_WORTHY_PATHS": "workflow index",
+    }
+    result = subprocess.run(
+        ["bash", str(HOOKS / "work-memory-check.sh")],
+        cwd=project,
+        env=env,
+        input='{"hook_event_name":"SessionStart"}',
+        check=True,
+        text=True,
+        capture_output=True,
+    )
     assert result.returncode == 0

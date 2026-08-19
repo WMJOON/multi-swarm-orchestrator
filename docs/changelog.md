@@ -1,5 +1,42 @@
 # 변경 이력
 
+## v0.10.0 (2026-08-20) — Runtime Context-Pack Retrieval
+
+> 기억 회수의 키는 사용자 발화가 아니라 workflow 실행 위치다. mono/umbrella-repo에서 workflow가 많아질 때 스코프 밖 기록이 스코프 안 기록을 밀어내던 문제를, 하드 필터와 cursor 기반 자동 주입으로 해결한다.
+
+### Added
+
+| 추가 | 내용 |
+|------|------|
+| `skills/mso-work-memory/scripts/wm_context.py` | 런타임 context-pack 검색. `node --node <id> [--ttl <abox>]` / `query "<자유 질의>"` / `cursor set\|show\|clear`. lexical 랭킹(타입 우선순위 + 18×태그 교집합 + 토큰 매치 + module 보너스)이라 zvec 인덱스가 필요 없다. core는 stdlib only, rdflib는 `--ttl` 경로에서만 lazy import. **ContextPack 스코어링의 단일 정본.** |
+| 하드 필터 / 멀티 루트 | `--filter-tag`(반복, AND) / `--filter-module`은 스코어링·relation 확장 *이전에* 풀을 잘라 스코프 밖 entry의 재진입을 차단한다. `--extra-root`(반복)로 umbrella-repo의 다른 work-memory 루트를 병합한다(id는 first-seen-wins, 메인 루트 우선). |
+| workflow cursor | `.claude/state/workflow-cursor.json` — "지금 어느 node를 수행 중인가". 가변 상태라 append-only JSONL에 두지 않는다(RN의 "current는 derived view — 저장 금지"와 같은 경계). `stop-check.state` 선례를 따른 gitignore 대상. |
+| `skills/mso-work-memory/hooks/workflow-context-hook.py` | `UserPromptSubmit` 훅. cursor가 가리키는 node의 pack을 plain stdout으로 주입한다. cursor 부재·파손, 스크립트 부재, workmem 부재, 빈 결과는 모두 무출력·exit 0. `MSO_WORKFLOW_CONTEXT_TOP_K`(기본 3 — 매 턴 주입이라 보수적), `MSO_WORKFLOW_CONTEXT_DISABLED=1`. |
+| `wm_node.py new --metadata` / `--meta` | 타입별 스키마 필수 metadata를 CLI로 기록한다. `--metadata '<json>'`은 리스트·중첩(AR의 `options`)용, `--meta key=value`(반복)는 스칼라용. `--meta`는 semver 보존을 위해 값을 JSON 파싱하지 않고 `true`/`false`/`null`만 리터럴로 변환한다. |
+| `wm_node.py relate <source> <type> <target>` | 사후 라이프사이클 엣지 확정. `followed-by`(AR→UD), `resolved-by`(IN→TS), `released-in`/`verified-in`/`invalidated-by`(*→RN)는 target이 나중에 생겨 entry 작성 시점에 달 수 없다. |
+
+### Changed
+
+- `mso-workflow-optimizer` v0.7.0 — 컴파일 타임 ContextPack의 스코어링·선택을 `wm_context.py`에 위임한다(`MemoryEntry`/`_entry_score`/`_expand_related`/`build_context_pack` 제거). sibling `skills/` 우선, `~/.claude/skills/` fallback — 후자를 우선하면 승격본(`repository/`) 심링크를 읽어 개발 중 stale 코드가 걸린다. 부수 효과로 컴파일 타임 로딩에도 dot-dir 스킵(`.zvec`, `.migration-archive`)과 id dedup이 적용된다.
+- `mso-work-memory` SKILL.md v0.8.0 — "런타임 Context Pack" 섹션 신설(node/query 모드, 하드 필터 vs 소프트 부스트, cursor, 가중치 감각).
+- `mso-repository-setup` `init.py --hook` — `workflow-context-hook.py`를 `UserPromptSubmit`에 등록하고, `release-context.sh`↔`wm_release.py` 선례대로 `wm_context.py`를 copy-form 동봉한다. Claude provider 한정(Codex는 SessionStart 밖 stdout 전달 의미론 미검증).
+- `tokenize` 정규식에 한글을 추가했다(`[A-Za-z0-9_.-]{3,}|[가-힣]{2,}`). 한국어 질의의 토큰 기여가 0이던 문제를 해소한다. 다만 토큰 매치는 개당 1점이라 타입 우선순위(12~30) 격차를 넘지 못하므로, 타입을 가로지르는 랭킹은 `--tags`(18×)로 잡아야 한다. 교착어 조사 변형(`검토` ≠ `검토했다`)은 형태소 분석이 필요해 미해결로 남는다.
+
+### Fixed
+
+- `wm_node.py validate`가 `list[str]` 필드를 truthiness로 검사해, `new`가 `--tags` 없이 만든 entry가 자기 validate를 통과하지 못하던 왕복 불일치를 수정했다(`LIST_REQUIRED_FIELDS` 분리 → 타입 검사). 부수적으로 `tags`가 list가 아닌 경우를 새로 잡는다. 스칼라 필드의 빈 값 탐지력은 유지된다.
+- `new`가 태그 없이 entry를 만들면 stderr로 힌트를 낸다 — context-pack 검색에서 태그 교집합이 18× 가중치를 갖게 되면서 무태그 entry는 회수되기 어려워졌기 때문이다.
+
+### 왜 UserPromptSubmit인가 (기각된 대안)
+
+plain stdout이 모델 컨텍스트에 주입되는 이벤트는 `SessionStart`/`UserPromptSubmit`/`UserPromptExpansion` 뿐이다. `PreToolUse`는 tool args(파일 경로 → `wf:dirPath`)로 node 식별 신호가 가장 풍부하지만, 모델에 닿는 유일한 경로가 `permissionDecision=deny`라 **tool을 차단해야만 전달되고**, 타이밍도 이미 결정이 내려진 뒤여서 provisioning에 부적합하다. 향후 "이 Edit이 이전 UD와 충돌한다"를 잡는 drift guard로 분리한다.
+
+훅은 에이전트 판단을 제거하지 못하고 **분할상환**한다 — cursor를 쓰려면 'node 진입'을 이미 알아야 하기 때문이다. 대신 한 번 쓰면 그 node에 머무는 이후 턴은 자동으로 받는다.
+
+### 테스트
+
+`mso-work-memory` 60 pass — 신규 `test_wm_context.py`(13), `test_wm_node_metadata.py`(11), `test_wm_node_relate.py`(8), `test_wm_node_validate.py`(5), `test_workflow_context_hook.py`(10). `mso-workflow-optimizer` 4 pass(cross-skill 위임 경로 end-to-end). `mso-repository-setup` 신규 `test_init_hook.py` 5 pass — 훅 등록·copy-form 동봉·멱등성·기존 settings 보존. 이 스킬의 최초 테스트다.
+
 ## v0.9.2 (2026-07-22) — Nested Work-Memory Repository Hooks
 
 > work-memory가 별도 Git 저장소여도 hook이 상위 저장소를 오인하지 않는다.
@@ -9,23 +46,6 @@
 - `commit-work-memory.sh`가 `WORKMEM_DIR`을 소유한 Git 저장소를 자동 탐색해, 중첩 `agent-context` 저장소의 work-memory만 stage·commit하도록 수정했다.
 - `work-memory-check.sh`가 중첩 work-memory를 상위 저장소 pathspec으로 조회해 SessionStart가 지연되는 문제를 수정했다. 이제 work-memory 소유 저장소에서만 Git 이력과 working tree를 검사한다.
 - 중첩 저장소 자동 커밋·SessionStart 점검 회귀 테스트를 추가했다.
-
-## v0.9.1 (2026-07-20) — init.py --hook 회귀 수정 + v0.9.0 codex parity 완결
-
-> `init.py --hook` 재실행이 프로젝트별 커스터마이징을 조용히 리셋하던 회귀를 고친다. v0.9.0 릴리스 커밋에서 누락된 codex provider parity도 함께 완결한다.
-
-### Fixed
-
-| 수정 | 내용 |
-|------|------|
-| `init.py --hook` 의 `WM_WORTHY_PATHS` 유실 회귀 | `_upsert_hook`/`_upsert_codex_config_toml` 은 marker 매치 시 커맨드 문자열을 통째로 교체한다. `--worthy-paths` 를 다시 지정하지 않고 재실행하면 이미 등록된 값이 빈 문자열로 덮어써졌다. `cmd_hook` 이 재작성 전에 기존 등록값을 (Claude: `settings.json` 의 `work-memory-check.sh` 커맨드, Codex: `config.toml` 원문) 회수해 보존하도록 수정 — `--worthy-paths` 미지정 재실행이 값 측면에서도 idempotent 해졌다. |
-| v0.9.0 codex provider parity 누락 | v0.9.0 릴리스 당시 Claude 경로에만 반영되고 커밋되지 않았던 변경 2건을 완결: `AGENT_CONTEXT_TREE` 에 `work-memory/release-record` 추가(codex `--target` 경로도 생성), `_upsert_codex_config_toml` 이 `release_ctx_cmd` 파라미터를 받아 `config.toml` 의 `SessionStart` 에 release-context 훅을 배선. |
-
-### Changed
-
-- `install.sh` 배너 문자열 v0.5.0 → v0.9.1 (실제 릴리스 버전과 불일치하던 잔재 정리).
-- `mso-work-memory` 를 제외한 8개 skill 의 `SKILL.md` `version` 을 0.8.2 → 0.9.1 로 재정렬(v0.9.0 릴리스에서 갱신 누락). `mso-work-memory` 는 자체 semver 트랙(현재 0.7.0)을 유지 — 재사용 fat skill 이라 프로젝트 전체 버전과 lockstep 하지 않는다.
-- `tests/test_skill_interactions.py`: README/skill 버전 검증 리터럴을 0.9.1 로 갱신하고, `mso-work-memory` 를 lockstep 검증에서 명시적으로 제외.
 
 ## v0.9.0 (2026-07-17) — Work-Memory Release Governance
 

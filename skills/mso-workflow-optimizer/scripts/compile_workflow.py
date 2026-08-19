@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import re
 import sys
@@ -23,6 +24,34 @@ from typing import Any
 from rdflib import Graph, Namespace, RDF, URIRef
 
 WF = Namespace("https://mso.dev/ontology/workflow#")
+
+# ContextPack 스코어링/선택 정본은 mso-work-memory 의 wm_context.py.
+# sibling 우선 — ~/.claude/skills 는 승격본(repository/) 심링크라 repository-test
+# 개발 중 stale 코드를 읽게 되므로 co-located 소스를 먼저 찾는다.
+_WM_CONTEXT_CANDIDATES = [
+    Path(__file__).resolve().parent.parent.parent / "mso-work-memory" / "scripts" / "wm_context.py",
+    Path.home() / ".claude" / "skills" / "mso-work-memory" / "scripts" / "wm_context.py",
+]
+_wm_context_module: Any = None
+
+
+def _load_wm_context() -> Any:
+    global _wm_context_module
+    if _wm_context_module is None:
+        for cand in _WM_CONTEXT_CANDIDATES:
+            if cand.exists():
+                spec = importlib.util.spec_from_file_location("wm_context", cand)
+                assert spec and spec.loader
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                _wm_context_module = module
+                break
+        else:
+            raise SystemExit(
+                "[ERROR] wm_context.py not found — install the mso-work-memory skill "
+                "(sibling skills/ dir or ~/.claude/skills/)."
+            )
+    return _wm_context_module
 
 DEFAULT_POLICY: dict[str, Any] = {
     "mode": "cost",
@@ -152,19 +181,6 @@ class Node:
     context_selector: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class MemoryEntry:
-    id: str
-    type: str
-    title: str
-    text: str
-    tags: list[str]
-    created_at: str | None
-    source_path: str
-    relations: list[dict[str, str]]
-    metadata: dict[str, Any]
-
-
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -247,176 +263,42 @@ def _subjects_by_type(g: Graph, cls: URIRef) -> list[URIRef]:
     return sorted((s for s in g.subjects(RDF.type, cls) if isinstance(s, URIRef)), key=str)
 
 
-def _entry_from_obj(obj: dict[str, Any], source_path: Path) -> MemoryEntry | None:
-    if not isinstance(obj, dict) or not obj.get("id") or not obj.get("type"):
-        return None
-    return MemoryEntry(
-        id=str(obj.get("id")),
-        type=str(obj.get("type")),
-        title=str(obj.get("title") or ""),
-        text=str(obj.get("text") or ""),
-        tags=[str(t) for t in (obj.get("tags") or [])],
-        created_at=str(obj.get("created_at")) if obj.get("created_at") else None,
-        source_path=str(obj.get("source_path") or source_path),
-        relations=[
-            {"type": str(rel.get("type")), "target": str(rel.get("target"))}
-            for rel in (obj.get("relations") or [])
-            if isinstance(rel, dict) and rel.get("type") and rel.get("target")
-        ],
-        metadata=obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {},
-    )
-
-
-def load_work_memory(workmem_dir: Path | None) -> list[MemoryEntry]:
+def load_work_memory(workmem_dir: Path | None) -> list[dict[str, Any]]:
     if not workmem_dir or not workmem_dir.exists():
         return []
-    entries: list[MemoryEntry] = []
-    for path in sorted(workmem_dir.rglob("*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            entry = _entry_from_obj(obj, path)
-            if entry:
-                entries.append(entry)
-    return entries
-
-
-def _tokenize(text: str) -> set[str]:
-    return {t.lower() for t in re.findall(r"[A-Za-z0-9_.-]{3,}", text or "")}
+    return _load_wm_context().load_entries(workmem_dir)
 
 
 def _context_selector(node: Node, policy: dict[str, Any]) -> dict[str, Any]:
     context = policy.get("context") or {}
-    query = " ".join(
-        part for part in [
-            node.id,
-            node.type,
-            node.phase_id or "",
-            node.label,
-            node.instruction or "",
-            node.judge or "",
-            node.harness or "",
-        ]
-        if part
+    return _load_wm_context().selector_from_node_fields(
+        node.id,
+        node_type=node.type,
+        phase_id=node.phase_id,
+        label=node.label,
+        instruction=node.instruction,
+        judge=node.judge,
+        harness=node.harness,
+        include_types=list(context.get("include_types") or []),
+        top_k=int(context.get("top_k", 5)),
+        relation_depth=int(context.get("relation_depth", 1)),
+        max_entry_chars=int(context.get("max_entry_chars", 1200)),
     )
-    tags = [node.id, node.type]
-    if node.phase_id:
-        tags.append(node.phase_id)
-    if node.judge:
-        tags.append(node.judge)
-    if node.harness:
-        tags.append(node.harness)
-    return {
-        "query": query,
-        "tags": sorted(set(tags)),
-        "include_types": list(context.get("include_types") or []),
-        "top_k": int(context.get("top_k", 5)),
-        "relation_depth": int(context.get("relation_depth", 1)),
-        "max_entry_chars": int(context.get("max_entry_chars", 1200)),
-    }
 
 
-_TYPE_PRIORITIES = {
-    "principle": 30,
-    "pattern": 26,
-    "user-decision": 24,
-    "episode": 20,
-    "trouble-shooting": 16,
-    "issue-note": 14,
-    "agent-decision": 12,
-    "alternatives-record": 12,
-}
-
-
-def _entry_score(entry: MemoryEntry, selector: dict[str, Any]) -> int:
-    allowed = set(selector.get("include_types") or [])
-    if allowed and entry.type not in allowed:
-        return -1
-    score = _TYPE_PRIORITIES.get(entry.type, 0)
-    selector_tags = {str(t).lower() for t in selector.get("tags") or []}
-    entry_tags = {str(t).lower() for t in entry.tags}
-    score += 18 * len(selector_tags & entry_tags)
-    haystack = _tokenize(" ".join([entry.id, entry.type, entry.title, entry.text, " ".join(entry.tags)]))
-    score += len(_tokenize(selector.get("query", "")) & haystack)
-    if entry.metadata.get("module") and str(entry.metadata["module"]).lower() in selector_tags:
-        score += 12
-    return score
-
-
-def _expand_related(selected: list[MemoryEntry], all_entries: list[MemoryEntry], depth: int) -> list[MemoryEntry]:
-    if depth <= 0:
-        return selected
-    by_id = {entry.id: entry for entry in all_entries}
-    incoming: dict[str, list[MemoryEntry]] = defaultdict(list)
-    for entry in all_entries:
-        for rel in entry.relations:
-            incoming[rel["target"]].append(entry)
-    result: dict[str, MemoryEntry] = {entry.id: entry for entry in selected}
-    frontier = list(selected)
-    for _ in range(depth):
-        next_frontier: list[MemoryEntry] = []
-        for entry in frontier:
-            neighbors = [by_id[rel["target"]] for rel in entry.relations if rel["target"] in by_id]
-            neighbors.extend(incoming.get(entry.id, []))
-            for neighbor in neighbors:
-                if neighbor.id not in result:
-                    result[neighbor.id] = neighbor
-                    next_frontier.append(neighbor)
-        frontier = next_frontier
-        if not frontier:
-            break
-    return list(result.values())
-
-
-def build_context_pack(node: Node, entries: list[MemoryEntry], selector: dict[str, Any]) -> dict[str, Any]:
-    scored = [
-        (score, entry)
-        for entry in entries
-        if (score := _entry_score(entry, selector)) >= 0
-    ]
-    scored.sort(key=lambda item: (-item[0], item[1].created_at or "", item[1].id))
-    top = [entry for _, entry in scored[: int(selector.get("top_k", 5))]]
-    selected = _expand_related(top, entries, int(selector.get("relation_depth", 1)))
-    scores = {entry.id: score for score, entry in scored}
-    max_chars = int(selector.get("max_entry_chars", 1200))
-    return {
-        "node_id": node.id,
-        "selector": selector,
-        "entries": [
-            {
-                "id": entry.id,
-                "type": entry.type,
-                "title": entry.title,
-                "text": entry.text[:max_chars],
-                "tags": entry.tags,
-                "metadata": entry.metadata,
-                "relations": entry.relations,
-                "source_path": entry.source_path,
-                "score": scores.get(entry.id, 0),
-            }
-            for entry in selected
-        ],
-    }
-
-
-def _context_index_hash(entries: list[MemoryEntry]) -> str:
+def _context_index_hash(entries: list[dict[str, Any]]) -> str:
     payload = [
         {
-            "id": entry.id,
-            "type": entry.type,
-            "title": entry.title,
-            "text": entry.text,
-            "tags": entry.tags,
-            "created_at": entry.created_at,
-            "relations": entry.relations,
-            "metadata": entry.metadata,
+            "id": entry["id"],
+            "type": entry["type"],
+            "title": entry["title"],
+            "text": entry["text"],
+            "tags": entry["tags"],
+            "created_at": entry["created_at"],
+            "relations": entry["relations"],
+            "metadata": entry["metadata"],
         }
-        for entry in sorted(entries, key=lambda e: e.id)
+        for entry in sorted(entries, key=lambda e: e["id"])
     ]
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -532,7 +414,7 @@ def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None =
     memory_entries = load_work_memory(workmem_dir)
     context_enabled = bool((policy.get("context") or {}).get("enabled", True))
     context_packs = {
-        node.id: build_context_pack(node, memory_entries, node.context_selector)
+        node.id: _load_wm_context().build_context_pack(node.id, memory_entries, node.context_selector)
         for node in nodes.values()
         if context_enabled and memory_entries
     }
