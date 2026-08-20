@@ -9,14 +9,14 @@ user-decision 으로 승인됨(agent-toolkit-forge work-on-project 세션, 2026-
 ug.py 부재/오류/timeout 시 조용히 통과 — UUG 자신의 훅과 동일한 degrade 원칙.
 절대 프롬프트를 막지 않는다(exit 0). 기록·dispatch·worklog side effect 없음(순수 넛지).
 
-등록은 mso-repository-setup 의 init.py --hook 이 담당한다(copy-form, Claude Code
-provider 한정 — Codex 는 SessionStart 밖 stdout 전달 의미론이 미검증이라 보류).
+등록은 mso-repository-setup 의 init.py --hook 이 담당한다(copy-form). Claude Code와
+Codex 모두 UserPromptSubmit 컨텍스트 주입 경로로 사용한다.
 
 환경변수:
   MSO_UUG_CONTEXT_DISABLED=1   훅 비활성화
   MSO_UUG_CONTEXT_INTENTS      게이팅할 intent_id 콤마 목록 (기본: work-on-project)
-  CLAUDE_PROJECT_DIR           현재 레포 절대경로(Claude Code 가 주입) — target_path 와
-                                같으면 자기 자신이므로 넛지 생략
+  PROJECT_DIR / CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR
+                               현재 레포 절대경로 — target_path 와 같으면 넛지 생략
 """
 import json
 import os
@@ -29,6 +29,7 @@ DEFAULT_INTENTS = {"work-on-project"}
 UG_CANDIDATES = [
     Path.home() / ".claude" / "skills" / "uug-grounding" / "scripts" / "ug.py",
     Path.home() / ".codex" / "skills" / "uug-grounding" / "scripts" / "ug.py",
+    Path.home() / ".agents" / "skills" / "uug-grounding" / "scripts" / "ug.py",
 ]
 
 
@@ -87,7 +88,11 @@ def main():
         return
     target_path = Path(target_path_str)
 
-    cwd = os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("PROJECT_DIR")
+    cwd = (
+        os.environ.get("PROJECT_DIR")
+        or os.environ.get("CODEX_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
+    )
     if cwd:
         try:
             if Path(cwd).resolve() == target_path.resolve():

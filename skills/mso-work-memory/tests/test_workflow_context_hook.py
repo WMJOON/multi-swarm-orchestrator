@@ -44,7 +44,7 @@ def test_cursor_set_show_clear_roundtrip(tmp_path):
     project.mkdir()
 
     assert _run(WM_CONTEXT, "cursor", "set", "discovery-s-001", project=project).returncode == 0
-    cursor_file = project / ".claude" / "state" / "workflow-cursor.json"
+    cursor_file = project / ".mso" / "state" / "workflow-cursor.json"
     assert cursor_file.exists()
     assert json.loads(cursor_file.read_text(encoding="utf-8"))["node"] == "discovery-s-001"
 
@@ -70,7 +70,7 @@ def test_cursor_set_records_ttl_as_absolute_path(tmp_path):
     ttl.write_text("# ttl", encoding="utf-8")
 
     _run(WM_CONTEXT, "cursor", "set", "n1", "--ttl", str(ttl), project=project)
-    cursor = json.loads((project / ".claude" / "state" / "workflow-cursor.json").read_text(encoding="utf-8"))
+    cursor = json.loads((project / ".mso" / "state" / "workflow-cursor.json").read_text(encoding="utf-8"))
     assert Path(cursor["ttl"]).is_absolute()
     assert Path(cursor["ttl"]).exists()
 
@@ -115,7 +115,7 @@ def test_hook_silent_on_corrupt_cursor(tmp_path):
     project = tmp_path / "proj"
     project.mkdir()
     workmem = _seed_workmem(project)
-    cursor_file = project / ".claude" / "state" / "workflow-cursor.json"
+    cursor_file = project / ".mso" / "state" / "workflow-cursor.json"
     cursor_file.parent.mkdir(parents=True)
     cursor_file.write_text("{not json", encoding="utf-8")
 
@@ -132,6 +132,34 @@ def test_hook_silent_when_workmem_missing(tmp_path):
     result = _run(HOOK, project=project, workmem=tmp_path / "nope")
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+def test_hook_reads_legacy_claude_cursor(tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    workmem = _seed_workmem(project)
+    cursor_file = project / ".claude" / "state" / "workflow-cursor.json"
+    cursor_file.parent.mkdir(parents=True)
+    cursor_file.write_text(json.dumps({"node": "discovery-s-001"}), encoding="utf-8")
+
+    result = _run(HOOK, project=project, workmem=workmem)
+    assert result.returncode == 0
+    assert "PR-0001" in result.stdout
+
+
+def test_hook_runs_with_codex_project_dir_only(tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    workmem = _seed_workmem(project)
+    env = {key: value for key, value in os.environ.items() if key not in {"PROJECT_DIR", "CLAUDE_PROJECT_DIR"}}
+    env.update({"CODEX_PROJECT_DIR": str(project), "WORKMEM_DIR": str(workmem)})
+    cursor_file = project / ".mso" / "state" / "workflow-cursor.json"
+    cursor_file.parent.mkdir(parents=True)
+    cursor_file.write_text(json.dumps({"node": "discovery-s-001"}), encoding="utf-8")
+
+    result = subprocess.run([sys.executable, str(HOOK)], capture_output=True, text=True, env=env)
+    assert result.returncode == 0
+    assert "PR-0001" in result.stdout
 
 
 def test_hook_silent_when_no_matching_entries(tmp_path):

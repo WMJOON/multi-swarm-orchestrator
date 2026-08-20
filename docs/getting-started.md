@@ -1,17 +1,21 @@
-# 시작하기 (v0.7.0)
+# 시작하기 (v0.10.1)
 
 ## 0. 설치
 
 ```bash
 # 옵션 A: install.sh (직접 symlink)
 bash install.sh               # Claude Code 전용
+bash install.sh --codex       # Codex: ~/.agents/skills
 bash install.sh --all         # Claude + Codex + Gemini
+bash install.sh --codex-legacy # 구형 ~/.codex/skills 설치가 명시적으로 필요할 때만
 
 # 옵션 B: sync-agents-global.sh (글로벌 링크 허브 경유)
 bash 00_agents_global_links/sync-agents-global.sh sync
 ```
 
-설치 후 `~/.claude/skills/` 에 5개 스킬이 등록된다.
+Codex user-scope skill 정본은 `~/.agents/skills/`이다. 동일한 skill name을 서로 다른
+소스에서 `~/.agents/skills/`와 `~/.codex/skills/` 양쪽에 설치하지 않는다. 위치 규칙은
+[Codex Skills 공식 문서](https://learn.chatgpt.com/codex/build-skills)를 따른다.
 
 ---
 
@@ -34,8 +38,8 @@ project/
 │   └── work-memory/
 │       ├── schema.yaml
 │       ├── auditlog/   worklog/
-│       ├── track-record/{issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting}/
-│       └── insight-record/{episodes, patterns, principles}/
+│       ├── track-record/  release-record/
+│       └── insight-record/
 └── .gitignore
 ```
 
@@ -51,15 +55,23 @@ python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --check /path/to/p
 python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/project
 ```
 
-`.claude/settings.json` 에 `PostToolUse(Bash·Edit·Write → auditlog)`, `Stop/PreCompact(→ commit-work-memory)`, `SessionStart(compact/resume → work-memory-check)` hook이 등록된다. Stop hook은 worklog를 자동 생성하지 않는다.
+`.claude/settings.json`에 PostToolUse audit/scaffold, Stop/PreCompact commit,
+SessionStart check/release, UserPromptSubmit workflow/UUG context hook이 등록된다.
+Stop hook은 worklog를 자동 생성하지 않는다.
 Codex 프로젝트에서는 provider를 명시한다.
 
 ```bash
 python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/project --provider codex
 ```
 
-이 경우 `.codex/scripts/`에 hook 스크립트가 복사되고 `.codex/config.toml`과 `.codex/hooks.json`에
-commit-work-memory/work-memory-check hook이 등록된다.
+이 경우 `.codex/scripts/`에 hook 스크립트가 복사되고 `.codex/config.toml`에
+PostToolUse audit/scaffold, Stop/PreCompact commit, SessionStart check/release,
+UserPromptSubmit workflow/UUG context hook이 등록된다. `.codex/hooks.json`은 빈
+compatibility 파일이다. Codex hook 이벤트와 stdout 동작은
+[OpenAI Codex Hooks 공식 문서](https://learn.chatgpt.com/codex/hooks)를 따른다.
+
+workflow cursor는 provider-neutral `.mso/state/workflow-cursor.json`을 사용한다.
+v0.10.0의 `.claude/state/workflow-cursor.json`은 호환 읽기·삭제만 지원한다.
 
 ---
 

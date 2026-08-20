@@ -1,6 +1,5 @@
 ---
 name: mso-work-memory
-version: "0.8.0"
 description: >
   프로젝트의 작업 기록을 jsonl + 임베딩 + 그래프 형태로 자산화하는 스킬.
   agent-context/work-memory/ 에 9종 entry (issue-note, agent-decision,
@@ -18,6 +17,8 @@ description: >
       release-note + verified-in/invalidated-by/rolls-back),
   (7) 실행 시점 context pack 검색 — workflow node/자유 질의로 연관 기억 호출
       (wm_context.py, lexical, zvec 불필요; "context pack", "연관 기억 호출").
+metadata:
+  version: "0.8.1"
 ---
 
 # MSO Work Memory
@@ -221,8 +222,8 @@ python wm_context.py cursor show     # 없으면 무출력
 python wm_context.py cursor clear    # node 이탈 시
 ```
 
-- **cursor 위치**: `.claude/state/workflow-cursor.json` — `stop-check.state` 선례를 따른 gitignore 대상. 가변 상태이므로 append-only JSONL 에 두지 않는다 (RN 의 "current 는 derived view — 저장 금지" 와 같은 경계).
-- **훅**: `hooks/workflow-context-hook.py` (`UserPromptSubmit`). cursor 가 없으면 — 즉 workflow 레일 밖 작업이면 — 무출력이라 등록해도 잡음이 없다. `MSO_WORKFLOW_CONTEXT_TOP_K`(기본 3, 매 턴 주입이라 보수적), `MSO_WORKFLOW_CONTEXT_DISABLED=1`.
+- **cursor 위치**: `.mso/state/workflow-cursor.json` — provider-neutral gitignore 대상. v0.10.0의 `.claude/state/workflow-cursor.json`은 읽기·삭제 fallback으로 지원한다. 가변 상태이므로 append-only JSONL에 두지 않는다.
+- **훅**: `hooks/workflow-context-hook.py` (`UserPromptSubmit`, Claude/Codex 공통). cursor가 없으면 무출력이다. `MSO_WORKFLOW_CONTEXT_TOP_K`(기본 3), `MSO_WORKFLOW_CONTEXT_DISABLED=1`.
 - **판단은 없어지지 않고 분할상환된다** — cursor 를 쓰려면 'node 진입'을 이미 알아야 한다. 대신 한 번 쓰면 그 node 에 머무는 이후 턴은 자동으로 받는다.
 - **왜 PreToolUse 가 아닌가**: plain stdout 이 모델에 주입되는 이벤트는 `SessionStart`/`UserPromptSubmit` 뿐이다. PreToolUse 는 tool 을 차단해야만 모델에 닿고 타이밍도 결정 이후여서 provisioning 에 부적합 (AR-0002 에서 기각, 향후 drift guard 로 분리).
 - 컴파일된 LangGraph 경로는 cursor 가 불필요하다 — `_run_node` 가 node 진입 시 pack 을 `active_context` 에 붙인다.
@@ -296,22 +297,21 @@ TTL projection 쪽에는 동일 view 의 SPARQL 정의가 [references/queries/](
 
 - **matcher**: `startup` + `compact` + `resume` — 릴리스 상태는 세션 최초 시작에 가장 가치가 크므로, 넛지류(compact/resume 전용)와 달리 startup 을 포함한다. 전달 의미론은 동일 근거(SessionStart plain stdout).
 - **무잡음 보장**: 프로젝트에 RN entry 가 하나도 없으면 무출력 — RN 미사용 프로젝트에 등록돼 있어도 잡음이 없다.
-- **copy-form**: `mso-repository-setup` 의 `init.py --hook` 이 `release-context.sh` 와 `wm_release.py` 를 함께 `.claude/scripts/` 로 복사·등록한다. 훅은 자기 옆의 `wm_release.py` 를 우선 탐색하고, 스킬 레이아웃(`../scripts/`)으로 폴백한다.
+- **copy-form**: `mso-repository-setup`의 `init.py --hook`이 `release-context.sh`와 `wm_release.py`를 `.claude/scripts/` 또는 `.codex/scripts/`로 함께 복사·등록한다.
 
 ## UUG 연동 넛지 (hooks/uug-context-hook.py, `UserPromptSubmit`)
 
 uug-grounding 의 `ug.py dispatch --json` 을 read-only subprocess 로 호출해 매 발화의
 `intent_id`/`target_project` 를 읽는다. 게이팅 intent(기본 `work-on-project`)에 걸리고
-`target_project` 가 현재 레포(`$CLAUDE_PROJECT_DIR`)와 다르며 그 프로젝트에
+`target_project`가 현재 레포(`PROJECT_DIR`/`CODEX_PROJECT_DIR`/`CLAUDE_PROJECT_DIR`)와 다르며 그 프로젝트에
 `agent-context/` 가 있을 때만 위치를 1줄 넛지한다 — 그 외에는 항상 침묵.
 
 uug-grounding SKILL.md 의 "MSO는 UUG를 모른다(단방향)" 원칙에 대한 의도적 예외이며
 (user-decision 승인, 2026-07-03). uug-grounding 이 이 머신에 없으면 `mso-repository-setup`
 의 `init.py --hook` 이 이 훅의 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부의
 런타임 no-op degrade(`ug.py` 부재/오류/timeout 시 침묵, `work-memory-check.sh` 와 동일
-원칙)는 그 위의 이중 안전장치다. `UserPromptSubmit` stdout 전달은
-UUG 자신의 훅(`ug-prompt-hook.py`)이 이미 검증한 경로이므로 여기서는 Claude 전용으로만
-등록한다(Codex 는 SessionStart 밖에서 미검증 — 위 전달 의미론 원칙과 동일 근거로 보류).
+원칙)는 그 위의 이중 안전장치다. `UserPromptSubmit` stdout 전달 경로를 사용하는
+Claude/Codex provider에 공통 등록한다.
 게이팅 intent 는 `MSO_UUG_CONTEXT_INTENTS`, 비활성화는 `MSO_UUG_CONTEXT_DISABLED=1`.
 
 ## Hook 통합 (auditlog 자동)

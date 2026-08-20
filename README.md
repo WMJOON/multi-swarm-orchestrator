@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.10.0
+# Multi-Swarm Orchestrator (MSO) v0.10.1
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,17 +13,25 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.10.0 (2026-08-20) — Runtime Context-Pack Retrieval
+### v0.10.1 (2026-08-20) — Codex Hook Parity Patch
 
-mono/umbrella-repo에서 workflow가 많아지면 task 수행 시 적합한 work-memory가 컨텍스트로 안 딸려오던 문제를 해결했다. 검색 키는 **사용자 발화가 아니라 workflow 실행 위치**다.
+v0.10.0의 runtime context-pack을 Codex에서도 같은 진입점과 훅 구성으로 사용할 수 있게 보정했다.
+
+- **Codex 훅 패리티**: `.codex/config.toml`에 `PostToolUse` audit/scaffold, `UserPromptSubmit` workflow/UUG context, `SessionStart` release context를 등록한다. Codex 훅 이벤트와 stdout 전달 근거는 [OpenAI Codex Hooks 공식 문서](https://learn.chatgpt.com/codex/hooks)를 따른다.
+- **provider-neutral cursor**: 새 커서는 `.mso/state/workflow-cursor.json`에 기록한다. v0.10.0의 `.claude/state/workflow-cursor.json`은 읽기·삭제 fallback으로 유지한다.
+- **회귀 복구**: `release-record/` 부트스트랩과 `--worthy-paths` 미지정 재실행 시 기존 `WM_WORTHY_PATHS` 보존을 복구했다.
+- **Codex 도구 입력 호환**: auditlog가 Codex의 `apply_patch` PostToolUse 입력을 기록한다.
+- **설치 정본**: `install.sh --codex`는 [Codex Skills 공식 문서](https://learn.chatgpt.com/codex/build-skills)의 user-scope 위치인 `~/.agents/skills`를 사용한다. `~/.codex/skills`는 `--codex-legacy`로만 설치한다.
+
+v0.10.0에서 도입한 runtime context-pack retrieval의 동작은 그대로 유지한다. mono/umbrella-repo에서 workflow가 많아질 때 적합한 work-memory가 컨텍스트에 누락되는 문제를 해결하며, 검색 키는 **사용자 발화가 아니라 workflow 실행 위치**다.
 
 - **`wm_context.py`**: workflow node id(`node --node <id> [--ttl <abox>]`) 또는 자유 질의(`query`)로 연관 entry를 lexical 랭킹해 반환한다. zvec 인덱스 불필요. 이제 ContextPack 스코어링의 **단일 정본**이며, `mso-workflow-optimizer`의 컴파일 타임 ContextPack이 이 모듈을 로드해 위임한다.
 - **스코프 오염 차단**: `--filter-tag`/`--filter-module`은 스코어링·relation 확장 *이전에* 풀을 자르는 하드 필터라, 스코프 밖 entry가 높은 점수나 relation을 타고 재진입하지 못한다. umbrella-repo는 `--extra-root`로 다른 루트를 병합한다(id는 메인 루트 우선).
-- **workflow cursor + 자동 주입**: `wm_context.py cursor set <node>`로 `.claude/state/workflow-cursor.json`에 실행 위치를 남기면, `UserPromptSubmit` 훅(`workflow-context-hook.py`)이 매 발화마다 그 node의 pack을 주입한다. cursor가 없으면 무출력. 컴파일된 LangGraph 경로는 cursor 없이도 `_run_node`가 pack을 붙인다.
-- **왜 UserPromptSubmit인가**: plain stdout이 모델에 주입되는 이벤트는 `SessionStart`/`UserPromptSubmit` 뿐이다. PreToolUse는 tool을 차단해야만 모델에 닿고 타이밍도 결정 이후여서 provisioning에 부적합하다.
+- **workflow cursor + 자동 주입**: `wm_context.py cursor set <node>`로 `.mso/state/workflow-cursor.json`에 실행 위치를 남기면, `UserPromptSubmit` 훅(`workflow-context-hook.py`)이 매 발화마다 그 node의 pack을 주입한다. cursor가 없으면 무출력. 컴파일된 LangGraph 경로는 cursor 없이도 `_run_node`가 pack을 붙인다.
+- **왜 UserPromptSubmit인가**: Claude Code와 Codex 모두 이 이벤트의 plain stdout을 모델 컨텍스트에 주입한다. PreToolUse는 tool 결정 이후라 context provisioning 시점으로 부적합하다.
 - **work-memory CLI 보강**: `new --metadata '<json>'` / `--meta key=value`(스키마 필수 metadata를 CLI로 기록), `relate <source> <type> <target>`(AR→UD, IN→TS, *→RN 처럼 target이 나중에 생기는 사후 엣지 확정). 둘 다 이전에는 JSONL 수작업 편집이 필요했다.
 
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance(RN 타입 + derived release view + release-context 훅), v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 런타임 context-pack 검색(workflow 실행 위치 기반 기억 회수 + cursor 자동 주입)이다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 
@@ -177,14 +185,14 @@ agent-context/
 ### Install
 
 ```bash
-./install.sh
+./install.sh --codex
 ```
 
 ### Initialize A Repository
 
 ```bash
 python3 skills/mso-repository-setup/scripts/init.py --hook . --provider codex \
-  --worthy-paths "agent-context .codex .claude .gitmodules README.md"
+  --worthy-paths "agent-context .mso .codex .gitmodules AGENTS.md README.md"
 ```
 
 Claude Code hook을 만들 때는 `--provider claude`를 사용한다.

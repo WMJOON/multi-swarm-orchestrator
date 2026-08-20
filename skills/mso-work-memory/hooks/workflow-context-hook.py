@@ -6,9 +6,8 @@ context pack 을 컨텍스트에 주입한다 (UD-0015).
 로 커서를 남기면, 이후 매 발화마다 이 훅이 그 node 의 연관 기억을 주입한다.
 즉 검색 키는 사용자 발화가 아니라 **workflow 실행 위치**다.
 
-전달 의미론: UserPromptSubmit 의 plain stdout 은 모델 컨텍스트에 주입된다
-(_reference/claude-code/hook-stdout-delivery.md). PreToolUse 는 stdout 이 모델에
-닿지 않아(차단 경로로만 전달) provisioning 에 부적합 — AR-0002 에서 기각.
+전달 의미론: Claude Code와 Codex의 UserPromptSubmit plain stdout은 모델
+컨텍스트에 주입된다. PreToolUse는 tool 결정 이후라 provisioning에 부적합하다.
 
 커서가 없거나(=workflow 레일 밖 작업) wm_context.py 를 못 찾거나 결과가 비면
 **무출력·exit 0**. 절대 프롬프트를 막지 않는다.
@@ -17,7 +16,7 @@ context pack 을 컨텍스트에 주입한다 (UD-0015).
   MSO_WORKFLOW_CONTEXT_DISABLED=1   훅 비활성화
   MSO_WORKFLOW_CONTEXT_TOP_K        주입할 entry 수 (기본 3 — 매 턴 주입이라 보수적)
   WORKMEM_DIR                       work-memory 루트 (미설정 시 프로젝트 기본 경로)
-  CLAUDE_PROJECT_DIR                현재 레포 절대경로 (Claude Code 가 주입)
+  PROJECT_DIR / CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR  현재 레포 절대경로
 """
 import json
 import os
@@ -26,6 +25,10 @@ import sys
 from pathlib import Path
 
 DEFAULT_TOP_K = "3"
+CURSOR_RELS = (
+    Path(".mso") / "state" / "workflow-cursor.json",
+    Path(".claude") / "state" / "workflow-cursor.json",
+)
 
 
 def _find_wm_context() -> Path | None:
@@ -41,9 +44,14 @@ def main() -> None:
     if os.environ.get("MSO_WORKFLOW_CONTEXT_DISABLED") == "1":
         return
 
-    project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("PROJECT_DIR") or ".")
-    cursor_file = project_dir / ".claude" / "state" / "workflow-cursor.json"
-    if not cursor_file.exists():
+    project_dir = Path(
+        os.environ.get("PROJECT_DIR")
+        or os.environ.get("CODEX_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
+        or "."
+    )
+    cursor_file = next((project_dir / rel for rel in CURSOR_RELS if (project_dir / rel).exists()), None)
+    if cursor_file is None:
         return  # workflow 레일 밖 — 침묵
 
     try:

@@ -1,12 +1,11 @@
 ---
 name: mso-scaffold-design
-version: "0.9.2"
 description: >
   Repository Scaffolding(directory/reference/data source/convention)을 규정한다.
   프로젝트 루트의 `index.yaml` 을 정본(SSOT)으로 두고, 모듈·서브디렉토리·
   키 파일·모듈 간 참조를 선언적으로 관리한다. mso-workflow-design가
   workflow를 규정할 때 `wf:dirPath`로 참조하는 ground truth이며,
-  graph observability가 Artifact node location을 `index:<id>`로 표시할 수 있도록
+  graph observability가 Artifact node location을 `index:module-id`로 표시할 수 있도록
   local_file/API/MCP/database artifact source registry를 제공한다.
   노드 단위 스키마(references/schemas/)와 sf_node.py 툴로 validate·scaffold를 지원한다.
   다음 상황에서 사용한다:
@@ -16,6 +15,8 @@ description: >
   (4) 모듈 간 references(consumes/provides_to) 갱신,
   (5) workflow TTL 의 `wf:dirPath` 가 참조하는 경로 등록,
   (6) artifact stream TTL을 확인한 뒤 index/sub_index/data_registry 연결 점검.
+metadata:
+  version: "0.10.1"
 ---
 
 # MSO Scaffold Design v2

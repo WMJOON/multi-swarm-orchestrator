@@ -1,6 +1,7 @@
 """init.py --hook 등록 테스트 — copy-form 배포와 settings.json 갱신 (UD-0015)."""
 import importlib.util
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,11 @@ def _commands(settings: dict, event: str) -> list[str]:
         for hook in group.get("hooks", []):
             out.append(hook.get("command", ""))
     return out
+
+
+def _codex_config(project: Path) -> tuple[str, dict]:
+    path = project / ".codex" / "config.toml"
+    return path.read_text(encoding="utf-8"), tomllib.loads(path.read_text(encoding="utf-8"))
 
 
 def test_hook_copies_scripts_including_wm_context(init_mod, project):
@@ -88,3 +94,69 @@ def test_existing_settings_are_preserved(init_mod, project):
     settings = _settings(project)
     assert settings["model"] == "claude-sonnet-5"
     assert any("workflow-context-hook.py" in c for c in _commands(settings, "UserPromptSubmit"))
+
+
+def test_codex_hook_registers_full_provider_parity(init_mod, project, monkeypatch):
+    monkeypatch.setattr(init_mod, "_find_uug_ug", lambda: None)
+    assert init_mod.cmd_hook(project, provider="codex") != 1
+
+    text, config = _codex_config(project)
+    assert config["features"]["hooks"] is True
+    assert "[[hooks.PostToolUse]]" in text
+    assert 'matcher = "^(Bash|apply_patch)$"' in text
+    assert "auditlog.py" in text
+    assert "scaffold-check.sh" in text
+    assert "workflow-context-hook.py" in text
+    assert "release-context.sh" in text
+    assert text.count('matcher = "startup"') == 1
+    assert "uug-context-hook.py" not in text
+
+
+def test_codex_hook_enables_existing_disabled_feature_and_preserves_config(init_mod, project, monkeypatch):
+    monkeypatch.setattr(init_mod, "_find_uug_ug", lambda: None)
+    codex_dir = project / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "config.toml").write_text(
+        '[features]\nhooks = false\n\nmodel = "gpt-5.6"\n', encoding="utf-8"
+    )
+
+    assert init_mod.cmd_hook(project, provider="codex") != 1
+    _, config = _codex_config(project)
+    assert config["features"]["hooks"] is True
+    assert config["features"]["model"] == "gpt-5.6"
+
+
+def test_codex_uug_registration_is_install_gated(init_mod, project, monkeypatch):
+    monkeypatch.setattr(init_mod, "_find_uug_ug", lambda: Path("/installed/ug.py"))
+    assert init_mod.cmd_hook(project, provider="codex") != 1
+    text, _ = _codex_config(project)
+    assert "uug-context-hook.py" in text
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_worthy_paths_survive_hook_rerun(init_mod, project, provider):
+    worthy = "src config agent-context"
+    assert init_mod.cmd_hook(project, worthy_paths=worthy, provider=provider) != 1
+    assert init_mod.cmd_hook(project, provider=provider) != 1
+
+    if provider == "codex":
+        text, _ = _codex_config(project)
+        assert f'WM_WORTHY_PATHS="{worthy}"' in text
+        assert text.count("# BEGIN MSO_WORK_MEMORY_HOOKS") == 1
+    else:
+        commands = _commands(_settings(project), "SessionStart")
+        assert any(f'WM_WORTHY_PATHS="{worthy}"' in command for command in commands)
+
+
+def test_init_bootstraps_release_record_and_provider_neutral_state_ignore(init_mod, tmp_path):
+    project = tmp_path / "project"
+    init_mod.cmd_init(project, "Test", "test")
+    assert (project / "agent-context" / "work-memory" / "release-record").is_dir()
+    gitignore = (project / ".gitignore").read_text(encoding="utf-8")
+    assert ".mso/state/" in gitignore
+
+    # 기존 v0.10.0 .gitignore도 누락 줄만 보강한다.
+    gitignore_path = project / ".gitignore"
+    gitignore_path.write_text("agent-context/work-memory/.zvec/\n", encoding="utf-8")
+    init_mod._ensure_gitignore(gitignore_path)
+    assert ".mso/state/" in gitignore_path.read_text(encoding="utf-8")

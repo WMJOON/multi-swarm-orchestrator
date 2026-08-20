@@ -1,16 +1,17 @@
 ---
 name: mso-conversation-analytics
-version: "0.9.2"
 description: >
   turns.jsonl을 DuckDB in-memory로 분석해 운영 패턴을 측정.
   5개 분석 함수 + 환류 보고서 + Tier Escalation 신호 생성.
   ⚠ §11.1/v0.5.0: 분석 메서드(전환행렬·funnel·reprompt율)는 UUG(uug-pattern-analytics)
   흡수 대상, MSO runtime tier-escalation 신호는 mso-intent-analytics 귀속.
   흡수 전까지 잔존(de-routed: orchestration 라우팅에서 제외, 직접 호출만).
-role: observability
-triggers: []
-depends_on:
-  - mso-intent-analytics   # turns.jsonl 생산자(뒷단 dispatch turn_writer)
+metadata:
+  version: "0.10.1"
+  role: observability
+  triggers: []
+  depends_on:
+    - mso-intent-analytics   # turns.jsonl 생산자(뒷단 dispatch turn_writer)
 ---
 
 # MSO Conversation Analytics (v0.5.0) — de-routed (§11.1)

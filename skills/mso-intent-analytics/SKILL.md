@@ -1,6 +1,5 @@
 ---
 name: mso-intent-analytics
-version: "0.9.2"
 description: >
   MSO 도메인 NLU 어휘의 단일 정본(registry) + intent-레벨 analytics 의 집.
   LinkML schema(nlu_intent.yaml) · TTL instances · SKOS taxonomy · intent matrix를 소유.
@@ -8,11 +7,13 @@ description: >
   (구 mso-intent-registry 개명 — §11.) intent 사용·매칭 측정과 MSO runtime
   tier-escalation 신호는 §11.1 상 이 스킬 귀속이다. 사용자/turn 패턴 분석은
   UUG(uug-pattern-analytics) 영역이다.
-schema_owner: true
-schema_path: references/schemas/nlu_intent.yaml
-role: data
-triggers: []
-depends_on: []
+metadata:
+  version: "0.10.1"
+  schema_owner: true
+  schema_path: references/schemas/nlu_intent.yaml
+  role: data
+  triggers: []
+  depends_on: []
 ---
 
 # MSO Intent Analytics (v0.5.0, 구 mso-intent-registry)

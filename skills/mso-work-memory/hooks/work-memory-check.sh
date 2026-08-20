@@ -79,7 +79,7 @@ if [ "$WM_REPO" != "$ROOT" ]; then
 fi
 
 # 결정 가치 있는 경로. work-memory 자체와 worklog 는 제외 (자동 스냅샷 오탐 방지).
-WORTHY_PATHS="${WM_WORTHY_PATHS:-agent-context/workflow agent-context/index .claude .gitmodules CLAUDE.md}"
+WORTHY_PATHS="${WM_WORTHY_PATHS:-agent-context/workflow agent-context/index .mso .claude .codex .gitmodules CLAUDE.md AGENTS.md}"
 
 # 넛지 메시지를 모은다 (이벤트별로 한 번에 전달).
 MSGS=""

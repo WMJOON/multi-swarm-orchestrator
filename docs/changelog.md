@@ -1,5 +1,37 @@
 # 변경 이력
 
+## v0.10.1 (2026-08-20) — Codex Hook Parity Patch
+
+> Claude Code 중심으로 작성된 v0.10.0 기능을 provider-neutral runtime contract로 정리하고, Codex 프로젝트 훅의 누락을 복구한다.
+
+### Fixed
+
+- `init.py --hook --provider codex`가 `.codex/config.toml`에 `PostToolUse` auditlog/scaffold-check, `UserPromptSubmit` workflow-context/UUG-context, `SessionStart(startup/compact/resume)` release-context를 등록한다. 이벤트 이름과 `UserPromptSubmit` stdout의 컨텍스트 주입 의미론은 [OpenAI Codex Hooks 공식 문서](https://learn.chatgpt.com/codex/hooks)로 검증했다.
+- v0.10.0에서 빠진 `agent-context/work-memory/release-record/` 부트스트랩을 복구했다.
+- `--worthy-paths` 없이 hook 설치를 재실행해도 기존 Claude `settings.json` 또는 Codex `config.toml`의 `WM_WORTHY_PATHS` 값을 보존한다.
+- `_ensure_gitignore`가 `.zvec/` 한 줄만 보고 조기 종료하던 로직을 고쳐, 기존 프로젝트에도 새 `.mso/state/` ignore를 보강한다.
+- Codex `PostToolUse`의 `apply_patch` 입력을 auditlog가 추적하고 `tool_input.command`에서 요약한다.
+
+### Changed
+
+- workflow cursor 정본을 `.claude/state/workflow-cursor.json`에서 `.mso/state/workflow-cursor.json`으로 옮겼다. 구 경로는 읽기·삭제 fallback으로 유지해 v0.10.0 프로젝트를 깨지 않는다.
+- 프로젝트 루트 환경변수는 `PROJECT_DIR` → `CODEX_PROJECT_DIR` → `CLAUDE_PROJECT_DIR` 순서로 정규화한다.
+- `install.sh --codex`의 대상은 [Codex Skills 공식 문서](https://learn.chatgpt.com/codex/build-skills)에 명시된 user-scope `~/.agents/skills`다. `~/.codex/skills` 설치는 `--codex-legacy`로 분리했다. 설치 스크립트가 기존 전역 링크를 자동 삭제하거나 마이그레이션하지는 않는다.
+- 모든 MSO `SKILL.md` frontmatter의 비표준 최상위 `version`/`triggers`/role 필드를 `metadata` 아래로 이동해 Codex skill validator 허용 스키마에 맞췄다.
+- 패키지 동기 버전은 v0.10.1로 올렸다. 독립 semver인 `mso-work-memory`는 v0.8.1, 변경 없는 `mso-workflow-optimizer`는 v0.7.0을 유지한다.
+
+### Compatibility
+
+- `.codex/hooks.json`은 중복 실행을 피하기 위한 빈 compatibility 파일로 유지하고, Codex hook 정본은 `.codex/config.toml` 하나로 둔다.
+- `uug-grounding`이 설치되지 않은 환경에서는 UUG hook의 복사와 등록을 계속 생략한다.
+- 기존 사용자 프로젝트의 `.codex/`, `.claude/`, `agent-context/`는 이 소스 패치만으로 자동 변경되지 않는다. 적용하려면 대상 프로젝트에서 `init.py --hook ... --provider codex`를 명시적으로 다시 실행해야 한다.
+
+### Tests
+
+- 전체 repository test suite: `269 passed`.
+- MSO 스킬 10개: Codex `skill-creator/scripts/quick_validate.py` 전부 통과.
+- 임시 프로젝트에 Codex hook을 copy-form 설치한 뒤 `codex -C <temp> --strict-config doctor`에서 project config load 통과.
+
 ## v0.10.0 (2026-08-20) — Runtime Context-Pack Retrieval
 
 > 기억 회수의 키는 사용자 발화가 아니라 workflow 실행 위치다. mono/umbrella-repo에서 workflow가 많아질 때 스코프 밖 기록이 스코프 안 기록을 밀어내던 문제를, 하드 필터와 cursor 기반 자동 주입으로 해결한다.

@@ -1,6 +1,5 @@
 ---
 name: mso-repository-setup
-version: "0.9.2"
 description: >
   MSO 스킬 팩의 init 진입점. 새 프로젝트(또는 기존 프로젝트)에 agent-context/
   표준 디렉토리 트리를 부트스트랩하고 mso-scaffold-design + mso-workflow-design +
@@ -15,14 +14,16 @@ description: >
       후속 진입점(mso-scaffold-design, mso-graph-observability)을 안내,
   (6) uug-grounding 연동: UserPromptSubmit 시 UUG가 grounding한 target_project 가
       현재 레포와 다르면 그 프로젝트 agent-context 위치를 넛지(uug-context-hook,
-      Claude 전용, --hook 시 자동 등록),
+      Claude/Codex 공통, --hook 시 자동 등록),
   (7) v0.8.1 적용 시 폐기된 Hermes Bridge 설정과 전역 skill 링크를 정리한다.
-triggers:
-  - "v0.8.1 적용"
-  - "Hermes 설정 정리"
-  - "hermes cleanup"
-  - "mso-hermes-bridge 정리"
-  - "Hermes Bridge 폐기"
+metadata:
+  version: "0.10.1"
+  triggers:
+    - "v0.8.1 적용"
+    - "Hermes 설정 정리"
+    - "hermes cleanup"
+    - "mso-hermes-bridge 정리"
+    - "Hermes Bridge 폐기"
 ---
 
 # MSO Repository Setup
@@ -49,15 +50,15 @@ python scripts/init.py --target /path/to/project [--name "Project Name"]
 │   └── work-memory/
 │       ├── schema.yaml               # mso-work-memory 표준 스키마 사본
 │       ├── auditlog/   worklog/
-│       ├── track-record/{issue-note, agent-decision, alternatives-record, user-decision, trouble-shooting}/
-│       └── insight-record/{episodes, patterns, principles}/
-├── .gitignore                        # agent-context/work-memory/.zvec/, .claude/state/ 등록
+│       ├── track-record/  release-record/
+│       └── insight-record/           # 타입별 aggregate JSONL
+├── .gitignore                        # .zvec/, .mso/state/, legacy .claude/state/ 등록
 ├── .claude/                          # --hook --provider claude 시 (copy-form)
 │   ├── settings.json                 # Stop·PreCompact·PostToolUse·UserPromptSubmit hook 등록
 │   ├── scripts/                      # auditlog.py · commit-work-memory.sh · work-memory-check.sh · stop-check.sh · scaffold-check.sh · sf_node.py · uug-context-hook.py 사본
 │   └── references/schemas/           # scaffold index schema 사본
 └── .codex/                           # --hook --provider codex 시 (copy-form)
-    ├── config.toml                   # Stop·PreCompact·SessionStart hook 등록
+    ├── config.toml                   # PostToolUse·Stop·PreCompact·SessionStart·UserPromptSubmit
     ├── hooks.json                    # empty compatibility file
     ├── scripts/                      # auditlog.py · commit-work-memory.sh · work-memory-check.sh · stop-check.sh · scaffold-check.sh · sf_node.py 사본
     └── references/schemas/           # scaffold index schema 사본
@@ -70,17 +71,18 @@ python scripts/init.py --hook /path/to/project \
   --worthy-paths "scripts config .github/workflows .claude README.md"
 
 python scripts/init.py --hook /path/to/project --provider codex \
-  --worthy-paths "agent-context .codex .claude README.md"
+  --worthy-paths "agent-context .mso .codex AGENTS.md README.md"
 ```
 
 hook 스크립트를 `.claude/scripts/` 로 **복사**하고 settings.json 은 `$CLAUDE_PROJECT_DIR`
 상대로만 참조한다(절대·스킬 경로를 커밋 파일에 박지 않음 → CI·타 머신 이식성).
-Codex는 `.codex/scripts/` 로 복사하고 `.codex/config.toml`을 `$CODEX_PROJECT_DIR`
-기준으로 등록한다. `.codex/hooks.json`은 중복 실행 방지를 위해 빈 compatibility 파일로
+Codex는 `.codex/scripts/` 로 복사하고 `.codex/config.toml`에 공식 hook 이벤트를
+등록한다. 프로젝트 루트는 wrapper가 `PROJECT_DIR`로 정규화한다. `.codex/hooks.json`은 중복 실행 방지를 위해 빈 compatibility 파일로
 함께 갱신한다. `scaffold-check.sh` 는 `sf_node.py validate/inventory` 를 실행해
 index SSOT 와 실제 디렉토리의 불일치를 non-blocking guardrail 로 알린다.
-`--worthy-paths` 는 "결정 가치 있는" 경로(`WM_WORTHY_PATHS`)를 주입한다(미지정 시 기본값).
-`uug-context-hook.py` (Claude 전용) 는 UUG 가 grounding한 `target_project` 가 현재
+`--worthy-paths` 는 "결정 가치 있는" 경로(`WM_WORTHY_PATHS`)를 주입한다. 미지정
+재실행에서는 기존 Claude/Codex 설정값을 보존한다.
+`uug-context-hook.py` 는 UUG 가 grounding한 `target_project` 가 현재
 레포와 다르고 그 프로젝트에 `agent-context/` 가 있을 때만 1줄 넛지를 주입한다.
 uug-grounding 이 이 머신에 없으면 `--hook` 이 이 훅의 복사·등록 자체를 생략한다
 (MSO만 설치한 사용자의 settings.json 에는 흔적을 남기지 않음). 게이팅은
@@ -118,7 +120,7 @@ mso-repository-setup
 | `init.py --check <path>` | 기존 구조가 표준에 부합하는지 진단 |
 | `init.py --migrate <path>` | 기존 평탄 구조 → agent-context/ 이전 (단순 mv) |
 | `init.py --hook <path> [--provider claude] [--worthy-paths "..."]` | work-memory hook + scaffold-check hook + uug-context-hook 을 `.claude/scripts/` 로 복사하고 settings.json(Stop stop-check/commit·PreCompact·PostToolUse·SessionStart·UserPromptSubmit) 등록 (copy-form) |
-| `init.py --hook <path> --provider codex [--worthy-paths "..."]` | work-memory hook + scaffold-check hook 을 `.codex/scripts/` 로 복사하고 config.toml(Stop·PreCompact commit-work-memory + SessionStart check) 등록, hooks.json은 빈 compatibility 파일로 갱신 (copy-form) |
+| `init.py --hook <path> --provider codex [--worthy-paths "..."]` | hook을 `.codex/scripts/`로 복사하고 config.toml(PostToolUse audit/scaffold, Stop·PreCompact commit, SessionStart check/release, UserPromptSubmit workflow/UUG context) 등록. hooks.json은 빈 compatibility 파일로 갱신 |
 | `init.py --cleanup-hermes <path>` | v0.8.1 적용: 폐기된 `mso-hermes-bridge` 전역 skill symlink와 프로젝트 `.hermes/mso-context.md`, `.hermes/bridge.sh` 정리 |
 
 ### v0.8.1 Hermes Bridge cleanup
