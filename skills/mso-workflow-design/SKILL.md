@@ -1,6 +1,5 @@
 ---
 name: mso-workflow-design
-version: "0.9.2"
 description: >
   Repository Scaffolding(directory/reference/convention) 위에서 워크플로우를
   규정한다. mso-scaffold-design이 정의한 디렉토리 구조(index.yaml)를 입력으로
@@ -16,6 +15,8 @@ description: >
   (3) Discovery→Development→Testing 표준 흐름 정의,
   (4) user/agent decision subject 명시,
   (5) 모듈 간 dependencies 선언.
+metadata:
+  version: "0.10.1"
 ---
 
 # MSO Workflow Design v2

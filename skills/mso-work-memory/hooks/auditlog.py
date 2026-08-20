@@ -2,9 +2,9 @@
 """
 PostToolUse hook — 일별 auditlog 파일에 도구 호출 기록.
 
-Claude Code PostToolUse JSON 을 stdin 으로 받아
+Claude Code/Codex PostToolUse JSON 을 stdin 으로 받아
 WORKMEM_DIR/auditlog/AU-YYYY-MM-DD.jsonl 에 한 줄 append 한다.
-추적 대상: Bash, Edit, MultiEdit, Write
+추적 대상: Bash, Edit, MultiEdit, Write, apply_patch
 """
 import datetime
 import hashlib
@@ -13,11 +13,11 @@ import os
 import sys
 from pathlib import Path
 
-TRACKED_TOOLS = {"Bash", "Edit", "MultiEdit", "Write"}
+TRACKED_TOOLS = {"Bash", "Edit", "MultiEdit", "Write", "apply_patch"}
 
 
 def _summarize(tool_name: str, tool_input: dict) -> str:
-    if tool_name == "Bash":
+    if tool_name in ("Bash", "apply_patch"):
         return str(tool_input.get("command", ""))[:200]
     if tool_name in ("Edit", "MultiEdit"):
         return str(tool_input.get("file_path", ""))[:200]

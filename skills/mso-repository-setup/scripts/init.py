@@ -18,7 +18,7 @@ init.py — MSO Repository Setup CLI
         ├── track-record/                             # <type>.jsonl  예: user-decision.jsonl
         └── insight-record/                           # <type>.jsonl  예: episode.jsonl, pattern.jsonl
 
-  <target>/.gitignore  (agent-context/work-memory/.zvec/, .claude/state/ 등록)
+  <target>/.gitignore  (agent-context/work-memory/.zvec/, .mso/state/ 등록)
   <target>/.claude/settings.json  (--hook 시 Claude Code hook 등록)
   <target>/.codex/hooks.json      (--hook --provider codex 시 Codex hook 등록, compatibility)
   <target>/.codex/config.toml     (--hook --provider codex 시 Codex hook 등록)
@@ -27,6 +27,7 @@ init.py — MSO Repository Setup CLI
 import argparse
 import datetime as dt
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -42,6 +43,7 @@ AGENT_CONTEXT_TREE = [
     "work-memory/auditlog",
     "work-memory/worklog",
     "work-memory/track-record",
+    "work-memory/release-record",
     "work-memory/insight-record",
 ]
 
@@ -51,6 +53,8 @@ GITIGNORE_LINES = [
     "agent-context/work-memory/.zvec/",
     "",
     "# MSO hook runtime state (local)",
+    ".mso/state/",
+    "# Legacy Claude-only runtime state (v0.10.0 and earlier)",
     ".claude/state/",
 ]
 
@@ -114,6 +118,8 @@ def _find_wm_schema() -> Path | None:
     """mso-work-memory 스킬의 references/schema.yaml 위치 탐색."""
     candidates = [
         Path.home() / ".claude" / "skills" / "mso-work-memory" / "references" / "schema.yaml",
+        Path.home() / ".codex" / "skills" / "mso-work-memory" / "references" / "schema.yaml",
+        Path.home() / ".agents" / "skills" / "mso-work-memory" / "references" / "schema.yaml",
         Path(__file__).parent.parent.parent / "mso-work-memory" / "references" / "schema.yaml",
     ]
     return next((p for p in candidates if p.exists()), None)
@@ -181,11 +187,14 @@ type_specific:
 
 def _ensure_gitignore(path: Path):
     existing = path.read_text() if path.exists() else ""
-    if "agent-context/work-memory/.zvec" in existing:
+    missing = [line for line in GITIGNORE_LINES if line and line not in existing]
+    if not missing:
         print(f"  · .gitignore (이미 등록됨)")
         return
     with open(path, "a", encoding="utf-8") as f:
-        for line in GITIGNORE_LINES:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        for line in missing:
             f.write(line + "\n")
     print(f"  + .gitignore 갱신")
 
@@ -263,10 +272,30 @@ SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # uug-context-hook.py: UUG grounding 연동 넛지 (optional). uug-grounding 이 이 머신에
 # 없으면 cmd_hook 이 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부에도 동일한
 # no-op degrade 가 있지만(런타임 게이팅), MSO만 쓰는 사용자의 settings.json 에 죽은
-# 항목을 남기지 않기 위해 이중으로 거른다. Claude provider 전용 등록 — Codex 는
-# SessionStart 밖 stdout 전달 의미론이 미검증이라 보류(work-memory-check.sh 와 동일한
-# 근거, SKILL.md 참조).
+# 항목을 남기지 않기 위해 이중으로 거른다. Claude와 Codex 모두
+# UserPromptSubmit stdout을 컨텍스트에 주입하므로 provider 공통으로 등록한다.
 UUG_CONTEXT_HOOK_FILES = ["uug-context-hook.py"]
+
+_WORTHY_PATHS_RE = re.compile(r'WM_WORTHY_PATHS="([^"]*)"')
+
+
+def _find_worthy_paths_in_text(text: str) -> str | None:
+    """임의 hook 설정 텍스트에서 WM_WORTHY_PATHS 값을 회수한다."""
+    match = _WORTHY_PATHS_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _find_worthy_paths_in_hooks(hooks_section: dict) -> str | None:
+    """Claude hooks 트리에서 기존 WM_WORTHY_PATHS 커스터마이징을 회수한다."""
+    for event_list in hooks_section.values():
+        if not isinstance(event_list, list):
+            continue
+        for group in event_list:
+            for hook in group.get("hooks", []):
+                found = _find_worthy_paths_in_text(hook.get("command", ""))
+                if found:
+                    return found
+    return None
 
 
 def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "claude"):
@@ -278,8 +307,8 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     (스킬의 로컬 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
     박지 않으므로 다른 머신·CI·경로 이동에도 견딘다.
 
-    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다(미지정 시 스크립트 기본값 =
-    오케스트레이션 레이어). data/·build 처럼 고빈도 경로는 제외하는 게 좋다.
+    WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다. 미지정 재실행 시 기존 provider
+    설정에서 값을 회수해 보존하고, 최초 등록이면 스크립트 기본값을 따른다.
     """
     if provider not in {"claude", "codex"}:
         print(f"[ERROR] 지원하지 않는 provider: {provider}")
@@ -366,10 +395,14 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     # 2) hook 설정 구성 — 경로는 provider project dir 상대로만 참조
     settings_path = target / provider_dir_name / settings_name
     existing: dict = {}
+    codex_config_path = target / provider_dir_name / "config.toml"
+    codex_config_text = ""
     if provider == "codex":
         # Codex uses config.toml as the canonical hook surface. Keep hooks.json as
         # an inert compatibility file so older project-level hooks do not run twice.
         existing = {"hooks": {}}
+        if codex_config_path.exists():
+            codex_config_text = codex_config_path.read_text(encoding="utf-8")
     elif settings_path.exists():
         try:
             existing = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -378,6 +411,12 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             settings_path.rename(settings_path.with_suffix(".json.bak"))
 
     hooks_section = existing.setdefault("hooks", {})
+    if worthy_paths is None:
+        worthy_paths = (
+            _find_worthy_paths_in_text(codex_config_text)
+            if provider == "codex"
+            else _find_worthy_paths_in_hooks(hooks_section)
+        )
 
     if provider == "claude":
         pd = '"$CLAUDE_PROJECT_DIR"'
@@ -398,8 +437,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     uug_context_cmd = f"{prefix}python3 {pd}/{provider_dir_name}/scripts/uug-context-hook.py"
     workflow_ctx_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/workflow-context-hook.py"
 
-    # Claude Code supports tool-level PostToolUse audit logging. Codex hook examples
-    # available locally are lifecycle-only, so Codex keeps commit/check hooks only.
+    # Claude 설정은 JSON, Codex 설정은 아래 managed TOML block으로 생성한다.
     if provider == "claude":
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", auditlog_cmd, "auditlog.py")
         _upsert_hook(hooks_section, "PostToolUse", "Bash|Edit|MultiEdit|Write", scaffold_cmd, "scaffold-check.sh")
@@ -437,10 +475,14 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     )
     if provider == "codex":
         _upsert_codex_config_toml(
-            target / provider_dir_name / "config.toml",
+            codex_config_path,
+            auditlog_cmd=auditlog_cmd,
             commit_cmd=commit_cmd,
             check_cmd=check_cmd,
             scaffold_cmd=scaffold_cmd,
+            release_ctx_cmd=release_ctx_cmd,
+            workflow_ctx_cmd=workflow_ctx_cmd,
+            uug_context_cmd=uug_context_cmd if uug_present else None,
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
@@ -450,7 +492,8 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             print("  · uug-grounding 미설치 감지 — uug-context-hook(UserPromptSubmit) 등록 생략. "
                   "UUG 설치 후 이 명령을 재실행하면 자동 등록된다.")
     else:
-        print(f"  + .codex/config.toml 갱신 (Stop·PreCompact commit-work-memory + SessionStart[compact,resume] work-memory-check/scaffold-check)")
+        uug_note = " + UserPromptSubmit uug-context" if uug_present else ""
+        print(f"  + .codex/config.toml 갱신 (PostToolUse auditlog/scaffold-check + Stop·PreCompact commit-work-memory + SessionStart work-memory/scaffold/release-context + UserPromptSubmit workflow-context{uug_note})")
         print(f"  + .codex/hooks.json 갱신 (empty compatibility)")
     if worthy_paths:
         print(f"    WM_WORTHY_PATHS : {worthy_paths}")
@@ -471,6 +514,7 @@ def _hook_candidates() -> list[Path]:
         skill_root / "mso-work-memory" / "hooks",
         Path.home() / ".claude" / "skills" / "mso-work-memory" / "hooks",
         Path.home() / ".codex" / "skills" / "mso-work-memory" / "hooks",
+        Path.home() / ".agents" / "skills" / "mso-work-memory" / "hooks",
     ]
 
 
@@ -484,6 +528,7 @@ def _find_uug_ug() -> Path | None:
     candidates = [
         Path.home() / ".claude" / "skills" / "uug-grounding" / "scripts" / "ug.py",
         Path.home() / ".codex" / "skills" / "uug-grounding" / "scripts" / "ug.py",
+        Path.home() / ".agents" / "skills" / "uug-grounding" / "scripts" / "ug.py",
     ]
     return next((p for p in candidates if p.exists()), None)
 
@@ -495,6 +540,7 @@ def _scaffold_skill_candidates() -> list[Path]:
         skill_root / "mso-scaffold-design",
         Path.home() / ".claude" / "skills" / "mso-scaffold-design",
         Path.home() / ".codex" / "skills" / "mso-scaffold-design",
+        Path.home() / ".agents" / "skills" / "mso-scaffold-design",
     ]
 
 
@@ -542,8 +588,10 @@ def _ensure_codex_hooks_feature(text: str) -> str:
         if line.strip() == "[features]":
             j = i + 1
             while j < len(lines) and not lines[j].lstrip().startswith("["):
-                if lines[j].strip().startswith("hooks"):
-                    return text
+                if re.match(r"^\s*hooks\s*=", lines[j]):
+                    indent = lines[j][: len(lines[j]) - len(lines[j].lstrip())]
+                    lines[j] = f"{indent}hooks = true"
+                    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
                 j += 1
             lines.insert(i + 1, "hooks = true")
             return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
@@ -551,7 +599,16 @@ def _ensure_codex_hooks_feature(text: str) -> str:
     return prefix + text
 
 
-def _upsert_codex_config_toml(config_path: Path, commit_cmd: str, check_cmd: str, scaffold_cmd: str):
+def _upsert_codex_config_toml(
+    config_path: Path,
+    auditlog_cmd: str,
+    commit_cmd: str,
+    check_cmd: str,
+    scaffold_cmd: str,
+    release_ctx_cmd: str,
+    workflow_ctx_cmd: str,
+    uug_context_cmd: str | None,
+):
     """Add a managed MSO hook block to .codex/config.toml."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
@@ -564,6 +621,19 @@ def _upsert_codex_config_toml(config_path: Path, commit_cmd: str, check_cmd: str
 
     block = f"""# BEGIN MSO_WORK_MEMORY_HOOKS
 # Managed by mso-repository-setup scripts/init.py --hook --provider codex.
+[[hooks.PostToolUse]]
+matcher = "^(Bash|apply_patch)$"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = {_toml_literal(auditlog_cmd)}
+statusMessage = "Recording MSO audit log"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = {_toml_literal(scaffold_cmd)}
+statusMessage = "Checking MSO scaffold inventory"
+
 [[hooks.Stop]]
 
 [[hooks.Stop.hooks]]
@@ -592,6 +662,11 @@ type = "command"
 command = {_toml_literal(scaffold_cmd)}
 statusMessage = "Checking MSO scaffold inventory"
 
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(release_ctx_cmd)}
+statusMessage = "Loading MSO release context"
+
 [[hooks.SessionStart]]
 matcher = "resume"
 
@@ -604,6 +679,35 @@ statusMessage = "Checking MSO work-memory reminders"
 type = "command"
 command = {_toml_literal(scaffold_cmd)}
 statusMessage = "Checking MSO scaffold inventory"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(release_ctx_cmd)}
+statusMessage = "Loading MSO release context"
+
+[[hooks.SessionStart]]
+matcher = "startup"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(release_ctx_cmd)}
+statusMessage = "Loading MSO release context"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = {_toml_literal(workflow_ctx_cmd)}
+statusMessage = "Loading MSO workflow context"
+"""
+    if uug_context_cmd:
+        block += f"""
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = {_toml_literal(uug_context_cmd)}
+statusMessage = "Grounding MSO target project"
+"""
+    block += """
 # END MSO_WORK_MEMORY_HOOKS
 """
     config_path.write_text(text + block, encoding="utf-8")

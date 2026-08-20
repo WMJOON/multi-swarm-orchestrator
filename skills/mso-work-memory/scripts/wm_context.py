@@ -393,28 +393,44 @@ def node_fields_from_ttl(ttl_path: Path, node_id: str) -> dict[str, Any]:
 #
 # "지금 어느 workflow node 를 수행 중인가" 를 담는 가변 상태. work-memory JSONL 은
 # append-only 이벤트 로그라 가변 커서를 둘 수 없으므로(RN 의 "current 는 derived
-# view — 저장 금지" 와 같은 경계), stop-check.state 선례를 따라 .claude/state/ 의
-# gitignore 대상 파일에 둔다.
+# view — 저장 금지" 와 같은 경계), provider-neutral .mso/state/ 의 gitignore 대상
+# 파일에 둔다. v0.10.0의 .claude/state/ 커서는 읽기·삭제 fallback으로만 지원한다.
 
-CURSOR_REL_PATH = Path(".claude") / "state" / "workflow-cursor.json"
+CURSOR_REL_PATH = Path(".mso") / "state" / "workflow-cursor.json"
+LEGACY_CURSOR_REL_PATHS = (Path(".claude") / "state" / "workflow-cursor.json",)
+
+
+def project_root(project_dir: Path | None = None) -> Path:
+    if project_dir is not None:
+        return project_dir
+    return Path(
+        os.environ.get("PROJECT_DIR")
+        or os.environ.get("CODEX_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
+        or "."
+    )
 
 
 def cursor_path(project_dir: Path | None = None) -> Path:
-    base = project_dir or Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("PROJECT_DIR") or ".")
-    return (base / CURSOR_REL_PATH).resolve()
+    return (project_root(project_dir) / CURSOR_REL_PATH).resolve()
+
+
+def cursor_read_paths(project_dir: Path | None = None) -> tuple[Path, ...]:
+    base = project_root(project_dir)
+    return tuple((base / rel).resolve() for rel in (CURSOR_REL_PATH, *LEGACY_CURSOR_REL_PATHS))
 
 
 def read_cursor(project_dir: Path | None = None) -> dict[str, Any] | None:
-    path = cursor_path(project_dir)
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(data, dict) or not data.get("node"):
-        return None
-    return data
+    for path in cursor_read_paths(project_dir):
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(data, dict) and data.get("node"):
+            return data
+    return None
 
 
 def write_cursor(node: str, ttl: str | None = None, project_dir: Path | None = None) -> Path:
@@ -485,10 +501,13 @@ def _cmd_cursor(args) -> int:
         if cursor:
             print(json.dumps(cursor, ensure_ascii=False))
         return 0
-    path = cursor_path()
-    if path.exists():
-        path.unlink()
-        print(f"✓ cursor 제거: {path}")
+    removed = []
+    for path in cursor_read_paths():
+        if path.exists():
+            path.unlink()
+            removed.append(path)
+    if removed:
+        print("✓ cursor 제거: " + ", ".join(str(path) for path in removed))
     return 0
 
 

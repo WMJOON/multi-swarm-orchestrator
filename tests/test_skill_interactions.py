@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "skills"
 
@@ -121,7 +123,7 @@ def test_dissolved_utterance_grounding_not_routed():
 def test_readme_reflects_current_version_and_structure():
     """README 헤더 버전과 핵심 구조 어휘가 현재 패치와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.9.2" in readme, "README header is not v0.9.2"
+    assert "MSO) v0.10.1" in readme, "README header is not v0.10.1"
     assert "Repository Execution System" in readme
     assert "Core Philosophy" in readme
     assert "Artifact Supply Chain" in readme
@@ -131,18 +133,41 @@ def test_readme_reflects_current_version_and_structure():
     assert "docs/changelog.md" in readme
 
 
-# mso-work-memory 는 재사용 fat skill 로 프로젝트 전체 버전과 별도의 자체 semver
-# 트랙을 가진다(changelog v0.9.0: "SKILL.md v0.7.0") — lockstep 검증에서 제외한다.
-INDEPENDENT_VERSIONING_SKILLS = {"mso-work-memory"}
+# 재사용 fat skill / optimizer 는 패키지 릴리스와 별도의 자체 semver 트랙을 가진다.
+INDEPENDENT_VERSIONING_SKILLS = {
+    "mso-work-memory": "0.8.1",
+    "mso-workflow-optimizer": "0.7.0",
+}
 
 
 def test_skill_versions_are_current_patch():
-    """정식 repository 스킬 메타가 현재 패치 버전으로 정렬되어 있다 (mso-work-memory 제외)."""
+    """패키지 스킬은 v0.10.1, 독립 semver 스킬은 명시 버전과 일치한다."""
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
-        if skill_md.parent.name in INDEPENDENT_VERSIONING_SKILLS:
-            continue
         text = skill_md.read_text()
-        assert 'version: "0.9.2"' in text, f"{skill_md.parent.name} version is not 0.9.2"
+        frontmatter = yaml.safe_load(text.split("---", 2)[1])
+        expected = INDEPENDENT_VERSIONING_SKILLS.get(skill_md.parent.name, "0.10.1")
+        assert frontmatter.get("metadata", {}).get("version") == expected, (
+            f"{skill_md.parent.name} version is not {expected}"
+        )
+
+
+def test_skill_frontmatter_is_codex_compatible():
+    """Codex skill validator가 허용하는 최상위 frontmatter 필드만 사용한다."""
+    allowed = {"name", "description", "license", "allowed-tools", "metadata"}
+    for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
+        frontmatter = yaml.safe_load(skill_md.read_text().split("---", 2)[1])
+        assert set(frontmatter) <= allowed, (
+            f"{skill_md.parent.name} has unsupported frontmatter keys: "
+            f"{set(frontmatter) - allowed}"
+        )
+
+
+def test_install_script_uses_canonical_codex_skill_root():
+    """Codex 기본 설치는 ~/.agents/skills, ~/.codex/skills는 legacy opt-in이다."""
+    script = (ROOT / "install.sh").read_text()
+    assert "--codex) TARGETS+=(agents)" in script
+    assert "--codex-legacy) TARGETS+=(codex)" in script
+    assert "Codex may discover duplicate skill names" in script
 
 
 def test_work_memory_decision_governance_schema_contract():
