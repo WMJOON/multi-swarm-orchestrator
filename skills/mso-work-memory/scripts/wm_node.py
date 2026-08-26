@@ -403,14 +403,16 @@ def cmd_search(args):
     if not kb_path.exists():
         sys.exit(f"[ERROR] zvec 인덱스 없음. 먼저 `wm_node.py reindex` 실행.\n  expected: {kb_path}")
 
-    # simple_kb.py 위치 탐색
+    # simple_kb.py 위치 탐색 — mso-work-memory 에 colocated된 버전을 우선 사용
+    # (외부 simple-knowledge-zvec 스킬 의존은 폐지, IN-0002/2026-08-26 재구성)
     candidates = [
+        Path(__file__).parent / "simple_kb.py",
         Path.home() / ".claude" / "skills" / "simple-knowledge-zvec" / "scripts" / "simple_kb.py",
         Path(__file__).parent.parent.parent / "simple-knowledge-zvec" / "scripts" / "simple_kb.py",
     ]
     simple_kb = next((p for p in candidates if p.exists()), None)
     if not simple_kb:
-        sys.exit("[ERROR] simple_kb.py 를 찾을 수 없음. simple-knowledge-zvec 스킬 설치 필요.")
+        sys.exit("[ERROR] simple_kb.py 를 찾을 수 없음 (mso-work-memory/scripts/simple_kb.py 기대).")
 
     cmd = ["python3", str(simple_kb), "search", "--path", str(kb_path), args.query]
     if args.limit:
@@ -529,11 +531,12 @@ def cmd_reindex(args):
     import subprocess
 
     candidates = [
+        Path(__file__).parent / "simple_kb.py",
         Path.home() / ".claude" / "skills" / "simple-knowledge-zvec" / "scripts" / "simple_kb.py",
     ]
     simple_kb = next((p for p in candidates if p.exists()), None)
     if not simple_kb:
-        sys.exit("[ERROR] simple_kb.py 를 찾을 수 없음. simple-knowledge-zvec 스킬 설치 필요.")
+        sys.exit("[ERROR] simple_kb.py 를 찾을 수 없음 (mso-work-memory/scripts/simple_kb.py 기대).")
 
     kb_path = workmem_root() / ".zvec"
     print(f"▶ zvec 인덱스 위치: {kb_path}")
@@ -547,12 +550,14 @@ def cmd_reindex(args):
         )
 
     print(f"▶ ingest: {workmem_root()}")
+    # embedder=multilingual: 실 시맨틱 임베딩(sentence-transformers, 다국어/한국어 지원).
+    # 모델 로드 실패 시 simple_kb.py 자체가 hash(문자 n-gram 해싱)로 자동 폴백함.
     result = subprocess.run(
         ["python3", str(simple_kb), "add",
          "--path", str(kb_path),
          "--input", str(workmem_root()),
          "--recursive",
-         "--embedder", "hash"],
+         "--embedder", "multilingual"],
         capture_output=False,
     )
     if result.returncode != 0:
