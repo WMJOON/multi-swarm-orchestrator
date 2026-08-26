@@ -458,7 +458,16 @@ def _build_graph():
             if not eid:
                 continue
             entries_by_id[eid] = e
-            for rel in e.get("relations", []) or []:
+            rels = e.get("relations") or []
+            if not isinstance(rels, list):
+                print(f"[WARN] {eid}: relations 가 list[{{type,target}}] 형식이 아님"
+                      f"({type(rels).__name__}) — 이 entry 의 relations 는 건너뜀", file=sys.stderr)
+                continue
+            for rel in rels:
+                if not isinstance(rel, dict):
+                    print(f"[WARN] {eid}: relations 항목이 dict 가 아님"
+                          f"({type(rel).__name__}) — 건너뜀", file=sys.stderr)
+                    continue
                 tgt = rel.get("target")
                 rt = rel.get("type")
                 if not tgt:

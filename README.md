@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.10.1
+# Multi-Swarm Orchestrator (MSO) v0.11.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,25 +13,16 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.10.1 (2026-08-20) — Codex Hook Parity Patch
+### v0.11.0 (2026-08-26) — work-memory zvec 시맨틱 검색 자체완결
 
-v0.10.0의 runtime context-pack을 Codex에서도 같은 진입점과 훅 구성으로 사용할 수 있게 보정했다.
+`wm_node.py search`/`reindex`가 참조하던 외부 스킬 `simple-knowledge-zvec`이 실제로는 어디에도 설치된 적이 없었다(전체 파일시스템 탐색으로 확인) — 즉 zvec 검색은 문서상으로만 존재하고 실행 불가능한 상태였다. `mso-work-memory` 내부에 `simple_kb.py`로 재구성해 외부 의존을 없앴고, 기본 임베더를 해시 기반(어휘 유사도)에서 다국어 시맨틱 임베딩으로 바꿨다.
 
-- **Codex 훅 패리티**: `.codex/config.toml`에 `PostToolUse` audit/scaffold, `UserPromptSubmit` workflow/UUG context, `SessionStart` release context를 등록한다. Codex 훅 이벤트와 stdout 전달 근거는 [OpenAI Codex Hooks 공식 문서](https://learn.chatgpt.com/codex/hooks)를 따른다.
-- **provider-neutral cursor**: 새 커서는 `.mso/state/workflow-cursor.json`에 기록한다. v0.10.0의 `.claude/state/workflow-cursor.json`은 읽기·삭제 fallback으로 유지한다.
-- **회귀 복구**: `release-record/` 부트스트랩과 `--worthy-paths` 미지정 재실행 시 기존 `WM_WORTHY_PATHS` 보존을 복구했다.
-- **Codex 도구 입력 호환**: auditlog가 Codex의 `apply_patch` PostToolUse 입력을 기록한다.
-- **설치 정본**: `install.sh --codex`는 [Codex Skills 공식 문서](https://learn.chatgpt.com/codex/build-skills)의 user-scope 위치인 `~/.agents/skills`를 사용한다. `~/.codex/skills`는 `--codex-legacy`로만 설치한다.
+- **외부 의존 제거**: `skills/mso-work-memory/scripts/simple_kb.py` 신설(zvec `init`/`add`/`search`). `wm_node.py`는 이 colocated 버전을 최우선으로 찾는다. 과거 `~/.claude/skills/simple-knowledge-zvec/...` 경로는 하위호환 fallback으로만 남김.
+- **기본 임베더를 시맨틱으로 전환**: `paraphrase-multilingual-MiniLM-L12-v2`(sentence-transformers, 384-dim, 기존 `--dimension 384`와 호환) — zvec 자체 내장 임베더(`DefaultLocalDenseEmbedding`, 영어 전용 `all-MiniLM-L6-v2`)가 한국어 위주 work-memory에 부적합해 별도 모델을 채택했다. 모델 로드 실패 시 문자 n-gram 해싱(`hash`)으로 자동 폴백.
+- **embedder 불일치 방지**: 인덱스 빌드 시 사용한 embedder를 사이드카 마커로 남겨, search가 reindex 때와 다른 embedder로 잘못 질의(벡터 공간 불일치)하지 않도록 자동으로 맞춘다.
+- **그래프 순회 방어 처리**: `_build_graph()`가 `relations`를 `list[{type,target}]`이 아닌 형식(과거 실수로 dict를 쓴 entry 등)으로 만나면 전체가 크래시하던 걸, 해당 entry만 경고 후 skip하도록 고쳤다(`stats`/`show`/`graph` 전부 영향).
 
-v0.10.0에서 도입한 runtime context-pack retrieval의 동작은 그대로 유지한다. mono/umbrella-repo에서 workflow가 많아질 때 적합한 work-memory가 컨텍스트에 누락되는 문제를 해결하며, 검색 키는 **사용자 발화가 아니라 workflow 실행 위치**다.
-
-- **`wm_context.py`**: workflow node id(`node --node <id> [--ttl <abox>]`) 또는 자유 질의(`query`)로 연관 entry를 lexical 랭킹해 반환한다. zvec 인덱스 불필요. 이제 ContextPack 스코어링의 **단일 정본**이며, `mso-workflow-optimizer`의 컴파일 타임 ContextPack이 이 모듈을 로드해 위임한다.
-- **스코프 오염 차단**: `--filter-tag`/`--filter-module`은 스코어링·relation 확장 *이전에* 풀을 자르는 하드 필터라, 스코프 밖 entry가 높은 점수나 relation을 타고 재진입하지 못한다. umbrella-repo는 `--extra-root`로 다른 루트를 병합한다(id는 메인 루트 우선).
-- **workflow cursor + 자동 주입**: `wm_context.py cursor set <node>`로 `.mso/state/workflow-cursor.json`에 실행 위치를 남기면, `UserPromptSubmit` 훅(`workflow-context-hook.py`)이 매 발화마다 그 node의 pack을 주입한다. cursor가 없으면 무출력. 컴파일된 LangGraph 경로는 cursor 없이도 `_run_node`가 pack을 붙인다.
-- **왜 UserPromptSubmit인가**: Claude Code와 Codex 모두 이 이벤트의 plain stdout을 모델 컨텍스트에 주입한다. PreToolUse는 tool 결정 이후라 context provisioning 시점으로 부적합하다.
-- **work-memory CLI 보강**: `new --metadata '<json>'` / `--meta key=value`(스키마 필수 metadata를 CLI로 기록), `relate <source> <type> <target>`(AR→UD, IN→TS, *→RN 처럼 target이 나중에 생기는 사후 엣지 확정). 둘 다 이전에는 JSONL 수작업 편집이 필요했다.
-
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결이다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 

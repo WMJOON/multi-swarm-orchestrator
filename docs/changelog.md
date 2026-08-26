@@ -1,5 +1,35 @@
 # 변경 이력
 
+## v0.11.0 (2026-08-26) — work-memory zvec 시맨틱 검색 자체완결
+
+> `wm_node.py search`/`reindex`가 참조하던 외부 스킬 `simple-knowledge-zvec`이 실제로는 이 저장소에도, 어떤 설치 환경에도 존재한 적이 없었다(파일시스템 전체 탐색으로 확인) — 문서·코드상으로만 존재하고 실행 불가능한 기능이었다. 이번 릴리스에서 `mso-work-memory` 내부로 흡수해 자체완결시키고, 기본 임베더를 해시(어휘 유사도)에서 다국어 시맨틱으로 바꿨다.
+
+### Added
+
+- `skills/mso-work-memory/scripts/simple_kb.py` — zvec 기반 로컬 지식 인덱스. `init`(컬렉션 생성) / `add`(전체 재빌드, 384-dim) / `search`(topk 코사인 유사도, `--tags` 후처리 필터) 3개 서브커맨드로 `wm_node.py`의 기존 호출 계약을 그대로 만족한다.
+- `--embedder multilingual`(신규 기본값) — `sentence-transformers`의 `paraphrase-multilingual-MiniLM-L12-v2`(384-dim). zvec 자체 내장 `DefaultLocalDenseEmbedding`은 기본 모델이 영어 전용 `all-MiniLM-L6-v2`라 한국어 위주 work-memory에 부적합해 별도로 채택했다. 모델 로드 실패(미설치/오프라인) 시 문자 n-gram 해싱 기반 `hash` 임베더로 자동 폴백한다.
+- 인덱스 embedder 사이드카 마커(`.{collection}.embedder`) — `add`가 쓴 embedder 이름을 기록하고, `search`가 다른 embedder를 지정해도 인덱스가 실제로 빌드된 embedder에 자동으로 맞춘다. 벡터 공간이 다른 embedder로 잘못 질의해 무의미한 유사도가 나오는 사고를 방지한다.
+
+### Fixed
+
+- `wm_node.py`의 `cmd_search`/`cmd_reindex`가 찾던 `simple_kb.py` 경로 후보 목록에 `Path(__file__).parent / "simple_kb.py"`(colocated 버전)를 최우선으로 추가했다. 과거 외부 `~/.claude/skills/simple-knowledge-zvec/scripts/simple_kb.py` 경로는 하위호환 fallback으로만 유지한다.
+- `_build_graph()`가 `relations` 필드를 `list[{type,target}]`이 아닌 형식(예: 실수로 `dict`를 쓴 entry)을 만나면 `AttributeError`로 전체가 죽던 걸, 해당 entry의 relations만 경고 후 skip하도록 방어 처리했다 — `stats`/`show`/`graph` 전부에 영향을 미치던 크래시였다.
+
+### Changed
+
+- 패키지 동기 버전을 v0.11.0으로 올렸다. 독립 semver인 `mso-work-memory`는 v0.9.0, 변경 없는 `mso-workflow-optimizer`는 v0.7.0을 유지한다.
+
+### Tests
+
+- 실 프로젝트(외부 Chatbot-1.0 레포) work-memory 17,800+ entry 전체를 `reindex`로 재인덱싱 — 52초 완료.
+- 시맨틱 임베더 검증: 실제로 같은 주제를 다루는 issue-note 쌍이 완전히 무관한 도메인 쌍보다 코사인 유사도가 확실히 높음을 확인(0.667 vs 0.234~0.436, 실제 인덱싱 원문 기준). 손으로 축약한 짧은 문구로 재현했을 땐 반대로 나왔는데, 이는 테스트 스크립트가 실제 인덱싱 텍스트와 다른 문구를 써서 생긴 진단 오류였음을 재확인 후 정정.
+- `stats`/`graph` 명령이 relations 포맷이 깨진 entry가 섞인 17,900+ entry 저장소에서도 크래시 없이 정상 동작함을 확인.
+
+### Compatibility
+
+- 기존에 `hash` embedder로 빌드된 `.zvec` 인덱스는 embedder 마커가 없어 다음 `search` 시 새 기본값(`multilingual`)으로 재질의될 수 있다 — `wm_node.py reindex`로 재빌드할 것을 권장한다.
+- `sentence-transformers` 패키지와 최초 1회 모델 다운로드(~420MB, Hugging Face)가 필요하다. 오프라인이거나 미설치된 환경에서는 자동으로 `hash`로 폴백하므로 기능 자체는 깨지지 않는다.
+
 ## v0.10.1 (2026-08-20) — Codex Hook Parity Patch
 
 > Claude Code 중심으로 작성된 v0.10.0 기능을 provider-neutral runtime contract로 정리하고, Codex 프로젝트 훅의 누락을 복구한다.
