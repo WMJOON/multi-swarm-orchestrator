@@ -18,7 +18,7 @@ description: >
   (7) 실행 시점 context pack 검색 — workflow node/자유 질의로 연관 기억 호출
       (wm_context.py, lexical, zvec 불필요; "context pack", "연관 기억 호출").
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # MSO Work Memory

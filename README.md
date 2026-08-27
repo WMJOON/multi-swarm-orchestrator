@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.11.0
+# Multi-Swarm Orchestrator (MSO) v0.12.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,16 +13,17 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.11.0 (2026-08-26) — work-memory zvec 시맨틱 검색 자체완결
+### v0.12.0 (2026-08-27) — zvec 검색에 Qwen3-Reranker 재정렬 추가
 
-`wm_node.py search`/`reindex`가 참조하던 외부 스킬 `simple-knowledge-zvec`이 실제로는 어디에도 설치된 적이 없었다(전체 파일시스템 탐색으로 확인) — 즉 zvec 검색은 문서상으로만 존재하고 실행 불가능한 상태였다. `mso-work-memory` 내부에 `simple_kb.py`로 재구성해 외부 의존을 없앴고, 기본 임베더를 해시 기반(어휘 유사도)에서 다국어 시맨틱 임베딩으로 바꿨다.
+v0.11.0에서 붙인 다국어 임베딩 벡터 검색만으로는, 실제로 무관한 항목의 벡터 유사도(0.38~0.45)가 진짜 관련 항목(0.38~0.45)과 구간이 거의 겹쳐 구분이 안 되는 한계가 있었다(아래 실측 참고). Qwen3-Reranker-0.6B(LM Studio, OpenAI 호환 API)로 후보 풀을 재정렬해 이 문제를 해소했다.
 
-- **외부 의존 제거**: `skills/mso-work-memory/scripts/simple_kb.py` 신설(zvec `init`/`add`/`search`). `wm_node.py`는 이 colocated 버전을 최우선으로 찾는다. 과거 `~/.claude/skills/simple-knowledge-zvec/...` 경로는 하위호환 fallback으로만 남김.
-- **기본 임베더를 시맨틱으로 전환**: `paraphrase-multilingual-MiniLM-L12-v2`(sentence-transformers, 384-dim, 기존 `--dimension 384`와 호환) — zvec 자체 내장 임베더(`DefaultLocalDenseEmbedding`, 영어 전용 `all-MiniLM-L6-v2`)가 한국어 위주 work-memory에 부적합해 별도 모델을 채택했다. 모델 로드 실패 시 문자 n-gram 해싱(`hash`)으로 자동 폴백.
-- **embedder 불일치 방지**: 인덱스 빌드 시 사용한 embedder를 사이드카 마커로 남겨, search가 reindex 때와 다른 embedder로 잘못 질의(벡터 공간 불일치)하지 않도록 자동으로 맞춘다.
-- **그래프 순회 방어 처리**: `_build_graph()`가 `relations`를 `list[{type,target}]`이 아닌 형식(과거 실수로 dict를 쓴 entry 등)으로 만나면 전체가 크래시하던 걸, 해당 entry만 경고 후 skip하도록 고쳤다(`stats`/`show`/`graph` 전부 영향).
+- **`simple_kb.py search`에 rerank 기본 활성화**: 벡터 검색이 후보 풀을 넉넉히(`RERANK_POOL_CAP=30`) 뽑으면, Qwen3-Reranker가 query-document 쌍마다 공식 프롬프트 템플릿(`<Instruct>/<Query>/<Document>` + assistant 메시지로 `<think></think>` 프리필)으로 "yes"/"no" 다음 토큰 logprob을 얻어 `softmax(yes, no)`를 관련성 점수로 삼아 재정렬한다.
+- **LM Studio API 제약 발견**: LM Studio의 `/v1/chat/completions`는 OpenAI의 `response_format: {"type":"json_object"}`(느슨한 JSON 모드)를 지원하지 않고 `json_schema`만 받는다(실측 400 에러) — 빈 스키마(`{"type":"object"}`)로 감싸면 동일하게 느슨한 JSON 강제가 된다. 이 프로젝트의 다른 OpenAI 호환 호출부(`llm_engine.py` 등)에도 동일하게 적용해야 하는 제약.
+- **LM Studio 임베딩 모델 ID 규칙**: `GET /v1/models`에서 임베딩 모델은 `text-embedding-<hf-name>` 접두사가 붙어서 노출된다(예: `nomic-embed-text-v2-moe` → `text-embedding-nomic-embed-text-v2-moe`) — 채팅 모델(`google/gemma-4-e4b` 등)과 네이밍 규칙이 다르다.
+- **폴백**: LM Studio 서버가 없거나 reranker 모델이 안 떠 있으면 자동으로 건너뛰고 벡터 유사도 순서를 그대로 쓴다. `--no-rerank`로도 끌 수 있다.
+- **실측 검증**: 실 프로젝트 work-memory(17,900+ entry)에서 "취약점 수정이 자매 대상에 누락됨" 질의 — rerank 전엔 무관 항목 3건이 vec 0.38~0.45로 진짜 관련 항목과 뒤섞였는데, rerank 후엔 무관 항목 전부 0.000(명확한 "no")으로 걸러지고 진짜 관련 항목만 0.5~0.93으로 남음.
 
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결이다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결, v0.12.0은 Qwen3-Reranker 재정렬 추가다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 

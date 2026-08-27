@@ -1,5 +1,32 @@
 # 변경 이력
 
+## v0.12.0 (2026-08-27) — zvec 검색에 Qwen3-Reranker 재정렬 추가
+
+> v0.11.0의 다국어 임베딩 벡터 검색은 주제가 살짝만 겹쳐도 무관한 항목과 진짜 관련 항목의 유사도 구간이 겹쳐 정밀도가 떨어졌다. Qwen3-Reranker-0.6B(LM Studio 로컬, OpenAI 호환 API)로 후보 풀을 재정렬해 해소한다.
+
+### Added
+
+- `simple_kb.py`: `rerank_score(query, document, base_url, model)` — Qwen3-Reranker 공식 프롬프트 템플릿(system: yes/no 지시, user: `<Instruct>/<Query>/<Document>`, assistant: `<think>\n\n</think>\n\n` 프리필)으로 첫 생성 토큰의 "yes"/"no" logprob을 얻어 `softmax(yes, no)`를 [0,1] 관련성 점수로 반환.
+- `rerank(query, docs, base_url, model)` — 벡터 검색 후보 풀을 관련성 점수 내림차순으로 재정렬. LM Studio/모델 불가 시 경고 후 원래(벡터 유사도) 순서로 자동 폴백.
+- `search` 서브커맨드에 `--no-rerank`(기본은 rerank 켜짐), `--lmstudio-url`(기본 `LMSTUDIO_URL` env 또는 `http://localhost:1234/v1`), `--rerank-model`(기본 `qwen3-reranker-0.6b`) 추가.
+- 후보 풀 상한 `RERANK_POOL_CAP=30` — reranker 호출은 후보 하나당 LLM 요청 1번이라 레이턴시 상한을 둔다.
+- 검색 결과 출력에 `rerank=`/`vec=` 두 점수를 모두 표시(재정렬 여부와 근거를 함께 보여줌).
+
+### Fixed / Discovered (LM Studio API 제약)
+
+- LM Studio `/v1/chat/completions`는 OpenAI의 `response_format: {"type":"json_object"}`(느슨한 JSON 모드)를 지원하지 않고 `json_schema`만 받는다(2026-08-27 실측: 400 `'response_format.type' must be 'json_schema' or 'text'`). 빈 스키마(`{"type":"object"}`)로 감싸면 기존과 동일한 느슨한 JSON 강제 효과를 낸다 — 이 프로젝트 안의 다른 OpenAI 호환 호출부에도 동일 제약이 적용된다.
+- LM Studio는 chat/completions의 `messages` 배열 마지막에 `role: "assistant"`로 부분 응답을 주면 그 지점부터 이어서 생성한다(프리필 지원 확인) — Qwen3-Reranker가 `<think></think>` 이후 곧바로 yes/no만 내도록 강제하는 데 필수.
+- 임베딩 모델은 `GET /v1/models`에 `text-embedding-<hf-name>` 접두사가 붙어 노출된다(예: `nomic-embed-text-v2-moe` → `text-embedding-nomic-embed-text-v2-moe`) — 채팅 모델과 네이밍 규칙이 다르므로 `model` 파라미터에 그대로 쓰면 404가 난다.
+
+### Changed
+
+- 패키지 동기 버전을 v0.12.0으로 올렸다. 독립 semver인 `mso-work-memory`는 v0.10.0, 변경 없는 `mso-workflow-optimizer`는 v0.7.0을 유지한다.
+
+### Tests
+
+- 실 프로젝트(외부 Chatbot-1.0 레포) work-memory 17,900+ entry 인덱스에 실제 질의 — rerank 끈 상태에서 무관 항목 3건(vec 0.377~0.447)이 진짜 관련 항목 2건(vec 0.382~0.449)과 유사도 구간이 겹쳐 구분 불가였음을 확인. rerank 켠 상태에서는 무관 항목 전부 `rerank=0.000`(명확한 "no")으로 걸러지고 진짜 관련 항목만 `rerank=0.536~0.926`으로 남아 정밀도 개선을 실측 확인.
+- LM Studio(`google/gemma-4-e4b`, `qwen3-reranker-0.6b`, `text-embedding-nomic-embed-text-v2-moe`) 로컬 서버 대상 chat completion / embeddings / rerank 3개 엔드포인트 전부 실 호출로 검증.
+
 ## v0.11.0 (2026-08-26) — work-memory zvec 시맨틱 검색 자체완결
 
 > `wm_node.py search`/`reindex`가 참조하던 외부 스킬 `simple-knowledge-zvec`이 실제로는 이 저장소에도, 어떤 설치 환경에도 존재한 적이 없었다(파일시스템 전체 탐색으로 확인) — 문서·코드상으로만 존재하고 실행 불가능한 기능이었다. 이번 릴리스에서 `mso-work-memory` 내부로 흡수해 자체완결시키고, 기본 임베더를 해시(어휘 유사도)에서 다국어 시맨틱으로 바꿨다.

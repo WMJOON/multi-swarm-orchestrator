@@ -17,14 +17,23 @@ Embedders (--embedder):
       model, no download, lexical/structural similarity only). Automatic
       fallback if sentence-transformers or the model isn't available.
 
+Reranking (search only, on by default): vector search overfetches a candidate
+pool, then Qwen3-Reranker-0.6B(LM Studio, OpenAI 호환 API)가 query-document 쌍마다
+"yes"/"no" 다음 토큰 logprob으로 관련성 점수를 매겨 그 풀을 재정렬한다(공식 Qwen3-Reranker
+프롬프트 템플릿 + assistant 메시지 프리필로 "<think></think>" 이후 첫 토큰만 봄). LM Studio
+서버가 없거나 reranker 모델이 안 떠 있으면 자동으로 건너뛰고 벡터 유사도 순서를 그대로 쓴다
+(--no-rerank로도 끌 수 있음).
+
 Commands:
   simple_kb.py init   --path <dir> --dimension <N>
   simple_kb.py add    --path <dir> --input <root> --recursive --embedder multilingual
-  simple_kb.py search --path <dir> "<query>" [--limit N] [--tags TAG] [--embedder multilingual]
+  simple_kb.py search --path <dir> "<query>" [--limit N] [--tags TAG] [--embedder multilingual] [--no-rerank]
 """
 import argparse
 import hashlib
 import json
+import math
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -35,6 +44,12 @@ import zvec
 DIM_DEFAULT = 384
 VECTOR_FIELD = "embedding"
 ST_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+LMSTUDIO_URL_DEFAULT = os.environ.get("LMSTUDIO_URL", "http://localhost:1234/v1")
+RERANK_MODEL_DEFAULT = "qwen3-reranker-0.6b"
+RERANK_INSTRUCT = "Given a search query, retrieve relevant work-memory records (issues, decisions, patterns) that answer it"
+RERANK_SYSTEM = ("Judge whether the Document meets the requirements based on the Query and the "
+                  "Instruct provided. Note that the answer can only be 'yes' or 'no'.")
+RERANK_POOL_CAP = 30  # 후보 풀 상한 — 후보 하나당 LLM 호출 1번이라 레이턴시 상한선
 
 _st_model = None
 
@@ -83,6 +98,50 @@ def embed_texts(texts: list, embedder: str) -> list:
     except Exception as e:
         print(f"[warn] semantic embedder({ST_MODEL_NAME}) 사용 불가 ({e}) — hash로 폴백", file=sys.stderr)
         return [embed_text_hash(t) for t in texts]
+
+
+def rerank_score(query: str, document: str, base_url: str, model: str, timeout: int = 20) -> float:
+    """Qwen3-Reranker yes/no 다음 토큰 logprob → [0,1] 관련성 점수(softmax(yes, no)).
+    실패 시 None(호출부가 벡터 유사도 순서 유지 여부를 판단)."""
+    import requests
+
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": RERANK_SYSTEM},
+            {"role": "user", "content": f"<Instruct>: {RERANK_INSTRUCT}\n<Query>: {query}\n<Document>: {document[:2000]}"},
+            {"role": "assistant", "content": "<think>\n\n</think>\n\n"},
+        ],
+        "max_tokens": 1,
+        "temperature": 0,
+        "logprobs": True,
+        "top_logprobs": 10,
+    }
+    r = requests.post(f"{base_url.rstrip('/')}/chat/completions", json=body, timeout=timeout)
+    r.raise_for_status()
+    top = r.json()["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
+    logp = {t["token"].strip().lower(): t["logprob"] for t in top}
+    yes_lp = logp.get("yes", -20.0)
+    no_lp = logp.get("no", -20.0)
+    yes_p, no_p = math.exp(yes_lp), math.exp(no_lp)
+    return yes_p / (yes_p + no_p) if (yes_p + no_p) > 0 else 0.0
+
+
+def rerank(query: str, docs: list, base_url: str = LMSTUDIO_URL_DEFAULT, model: str = RERANK_MODEL_DEFAULT):
+    """docs: list of zvec.Doc. (rerank_score, doc) 튜플을 관련성 점수 내림차순으로 반환.
+    LM Studio/reranker 모델을 못 쓰면 경고만 찍고 (None, doc) 리스트를 벡터 유사도 순서 그대로 반환."""
+    scored = []
+    for d in docs:
+        f = d.fields or {}
+        text = f"{f.get('title','')} {f.get('snippet','')}".strip()
+        try:
+            score = rerank_score(query, text, base_url, model)
+        except Exception as e:
+            print(f"[warn] rerank 실패({e}) — 벡터 유사도 순서로 폴백", file=sys.stderr)
+            return [(None, doc) for doc in docs]
+        scored.append((score, d))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored
 
 
 def _schema(dim: int) -> "zvec.CollectionSchema":
@@ -203,7 +262,10 @@ def cmd_search(args):
             embedder = built_with
 
     qvec = embed_texts([args.query], embedder)[0]
+    # rerank 켜져 있으면 재정렬할 후보 풀을 넉넉히 뽑는다(RERANK_POOL_CAP 상한).
     overfetch = args.limit * 5 if args.tags else args.limit
+    if not args.no_rerank:
+        overfetch = max(overfetch, min(args.limit * 3, RERANK_POOL_CAP))
     results = coll.query(
         vectors=zvec.VectorQuery(field_name=VECTOR_FIELD, vector=qvec),
         topk=max(overfetch, args.limit),
@@ -212,15 +274,22 @@ def cmd_search(args):
 
     if args.tags:
         results = [d for d in results if args.tags in (d.fields.get("tags") or "")]
-    results = results[: args.limit]
 
-    if not results:
+    reranked = None
+    if not args.no_rerank and results:
+        reranked = rerank(args.query, results[:RERANK_POOL_CAP], args.lmstudio_url, args.rerank_model)
+
+    pairs = reranked if reranked is not None else [(None, d) for d in results]
+    pairs = pairs[: args.limit]
+
+    if not pairs:
         print("(검색 결과 없음)")
         return 0
 
-    for d in results:
+    for rscore, d in pairs:
         f = d.fields or {}
-        print(f"[{d.score:.3f}] {d.id}  ({f.get('type','?')})  {f.get('title','')}")
+        score_str = f"rerank={rscore:.3f} vec={d.score:.3f}" if rscore is not None else f"vec={d.score:.3f}"
+        print(f"[{score_str}] {d.id}  ({f.get('type','?')})  {f.get('title','')}")
         snippet = (f.get("snippet") or "").replace("\n", " ")
         if snippet:
             print(f"        {snippet[:160]}")
@@ -253,6 +322,10 @@ def main():
     p_search.add_argument("--limit", type=int, default=10)
     p_search.add_argument("--tags", default=None)
     p_search.add_argument("--embedder", default="multilingual", choices=["multilingual", "hash"])
+    p_search.add_argument("--no-rerank", action="store_true",
+                           help="Qwen3-Reranker 재정렬 끄고 벡터 유사도 순서만 사용(기본은 rerank 켜짐)")
+    p_search.add_argument("--lmstudio-url", default=LMSTUDIO_URL_DEFAULT)
+    p_search.add_argument("--rerank-model", default=RERANK_MODEL_DEFAULT)
     p_search.set_defaults(func=cmd_search)
 
     args = p.parse_args()
