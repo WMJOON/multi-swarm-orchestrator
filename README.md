@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.12.0
+# Multi-Swarm Orchestrator (MSO) v0.12.1
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,17 +13,27 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.12.0 (2026-08-27) — zvec 검색에 Qwen3-Reranker 재정렬 추가
+### v0.12.1 (2026-08-28) — Antigravity Provider Support
 
-v0.11.0에서 붙인 다국어 임베딩 벡터 검색만으로는, 실제로 무관한 항목의 벡터 유사도(0.38~0.45)가 진짜 관련 항목(0.38~0.45)과 구간이 거의 겹쳐 구분이 안 되는 한계가 있었다(아래 실측 참고). Qwen3-Reranker-0.6B(LM Studio, OpenAI 호환 API)로 후보 풀을 재정렬해 이 문제를 해소했다.
+`init.py --hook`에 `--provider antigravity`를 추가해, Claude Code/Codex 두 provider만
+지원하던 work-memory/scaffold-check hook 자동 등록을 Antigravity(`.agents/hooks.json`)까지
+확장했다.
 
-- **`simple_kb.py search`에 rerank 기본 활성화**: 벡터 검색이 후보 풀을 넉넉히(`RERANK_POOL_CAP=30`) 뽑으면, Qwen3-Reranker가 query-document 쌍마다 공식 프롬프트 템플릿(`<Instruct>/<Query>/<Document>` + assistant 메시지로 `<think></think>` 프리필)으로 "yes"/"no" 다음 토큰 logprob을 얻어 `softmax(yes, no)`를 관련성 점수로 삼아 재정렬한다.
-- **LM Studio API 제약 발견**: LM Studio의 `/v1/chat/completions`는 OpenAI의 `response_format: {"type":"json_object"}`(느슨한 JSON 모드)를 지원하지 않고 `json_schema`만 받는다(실측 400 에러) — 빈 스키마(`{"type":"object"}`)로 감싸면 동일하게 느슨한 JSON 강제가 된다. 이 프로젝트의 다른 OpenAI 호환 호출부(`llm_engine.py` 등)에도 동일하게 적용해야 하는 제약.
-- **LM Studio 임베딩 모델 ID 규칙**: `GET /v1/models`에서 임베딩 모델은 `text-embedding-<hf-name>` 접두사가 붙어서 노출된다(예: `nomic-embed-text-v2-moe` → `text-embedding-nomic-embed-text-v2-moe`) — 채팅 모델(`google/gemma-4-e4b` 등)과 네이밍 규칙이 다르다.
-- **폴백**: LM Studio 서버가 없거나 reranker 모델이 안 떠 있으면 자동으로 건너뛰고 벡터 유사도 순서를 그대로 쓴다. `--no-rerank`로도 끌 수 있다.
-- **실측 검증**: 실 프로젝트 work-memory(17,900+ entry)에서 "취약점 수정이 자매 대상에 누락됨" 질의 — rerank 전엔 무관 항목 3건이 vec 0.38~0.45로 진짜 관련 항목과 뒤섞였는데, rerank 후엔 무관 항목 전부 0.000(명확한 "no")으로 걸러지고 진짜 관련 항목만 0.5~0.93으로 남음.
+- **Antigravity hook 등록**: `.agents/hooks.json`에 hook-name(`mso-work-memory`) 하위로
+  `PostToolUse`(audit/scaffold), `Stop`(stop-check/commit), `PreInvocation`(work-memory-check/
+  release-context/workflow-context/UUG-context)를 등록한다. hooks.json 스펙(hook-name 키잉,
+  event별 flat vs matcher-그룹 구조, camelCase I/O)은 [Antigravity Hooks 공식 문서](https://antigravity.google/docs/hooks/)로 검증했다.
+- **camelCase 어댑터**: Antigravity에는 `SessionStart`/`UserPromptSubmit`/`PreCompact`에
+  직접 대응하는 이벤트가 없다. `hooks/adapter_antigravity.py`가 `PreInvocation`을
+  `invocationNum==0`(세션 시작 근사) / 매 호출(발화 근사) 두 모드로 나눠 처리하고,
+  기존 snake_case 훅 스크립트를 그대로 재사용한다 — 훅 로직 자체는 수정하지 않았다.
+- **미검증 항목**: hook 프로세스의 cwd가 workspace root라는 가정, `command` 문자열의
+  셸 실행 방식, exit code/timeout 처리, `.agents/hooks.json` vs 전역
+  `~/.gemini/config/hooks.json` 우선순위는 공식 문서에도 없어 실제 Antigravity 세션에서
+  아직 검증하지 못했다. 상세는 `planning/mso-PLAN-antigravity-provider-support.md` §7.
+- **설치**: `install.sh --gemini`는 `~/.gemini/antigravity/skills`에 설치한다(기존 기능, 문서 누락 정정).
 
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결, v0.12.0은 Qwen3-Reranker 재정렬 추가다.
+- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결, v0.12.0은 Qwen3-Reranker 재정렬 추가, v0.12.1은 Antigravity provider 지원이다.
 
 상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
 
@@ -187,7 +197,9 @@ python3 skills/mso-repository-setup/scripts/init.py --hook . --provider codex \
   --worthy-paths "agent-context .mso .codex .gitmodules AGENTS.md README.md"
 ```
 
-Claude Code hook을 만들 때는 `--provider claude`를 사용한다.
+Claude Code hook을 만들 때는 `--provider claude`를 사용한다. Antigravity hook을 만들
+때는 `--provider antigravity`를 사용한다 (`.agents/hooks.json` 등록, 상세는
+[docs/getting-started.md](docs/getting-started.md)).
 
 ### Validate Scaffold
 
@@ -245,7 +257,7 @@ python3 skills/mso-work-memory/scripts/wm_node.py validate agent-context/work-me
 
 ## Design Principles
 
-**Provider Free.** MSO는 Claude Code, Codex 등 provider runtime 위에서 동작하지만 특정 provider에 종속되지 않는다.
+**Provider Free.** MSO는 Claude Code, Codex, Antigravity 등 provider runtime 위에서 동작하지만 특정 provider에 종속되지 않는다.
 
 **SSOT First.** index, workflow TTL, work-memory JSONL처럼 수정 가능한 원본과 Mermaid/report 같은 파생 산출물을 분리한다.
 

@@ -17,8 +17,11 @@ description: >
       release-note + verified-in/invalidated-by/rolls-back),
   (7) 실행 시점 context pack 검색 — workflow node/자유 질의로 연관 기억 호출
       (wm_context.py, lexical, zvec 불필요; "context pack", "연관 기억 호출").
+  (8) Antigravity provider 지원 — hooks/adapter_antigravity.py 가 Antigravity 의
+      camelCase hooks.json(PostToolUse/Stop/PreInvocation) 을 기존 snake_case
+      훅 계약으로 변환한다 (등록은 mso-repository-setup 담당).
 metadata:
-  version: "0.10.0"
+  version: "0.10.1"
 ---
 
 # MSO Work Memory
@@ -313,6 +316,32 @@ uug-grounding SKILL.md 의 "MSO는 UUG를 모른다(단방향)" 원칙에 대한
 원칙)는 그 위의 이중 안전장치다. `UserPromptSubmit` stdout 전달 경로를 사용하는
 Claude/Codex provider에 공통 등록한다.
 게이팅 intent 는 `MSO_UUG_CONTEXT_INTENTS`, 비활성화는 `MSO_UUG_CONTEXT_DISABLED=1`.
+
+## Antigravity 어댑터 (hooks/adapter_antigravity.py)
+
+위 훅들은 모두 Claude Code/Codex 식 snake_case stdin·plain stdout 계약으로 작성돼
+있다. Antigravity 는 camelCase I/O 에 `PreToolUse`/`PostToolUse`/`PreInvocation`/
+`PostInvocation`/`Stop` 5개 이벤트만 제공하고 `SessionStart`/`UserPromptSubmit`/
+`PreCompact` 대응 이벤트가 없다(antigravity.google/docs/hooks/, 확인: 2026-08-28).
+`adapter_antigravity.py`가 각 훅을 그대로 재사용할 수 있게 이 간극을 흡수한다 —
+Antigravity JSON을 legacy 입력으로 변환해 훅을 서브프로세스로 실행하고, 그 stdout을
+Antigravity가 기대하는 출력 스키마로 되감는다(PostToolUse → `{}`, Stop →
+`{"decision": "continue", "reason": ...}`, PreInvocation → `{"injectSteps":
+[{"ephemeralMessage": ...}]}`). 4가지 모드:
+
+| 모드 | 실행 시점 | 근사 대상 | 대상 훅 |
+|---|---|---|---|
+| `posttooluse` | `PostToolUse` | (그대로) | auditlog.py, scaffold-check.sh |
+| `stop` | `Stop` | (그대로) | stop-check.sh, commit-work-memory.sh |
+| `session` | `PreInvocation`, `invocationNum==0`에서만 | `SessionStart` | work-memory-check.sh, release-context.sh |
+| `turn` | `PreInvocation`, 매 호출 | `UserPromptSubmit` | workflow-context-hook.py, uug-context-hook.py |
+
+`turn` 모드는 uug-context-hook.py 가 읽는 사용자 발화 원문을 `transcriptPath` 의
+마지막 user 턴에서 근사한다(Antigravity `PreInvocation` 입력에는 프롬프트 원문
+필드가 없음). `stop-check.sh` 처럼 터미널 렌더링을 가정해 ANSI 색상 코드를 찍는
+훅은 어댑터가 제거한다. **미검증 가정** — 어댑터·대상 스크립트를 상대경로로
+호출하므로 hook 프로세스의 cwd 가 workspace root 라고 가정한다; 등록은
+`mso-repository-setup`의 `init.py --hook --provider antigravity` 가 담당한다(copy-form).
 
 ## Hook 통합 (auditlog 자동)
 

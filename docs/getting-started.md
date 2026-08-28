@@ -1,4 +1,4 @@
-# 시작하기 (v0.10.1)
+# 시작하기 (v0.12.1)
 
 ## 0. 설치
 
@@ -6,7 +6,8 @@
 # 옵션 A: install.sh (직접 symlink)
 bash install.sh               # Claude Code 전용
 bash install.sh --codex       # Codex: ~/.agents/skills
-bash install.sh --all         # Claude + Codex + Gemini
+bash install.sh --gemini      # Antigravity: ~/.gemini/antigravity/skills
+bash install.sh --all         # Claude + Codex + Gemini(Antigravity)
 bash install.sh --codex-legacy # 구형 ~/.codex/skills 설치가 명시적으로 필요할 때만
 
 # 옵션 B: sync-agents-global.sh (글로벌 링크 허브 경유)
@@ -69,6 +70,27 @@ PostToolUse audit/scaffold, Stop/PreCompact commit, SessionStart check/release,
 UserPromptSubmit workflow/UUG context hook이 등록된다. `.codex/hooks.json`은 빈
 compatibility 파일이다. Codex hook 이벤트와 stdout 동작은
 [OpenAI Codex Hooks 공식 문서](https://learn.chatgpt.com/codex/hooks)를 따른다.
+
+Antigravity 프로젝트에서도 provider를 명시한다.
+
+```bash
+python3 ~/.claude/skills/mso-repository-setup/scripts/init.py --hook /path/to/project --provider antigravity
+```
+
+이 경우 `.agents/scripts/`에 hook 스크립트와 camelCase 변환 어댑터
+(`adapter_antigravity.py`)가 복사되고, `.agents/hooks.json`의 hook-name(`mso-work-memory`)
+아래에 `PostToolUse`(audit/scaffold), `Stop`(stop-check/commit), `PreInvocation`
+(work-memory-check/release-context/workflow-context/UUG-context)가 등록된다.
+Antigravity에는 Claude/Codex의 `SessionStart`/`UserPromptSubmit`/`PreCompact`에 직접
+대응하는 이벤트가 없어, 어댑터가 `PreInvocation`을 `invocationNum==0`에서만 실행되는
+"session" 모드(SessionStart 근사)와 매 호출마다 실행되는 "turn" 모드(UserPromptSubmit
+근사)로 나눠 처리한다. hooks.json 스펙은
+[Antigravity Hooks 공식 문서](https://antigravity.google/docs/hooks/)를 따른다.
+
+> hook 프로세스의 cwd가 workspace root라는 가정, exit code/timeout 처리,
+> `.agents/hooks.json`과 전역 `~/.gemini/config/hooks.json`의 우선순위는 공식 문서에도
+> 없어 실제 Antigravity 세션에서 아직 검증하지 못했다. 상세는
+> `planning/mso-PLAN-antigravity-provider-support.md` §7을 본다.
 
 workflow cursor는 provider-neutral `.mso/state/workflow-cursor.json`을 사용한다.
 v0.10.0의 `.claude/state/workflow-cursor.json`은 호환 읽기·삭제만 지원한다.

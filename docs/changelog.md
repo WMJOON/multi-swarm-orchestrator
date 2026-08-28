@@ -1,5 +1,71 @@
 # 변경 이력
 
+## v0.12.1 (2026-08-28) — Antigravity Provider Support
+
+> Claude Code, Codex 두 provider만 지원하던 `init.py --hook`의 work-memory/scaffold-check
+> hook 자동 등록을 Antigravity로 확장한다. Antigravity는 camelCase I/O에
+> `PreToolUse`/`PostToolUse`/`PreInvocation`/`PostInvocation`/`Stop` 5개 이벤트만 제공하고
+> `SessionStart`/`UserPromptSubmit`/`PreCompact`에 대응하는 이벤트가 없어, 어댑터를 통해
+> 기존 snake_case 훅 계약을 그대로 재사용한다.
+
+### Added
+
+- `init.py --hook --provider antigravity`: `.agents/scripts/`(hook 스크립트 + `sf_node.py` +
+  scaffold schema 사본)와 `.agents/hooks.json`을 생성한다. hooks.json 최상위는 event가 아니라
+  hook-name(`mso-work-memory`)으로 키잉되며, `PostToolUse`만 Claude/Codex처럼 matcher(`run_command|
+  write_to_file|replace_file_content|multi_replace_file_content`)+hooks 그룹 구조이고
+  `Stop`/`PreInvocation`은 matcher 없는 flat 배열이다. hooks.json 스펙은
+  [Antigravity Hooks 공식 문서](https://antigravity.google/docs/hooks/)로 검증했다(확인: 2026-08-28).
+- `mso-work-memory/hooks/adapter_antigravity.py` (신규): Antigravity camelCase JSON을
+  기존 훅이 기대하는 snake_case(`tool_name`/`tool_input`/`hook_event_name`/`session_id`/`prompt`)로
+  변환해 훅 스크립트를 서브프로세스로 그대로 실행하고, 그 stdout을 Antigravity 출력 스키마로
+  되감는다. 4가지 모드:
+  - `posttooluse` → `PostToolUse` 그대로. 출력은 항상 `{}` (텍스트 채널 없음 — 공식 스펙 제약).
+  - `stop` → `Stop` 그대로. `{"decision": "continue", "reason": "..."}`. 터미널 렌더링을
+    가정한 ANSI 색상 코드(`stop-check.sh`)는 제거한다.
+  - `session` → `PreInvocation`, `invocationNum==0`에서만 실행 (`SessionStart` 근사) —
+    work-memory-check.sh, release-context.sh.
+  - `turn` → `PreInvocation`, 매 호출 실행 (`UserPromptSubmit` 근사) — workflow-context-hook.py,
+    uug-context-hook.py. 프롬프트 원문은 `transcriptPath`의 마지막 user 턴으로 근사한다
+    (Antigravity `PreInvocation` 입력에는 프롬프트 필드가 없음).
+- 테스트: `mso-repository-setup/tests/test_init_hook.py`에 antigravity 케이스 5종
+  (full parity, uug install-gating, idempotency, worthy-paths 보존, 기존 hooks.json 보존),
+  `mso-work-memory/tests/test_adapter_antigravity.py` 신규(4모드 단위 테스트).
+
+### Changed
+
+- `install.sh` 사용법 주석에 기존에 이미 존재했던 `--gemini`(→ `~/.gemini/antigravity/skills`)
+  플래그를 반영했다(기능 변경 없음, 문서 누락 정정).
+- 패키지 동기 버전은 v0.12.1로 올렸다. 독립 semver인 `mso-work-memory`는 v0.10.0에서
+  v0.10.1로 올랐고, 변경 없는 `mso-workflow-optimizer`는 v0.7.0을 유지한다.
+
+### Known Gaps / 미검증
+
+- `PreCompact`에 대응하는 Antigravity 이벤트가 없어 등록하지 않는다.
+- hook 프로세스의 cwd가 workspace root라는 가정(상대경로 command 생성 근거),
+  `command` 문자열이 셸을 통해 실행되는지, 비정상 종료·비-JSON stdout 처리,
+  `.agents/hooks.json`(워크스페이스) vs `~/.gemini/config/hooks.json`(전역) 우선순위,
+  `PreInvocation`의 `invocationNum`이 대화 재개(resume) 시 리셋되는지 —
+  모두 공식 문서 미기재. 실제 Antigravity 프로세스로 검증하지 못했다.
+- `mso-repository-setup`의 §3.3(규칙 파일 정렬: `AGENTS.md`/`GEMINI.md`/`.agents/rules/*.md`)은
+  미착수. 단 스킬 심볼릭 링크 자체(`~/.gemini/antigravity/{skills,rules,global_workflows}`)는
+  `00_agents_global_links/sync-agents-global.sh`가 이 작업 이전부터 이미 지원하고 있었다.
+- 상세 근거·항목별 설명은 `planning/mso-PLAN-antigravity-provider-support.md` §2, §7.
+
+### Tests
+
+- `mso-repository-setup` 스위트: `16 passed`.
+- `mso-work-memory` 스위트: `69 passed`.
+- 실제 Antigravity 프로세스 없이 수동 payload로 adapter I/O만 확인했다(§7 참조) — Phase 4
+  통합 검증은 아직 미완료.
+
+### Note
+
+- 이 항목은 원래 로컬 작업 채널(`repository-test`)에서 `v0.10.2`로 준비됐으나, 병합 시점에
+  `main`이 이미 `v0.11.0`/`v0.12.0`(zvec 검색 자체완결 + Qwen3-Reranker 재정렬)까지 진행돼
+  있어 `v0.12.1`로 재라벨링했다. 코드 변경분(`init.py`/`adapter_antigravity.py`/테스트)은
+  두 버전 사이에 변경되지 않은 파일이라 충돌 없이 그대로 적용됐다.
+
 ## v0.12.0 (2026-08-27) — zvec 검색에 Qwen3-Reranker 재정렬 추가
 
 > v0.11.0의 다국어 임베딩 벡터 검색은 주제가 살짝만 겹쳐도 무관한 항목과 진짜 관련 항목의 유사도 구간이 겹쳐 정밀도가 떨어졌다. Qwen3-Reranker-0.6B(LM Studio 로컬, OpenAI 호환 API)로 후보 풀을 재정렬해 해소한다.
