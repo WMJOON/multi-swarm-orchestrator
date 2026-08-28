@@ -22,6 +22,8 @@ init.py — MSO Repository Setup CLI
   <target>/.claude/settings.json  (--hook 시 Claude Code hook 등록)
   <target>/.codex/hooks.json      (--hook --provider codex 시 Codex hook 등록, compatibility)
   <target>/.codex/config.toml     (--hook --provider codex 시 Codex hook 등록)
+  <target>/.agents/hooks.json     (--hook --provider antigravity 시 Antigravity lifecycle hook 등록,
+                                    adapter_antigravity.py 로 camelCase I/O 변환)
 """
 
 import argparse
@@ -275,6 +277,9 @@ SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # 항목을 남기지 않기 위해 이중으로 거른다. Claude와 Codex 모두
 # UserPromptSubmit stdout을 컨텍스트에 주입하므로 provider 공통으로 등록한다.
 UUG_CONTEXT_HOOK_FILES = ["uug-context-hook.py"]
+# Antigravity 전용: camelCase I/O <-> 기존 snake_case 훅 계약 변환 어댑터.
+# claude/codex 프로젝트에는 불필요하므로 provider == "antigravity" 일 때만 복사한다.
+ANTIGRAVITY_ADAPTER_FILES = ["adapter_antigravity.py"]
 
 _WORTHY_PATHS_RE = re.compile(r'WM_WORTHY_PATHS="([^"]*)"')
 
@@ -303,14 +308,19 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
 
     기본값은 기존 Claude Code 동작을 보존한다. `--provider codex` 를 지정하면
     <target>/.codex/scripts/ 를 만들고 <target>/.codex/config.toml 에 hook 을 등록한다.
-    <target>/.codex/hooks.json 도 compatibility 파일로 함께 갱신한다. 절대 경로
-    (스킬의 로컬 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
+    <target>/.codex/hooks.json 도 compatibility 파일로 함께 갱신한다. `--provider
+    antigravity` 를 지정하면 <target>/.agents/scripts/ 를 만들고 <target>/.agents/hooks.json
+    에 Antigravity lifecycle hook(PostToolUse/Stop/PreInvocation)을 등록한다 —
+    Antigravity는 camelCase I/O 계약이라 adapter_antigravity.py 를 경유해 기존
+    snake_case 훅을 그대로 재사용한다 (SessionStart/UserPromptSubmit 미대응 이벤트는
+    PreInvocation 을 근사로 사용 — 상세: mso-PLAN-antigravity-provider-support.md).
+    절대 경로(스킬의 로컬 심볼릭 경로, init 시점 workmem 절대경로)를 커밋 대상 파일에
     박지 않으므로 다른 머신·CI·경로 이동에도 견딘다.
 
     WM_WORTHY_PATHS 는 --worthy-paths 로 주입한다. 미지정 재실행 시 기존 provider
     설정에서 값을 회수해 보존하고, 최초 등록이면 스크립트 기본값을 따른다.
     """
-    if provider not in {"claude", "codex"}:
+    if provider not in {"claude", "codex", "antigravity"}:
         print(f"[ERROR] 지원하지 않는 provider: {provider}")
         return 1
 
@@ -330,7 +340,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             print(f"    {p}")
         return 1
 
-    provider_dir_name = ".claude" if provider == "claude" else ".codex"
+    provider_dir_name = {"claude": ".claude", "codex": ".codex", "antigravity": ".agents"}[provider]
     settings_name = "settings.json" if provider == "claude" else "hooks.json"
 
     # 1) hook 스크립트를 프로젝트 provider scripts/ 로 복사 (self-contained)
@@ -376,6 +386,15 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
                 (scripts_dst / fn).chmod(0o755)
                 copied.append(fn)
 
+    # antigravity 는 camelCase I/O 계약이라 훅 자체가 아니라 어댑터를 통해 호출된다.
+    if provider == "antigravity":
+        for fn in ANTIGRAVITY_ADAPTER_FILES:
+            src = hooks_dir / fn
+            if src.exists():
+                shutil.copy(src, scripts_dst / fn)
+                (scripts_dst / fn).chmod(0o755)
+                copied.append(fn)
+
     # scaffold-check.sh uses sf_node.py and its schema directory. Copy them into
     # the provider dir so project hooks do not depend on the original skill path.
     sf_src = scaffold_skill_dir / "scripts" / "sf_node.py"
@@ -409,6 +428,17 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         except json.JSONDecodeError:
             print(f"  ! settings.json 파싱 실패 — 백업 후 새로 작성합니다.")
             settings_path.rename(settings_path.with_suffix(".json.bak"))
+
+    if provider == "antigravity":
+        # Antigravity hooks.json 은 event 가 아니라 hook-name 으로 최상위 키를 둔다:
+        # {"<hook-name>": {"PostToolUse": [...], "Stop": [...], "PreInvocation": [...]}}
+        agy_section = existing.setdefault(ANTIGRAVITY_HOOK_NAME, {})
+        if worthy_paths is None:
+            worthy_paths = _find_worthy_paths_in_agy(agy_section)
+        return _write_antigravity_hooks(
+            target, provider_dir_name, settings_path, existing, agy_section,
+            worthy_paths, uug_present, copied,
+        )
 
     hooks_section = existing.setdefault("hooks", {})
     if worthy_paths is None:
@@ -575,6 +605,118 @@ def _upsert_hook(hooks: dict, event: str, matcher: str | None, command: str, mar
     inner.append({"type": "command", "command": command})
 
 
+# Antigravity 는 hooks.json 최상위를 event 가 아니라 hook-name 으로 키잉한다:
+# {"<hook-name>": {"PostToolUse": [...], "Stop": [...], "PreInvocation": [...]}}
+# PostToolUse 는 Claude/Codex 와 같은 matcher+hooks 그룹 구조라 _upsert_hook 을 그대로
+# 재사용한다. Stop/PreInvocation/PostInvocation 은 matcher 가 무시되고 handler 객체가
+# event 배열에 바로 들어가는 flat 구조라 별도 helper 가 필요하다.
+# (antigravity.google/docs/hooks/, 확인: 2026-08-28)
+ANTIGRAVITY_HOOK_NAME = "mso-work-memory"
+ANTIGRAVITY_TOOL_MATCHER = "run_command|write_to_file|replace_file_content|multi_replace_file_content"
+
+
+def _upsert_flat_hook(section: dict, event: str, command: str, marker: str):
+    """Stop/PreInvocation 처럼 matcher 없이 handler 가 event 배열에 바로 들어가는
+    Antigravity 이벤트에 command 를 추가한다. marker 로 기존 항목을 update."""
+    handlers: list = section.setdefault(event, [])
+    for h in handlers:
+        if marker in h.get("command", ""):
+            h["command"] = command
+            return
+    handlers.append({"type": "command", "command": command})
+
+
+def _collect_agy_commands(section: dict) -> list[str]:
+    out = []
+    for event_list in section.values():
+        if not isinstance(event_list, list):
+            continue
+        for item in event_list:
+            if not isinstance(item, dict):
+                continue
+            if "hooks" in item:
+                out.extend(h.get("command", "") for h in item.get("hooks", []))
+            else:
+                out.append(item.get("command", ""))
+    return out
+
+
+def _find_worthy_paths_in_agy(section: dict) -> str | None:
+    """기존 antigravity hooks.json hook-name 섹션에서 WM_WORTHY_PATHS 값을 회수한다."""
+    for cmd in _collect_agy_commands(section):
+        found = _find_worthy_paths_in_text(cmd)
+        if found:
+            return found
+    return None
+
+
+def _write_antigravity_hooks(
+    target: Path,
+    provider_dir_name: str,
+    settings_path: Path,
+    existing: dict,
+    agy_section: dict,
+    worthy_paths: str | None,
+    uug_present: bool,
+    copied: list[str],
+) -> int:
+    """.agents/hooks.json 을 구성한다.
+
+    Antigravity 에는 SessionStart/UserPromptSubmit/PreCompact 에 대응하는 이벤트가
+    없다 — 대신 PreInvocation(모델 호출 직전, 매 턴)을 두 모드로 나눠 근사한다:
+      session 모드 (invocationNum == 0 에서만 실행) : work-memory-check, release-context
+      turn 모드    (매 invocation 마다 실행)         : workflow-context-hook, uug-context-hook
+    adapter_antigravity.py 가 이 모드 게이팅과 camelCase 변환을 담당한다.
+    상세 근거: mso-PLAN-antigravity-provider-support.md.
+    """
+    sd = f"{provider_dir_name}/scripts"
+    adapter = f"{sd}/adapter_antigravity.py"
+    worthy_env = f'WM_WORTHY_PATHS="{worthy_paths}" ' if worthy_paths else ""
+
+    def wrap(mode: str, script: str, extra_env: str = "") -> str:
+        return f"{extra_env}python3 {adapter} {mode} -- {sd}/{script}"
+
+    auditlog_cmd = wrap("posttooluse", "auditlog.py")
+    scaffold_cmd = wrap("posttooluse", "scaffold-check.sh", f"MSO_SCAFFOLD_TOOL={sd}/sf_node.py ")
+    stop_check_cmd = wrap("stop", "stop-check.sh")
+    commit_cmd = wrap("stop", "commit-work-memory.sh")
+    check_cmd = wrap("session", "work-memory-check.sh", worthy_env)
+    release_ctx_cmd = wrap("session", "release-context.sh")
+    workflow_ctx_cmd = wrap("turn", "workflow-context-hook.py")
+    uug_context_cmd = wrap("turn", "uug-context-hook.py")
+
+    _upsert_hook(agy_section, "PostToolUse", ANTIGRAVITY_TOOL_MATCHER, auditlog_cmd, "auditlog.py")
+    _upsert_hook(agy_section, "PostToolUse", ANTIGRAVITY_TOOL_MATCHER, scaffold_cmd, "scaffold-check.sh")
+    _upsert_flat_hook(agy_section, "Stop", stop_check_cmd, "stop-check.sh")
+    _upsert_flat_hook(agy_section, "Stop", commit_cmd, "commit-work-memory.sh")
+    _upsert_flat_hook(agy_section, "PreInvocation", check_cmd, "work-memory-check.sh")
+    _upsert_flat_hook(agy_section, "PreInvocation", release_ctx_cmd, "release-context.sh")
+    _upsert_flat_hook(agy_section, "PreInvocation", workflow_ctx_cmd, "workflow-context-hook.py")
+    if uug_present:
+        _upsert_flat_hook(agy_section, "PreInvocation", uug_context_cmd, "uug-context-hook.py")
+
+    settings_path.write_text(
+        json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
+    uug_note = " + uug-context(turn)" if uug_present else ""
+    print(f"  + .agents/hooks.json 갱신 (PostToolUse auditlog/scaffold-check + "
+          f"Stop stop-check/commit-work-memory + PreInvocation[session] work-memory-check/"
+          f"release-context + PreInvocation[turn] workflow-context{uug_note})")
+    if not uug_present:
+        print("  · uug-grounding 미설치 감지 — uug-context-hook(PreInvocation turn) 등록 생략.")
+    if worthy_paths:
+        print(f"    WM_WORTHY_PATHS : {worthy_paths}")
+    print()
+    print("  ! 미검증 가정: hook 프로세스 cwd == workspace root. 최초 실사용 시 검증 필요")
+    print(f"    (상세: mso-PLAN-antigravity-provider-support.md)")
+    print()
+    print(f"✓ Hook 등록 완료: {settings_path}")
+    return 0
+
+
 def _toml_literal(value: str) -> str:
     """Return a TOML literal string. Commands generated here do not contain single quotes."""
     if "'" in value:
@@ -734,7 +876,7 @@ def main():
     g.add_argument("--hook", help="provider 설정 디렉토리에 work-memory hook 복사·등록 (copy-form)")
     parser.add_argument("--name", default="TODO Project", help="프로젝트 표시 이름")
     parser.add_argument("--id", default="TODO-project-id", dest="project_id", help="프로젝트 id")
-    parser.add_argument("--provider", choices=("claude", "codex"), default="claude",
+    parser.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude",
                         help="--hook 대상 provider. 기본값 claude 는 기존 동작을 보존한다.")
     parser.add_argument("--worthy-paths", dest="worthy_paths", default=None,
                         help="--hook 시 WM_WORTHY_PATHS 주입 (공백 구분 경로 목록). "

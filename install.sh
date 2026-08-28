@@ -1,6 +1,6 @@
 #!/bin/bash
-# MSO v0.10.1 — install skill symlinks for Claude, Codex, and Gemini.
-# Usage: bash install.sh [--codex] [--codex-legacy] [--all]
+# MSO v0.12.1 — install skill symlinks for Claude, Codex, and Gemini.
+# Usage: bash install.sh [--codex] [--codex-legacy] [--gemini] [--all]
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

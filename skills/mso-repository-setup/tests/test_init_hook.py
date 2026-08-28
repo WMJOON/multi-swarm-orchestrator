@@ -45,6 +45,25 @@ def _codex_config(project: Path) -> tuple[str, dict]:
     return path.read_text(encoding="utf-8"), tomllib.loads(path.read_text(encoding="utf-8"))
 
 
+def _agy_hooks(project: Path) -> dict:
+    return json.loads((project / ".agents" / "hooks.json").read_text(encoding="utf-8"))
+
+
+def _agy_section(project: Path) -> dict:
+    return _agy_hooks(project)["mso-work-memory"]
+
+
+def _agy_flat_commands(section: dict, event: str) -> list[str]:
+    return [h.get("command", "") for h in section.get(event, [])]
+
+
+def _agy_grouped_commands(section: dict, event: str) -> list[str]:
+    out = []
+    for group in section.get(event, []):
+        out.extend(h.get("command", "") for h in group.get("hooks", []))
+    return out
+
+
 def test_hook_copies_scripts_including_wm_context(init_mod, project):
     assert init_mod.cmd_hook(project) != 1
 
@@ -146,6 +165,77 @@ def test_worthy_paths_survive_hook_rerun(init_mod, project, provider):
     else:
         commands = _commands(_settings(project), "SessionStart")
         assert any(f'WM_WORTHY_PATHS="{worthy}"' in command for command in commands)
+
+
+def test_antigravity_hook_registers_full_provider_parity(init_mod, project, monkeypatch):
+    monkeypatch.setattr(init_mod, "_find_uug_ug", lambda: None)
+    assert init_mod.cmd_hook(project, provider="antigravity") != 1
+
+    section = _agy_section(project)
+    post = _agy_grouped_commands(section, "PostToolUse")
+    assert any("auditlog.py" in c for c in post)
+    assert any("scaffold-check.sh" in c for c in post)
+    # PostToolUse matcher targets Antigravity tool names, not Claude's.
+    matcher = section["PostToolUse"][0]["matcher"]
+    assert "run_command" in matcher and "write_to_file" in matcher
+
+    stop = _agy_flat_commands(section, "Stop")
+    assert any("stop-check.sh" in c for c in stop)
+    assert any("commit-work-memory.sh" in c for c in stop)
+
+    pre = _agy_flat_commands(section, "PreInvocation")
+    assert any("adapter_antigravity.py session" in c and "work-memory-check.sh" in c for c in pre)
+    assert any("adapter_antigravity.py session" in c and "release-context.sh" in c for c in pre)
+    assert any("adapter_antigravity.py turn" in c and "workflow-context-hook.py" in c for c in pre)
+    assert not any("uug-context-hook.py" in c for c in pre)
+
+    # every command routes through the camelCase adapter
+    for cmd in post + stop + pre:
+        assert "adapter_antigravity.py" in cmd
+
+    scripts = project / ".agents" / "scripts"
+    assert (scripts / "adapter_antigravity.py").exists()
+    assert (scripts / "adapter_antigravity.py").stat().st_mode & 0o111
+
+
+def test_antigravity_uug_registration_is_install_gated(init_mod, project, monkeypatch):
+    monkeypatch.setattr(init_mod, "_find_uug_ug", lambda: Path("/installed/ug.py"))
+    assert init_mod.cmd_hook(project, provider="antigravity") != 1
+    pre = _agy_flat_commands(_agy_section(project), "PreInvocation")
+    assert any("uug-context-hook.py" in c for c in pre)
+
+
+def test_antigravity_hook_registration_is_idempotent(init_mod, project, monkeypatch):
+    monkeypatch.setattr(init_mod, "_find_uug_ug", lambda: None)
+    assert init_mod.cmd_hook(project, provider="antigravity") != 1
+    first = _agy_hooks(project)
+    assert init_mod.cmd_hook(project, provider="antigravity") != 1
+    second = _agy_hooks(project)
+
+    assert first == second
+    post = _agy_grouped_commands(second["mso-work-memory"], "PostToolUse")
+    assert sum("auditlog.py" in c for c in post) == 1
+
+
+def test_antigravity_worthy_paths_survive_rerun(init_mod, project):
+    worthy = "src config agent-context"
+    assert init_mod.cmd_hook(project, worthy_paths=worthy, provider="antigravity") != 1
+    assert init_mod.cmd_hook(project, provider="antigravity") != 1
+
+    pre = _agy_flat_commands(_agy_section(project), "PreInvocation")
+    assert any(f'WM_WORTHY_PATHS="{worthy}"' in c for c in pre)
+
+
+def test_antigravity_existing_hooks_json_is_preserved(init_mod, project):
+    agy_dir = project / ".agents"
+    agy_dir.mkdir()
+    (agy_dir / "hooks.json").write_text(
+        json.dumps({"some-other-hook": {"enabled": False, "Stop": []}}), encoding="utf-8")
+
+    assert init_mod.cmd_hook(project, provider="antigravity") != 1
+    hooks = _agy_hooks(project)
+    assert hooks["some-other-hook"] == {"enabled": False, "Stop": []}
+    assert "mso-work-memory" in hooks
 
 
 def test_init_bootstraps_release_record_and_provider_neutral_state_ignore(init_mod, tmp_path):
