@@ -20,8 +20,9 @@ v0.7-r2 스택 (SPEC §6-B, D-13~D-16):
   3) Task partition          — 서로 다른 Workflow의 Task 공유 금지
   4) Feedback-loop control   — default Rail 순환 내 EvalTask/user·criteria DecisionTask 필수
 
-공통: legacy YAML 잔존 경고. SSOT 거버넌스 판정은 이 스킬(mso-workflow-design)이
-소유하며, 관측 스킬(mso-graph-observability)은 판정 없이 리포트로 렌더만 한다.
+공통: legacy YAML 잔존 경고, IRI lint(charset/case-fold collision/타입 접두사).
+SSOT 거버넌스 판정은 이 스킬(mso-workflow-design)이 소유하며, 관측 스킬
+(mso-graph-observability)은 판정 없이 리포트로 렌더만 한다.
 
 Usage:
   python validate_abox.py <path.abox.ttl | workflow-dir> [...] [--json] [--strict]
@@ -30,7 +31,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import collections
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -326,6 +329,62 @@ def _local(node: URIRef) -> str:
     return text.rsplit("/", 1)[-1] if "/" in text else text
 
 
+# 인스턴스 IRI(`wf:<prefix>/<slug>[/<slug>...]`)의 타입 접두사 화이트리스트.
+# 단일 세그먼트(`/` 없음)는 vocabulary term(class/property, camelCase)이라 대상 아님.
+KNOWN_IRI_TYPE_PREFIXES = {
+    "artifact", "criticaldep", "keydecision", "milestone", "module",
+    "node", "phase", "project", "rail", "sc", "stream", "workflow",
+}
+LOCAL_SEGMENT_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
+
+
+def find_iri_lint_issues(g: Graph) -> list[str]:
+    """IRI lint — charset/공백, case-folded 충돌, 인스턴스 IRI 타입 접두사·세그먼트 표기.
+
+    SHACL은 shape 위반(필수 property 누락 등)을, 이 lint는 IRI 표기 자체의
+    오탈자·대소문자 충돌·미등록 타입 접두사를 잡는다. skb-ontology의
+    ttl_validate.py D3(case-folded collision)와 대응 개념이다.
+    """
+    issues: list[str] = []
+    ns_prefix = str(WF)
+    terms: set[URIRef] = set()
+    for triple in g:
+        for node in triple:
+            if isinstance(node, URIRef):
+                terms.add(node)
+
+    folded: dict[str, set[str]] = collections.defaultdict(set)
+    for term in sorted(terms, key=str):
+        text = str(term)
+        if any(ord(c) > 127 for c in text):
+            issues.append(f"[I0] IRI must be ASCII-only: {term}")
+        if any(c.isspace() for c in text):
+            issues.append(f"[I1] IRI must not contain whitespace: {term}")
+        folded[text.casefold()].add(text)
+
+        if not text.startswith(ns_prefix):
+            continue
+        local = text[len(ns_prefix):]
+        if not local or "/" not in local:
+            continue  # vocabulary term (class/property) — camelCase, 대상 아님
+        segments = local.split("/")
+        prefix = segments[0]
+        if prefix not in KNOWN_IRI_TYPE_PREFIXES:
+            issues.append(f"[I2] unknown wf: instance IRI type-prefix {prefix!r}: {term}")
+        for segment in segments:
+            if not segment:
+                issues.append(f"[I3] empty path segment in IRI: {term}")
+            elif not LOCAL_SEGMENT_RE.fullmatch(segment):
+                issues.append(
+                    f"[I4] IRI local segment must match lowercase [a-z0-9_.-]: {term} (segment={segment!r})"
+                )
+
+    for variants in folded.values():
+        if len(variants) > 1:
+            issues.append(f"[I5] case-folded IRI collision: {sorted(variants)}")
+    return issues
+
+
 def find_legacy_yaml_residue(paths: list[Path]) -> list[str]:
     """abox 와 같은 디렉토리의 legacy workflow YAML 잔존 판정 (warning)."""
     warnings: list[str] = []
@@ -355,11 +414,15 @@ def validate_abox(targets: list[Path]) -> dict:
         single.parse(str(path), format="turtle")
         (v07_paths if is_v07_graph(single) else v06_paths).append(path)
 
+    all_graph = parse_graph(paths)
+    iri_lint_issues = find_iri_lint_issues(all_graph)
+
     result: dict = {
         "files": [str(p) for p in paths],
         "v06_files": [str(p) for p in v06_paths],
         "v07_files": [str(p) for p in v07_paths],
         "legacy_yaml_warnings": find_legacy_yaml_residue(paths),
+        "iri_lint_issues": iri_lint_issues,
     }
 
     # ── v0.6 스택 (기존 top-level 키 유지 — 호환) ─────────────────────────
@@ -421,7 +484,7 @@ def validate_abox(targets: list[Path]) -> dict:
         v07_ok = True
         result["v07"] = None
 
-    result["ok"] = v06_ok and v07_ok
+    result["ok"] = v06_ok and v07_ok and not iri_lint_issues
     return result
 
 
@@ -501,6 +564,10 @@ def main(argv=None) -> int:
         print("⚠ [v07] oracle artifact 대상 (D-12):")
         for w in v07["oracle_artifact_warnings"]:
             print(f"  - {w}")
+    if res["iri_lint_issues"]:
+        print("✗ IRI lint 위반:")
+        for i in res["iri_lint_issues"]:
+            print(f"  - {i}")
     if res["step_multi_outgoing_warnings"]:
         print("⚠ [v06] step multi-outgoing (Decision 모델링 권장):")
         for w in res["step_multi_outgoing_warnings"]:

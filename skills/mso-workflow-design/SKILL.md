@@ -16,7 +16,7 @@ description: >
   (4) user/agent decision subject 명시,
   (5) 모듈 간 dependencies 선언.
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # MSO Workflow Design v2
@@ -329,7 +329,7 @@ python skills/mso-workflow-design/scripts/validate_abox.py path/to/one.abox.ttl 
 python skills/mso-workflow-design/scripts/validate_abox.py agent-context/workflow --strict  # warning도 실패로
 ```
 
-검사 항목: ① SHACL 로컬 shape ② uncontrolled feedback loop ③ Eval targetArtifact 정합 ④ directory `dirPath`/`dirRole` 필수 ⑤ Step multi-outgoing(→ Decision 모델링) 경고 ⑥ legacy YAML 잔존 경고. ④~⑥은 SSOT 거버넌스 판정으로 이 스킬이 소유하며, `mso-graph-observability`는 판정 없이 리포트 렌더만 한다.
+검사 항목: ① SHACL 로컬 shape ② uncontrolled feedback loop ③ Eval targetArtifact 정합 ④ directory `dirPath`/`dirRole` 필수 ⑤ Step multi-outgoing(→ Decision 모델링) 경고 ⑥ legacy YAML 잔존 경고 ⑦ IRI lint(ASCII/공백, case-folded IRI 충돌, 인스턴스 IRI 타입 접두사·세그먼트 표기). ④~⑦은 SSOT 거버넌스 판정으로 이 스킬이 소유하며, `mso-graph-observability`는 판정 없이 리포트 렌더만 한다. IRI lint(⑦)는 v0.6/v0.7 파일 전체에 공통 적용되며, 위반 시 SHACL과 동급으로 `ok=False` 처리된다.
 
 **legacy YAML 검증** — migration 입력에만 사용:
 

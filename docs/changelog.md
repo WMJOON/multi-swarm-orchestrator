@@ -1,6 +1,35 @@
 # 변경 이력
 
-## v0.12.1 (2026-08-28) — Antigravity Provider Support
+## v0.11.0 (2026-09-28) — mso-workflow-design IRI Lint Gate
+
+> `mso-workflow-design`의 `validate_abox.py`가 SHACL(v06/v07 shape) 옆에 IRI 표기
+> 자체를 검사하는 lint 게이트를 추가한다. 기존 shape 위반 검출이 필수 property 누락
+> 등 구조적 결함을 잡는다면, 이번 게이트는 IRI 문자열의 오탈자·대소문자 충돌·
+> 미등록 타입 접두사를 잡는다(skb-ontology `ttl_validate.py`의 D3 case-folded
+> collision 검사와 대응 개념).
+
+### Added
+
+- `mso-workflow-design/scripts/validate_abox.py`에 `find_iri_lint_issues()` 함수 추가.
+  v06/v07 파일 전체를 합친 그래프에서 다음을 검사한다:
+  - `[I0]`/`[I1]` IRI ASCII-only, 공백 금지
+  - `[I2]` `wf:<type-prefix>/<slug>...` 형태 인스턴스 IRI의 타입 접두사가
+    `KNOWN_IRI_TYPE_PREFIXES`(`artifact`, `criticaldep`, `keydecision`, `milestone`,
+    `module`, `node`, `phase`, `project`, `rail`, `sc`, `stream`, `workflow`)에
+    등록되어 있는지
+  - `[I3]`/`[I4]` 경로 세그먼트가 비어있지 않고 `lowercase [a-z0-9_.-]` 패턴을 따르는지
+  - `[I5]` case-fold 시 서로 다른 IRI가 충돌하는지 (예: `Workflow/Foo` vs `workflow/foo`)
+  - 단일 세그먼트(vocabulary term, class/property camelCase)는 검사 대상에서 제외한다.
+- `validate_abox()` 반환 dict에 `iri_lint_issues` 키 추가. 위반이 있으면 SHACL/기타
+  구조 검사와 동급으로 `ok=False` 처리된다.
+- `mso-workflow-design/tests/test_iri_lint.py` 신규(6개 테스트) — ASCII/공백,
+  case-folded 충돌, 미등록 타입 접두사, 세그먼트 표기 위반, 정상 케이스 통과를 검증.
+- `SKILL.md` Step 3 검사 항목 목록에 `⑦ IRI lint`를 추가.
+
+### Changed
+
+- `mso-workflow-design` 버전을 0.10.1 → 0.11.0으로 올렸다(기존 게이트에 새 검증
+  차원을 추가하는 additive minor bump).
 
 > Claude Code, Codex 두 provider만 지원하던 `init.py --hook`의 work-memory/scaffold-check
 > hook 자동 등록을 Antigravity로 확장한다. Antigravity는 camelCase I/O에
