@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.12.1
+# Multi-Swarm Orchestrator (MSO) v0.13.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,29 +13,22 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.12.1 (2026-08-28) — Antigravity Provider Support
+### v0.13.0 (2026-10-05) — 연관 저장소 work-memory, TTL artifact 층, PROV-O 정렬 주석
 
-`init.py --hook`에 `--provider antigravity`를 추가해, Claude Code/Codex 두 provider만
-지원하던 work-memory/scaffold-check hook 자동 등록을 Antigravity(`.agents/hooks.json`)까지
-확장했다.
+세 가지를 추가한다. 상세와 시험 결과는 [changelog](docs/changelog.md)에 있다.
 
-- **Antigravity hook 등록**: `.agents/hooks.json`에 hook-name(`mso-work-memory`) 하위로
-  `PostToolUse`(audit/scaffold), `Stop`(stop-check/commit), `PreInvocation`(work-memory-check/
-  release-context/workflow-context/UUG-context)를 등록한다. hooks.json 스펙(hook-name 키잉,
-  event별 flat vs matcher-그룹 구조, camelCase I/O)은 [Antigravity Hooks 공식 문서](https://antigravity.google/docs/hooks/)로 검증했다.
-- **camelCase 어댑터**: Antigravity에는 `SessionStart`/`UserPromptSubmit`/`PreCompact`에
-  직접 대응하는 이벤트가 없다. `hooks/adapter_antigravity.py`가 `PreInvocation`을
-  `invocationNum==0`(세션 시작 근사) / 매 호출(발화 근사) 두 모드로 나눠 처리하고,
-  기존 snake_case 훅 스크립트를 그대로 재사용한다 — 훅 로직 자체는 수정하지 않았다.
-- **미검증 항목**: hook 프로세스의 cwd가 workspace root라는 가정, `command` 문자열의
-  셸 실행 방식, exit code/timeout 처리, `.agents/hooks.json` vs 전역
-  `~/.gemini/config/hooks.json` 우선순위는 공식 문서에도 없어 실제 Antigravity 세션에서
-  아직 검증하지 못했다. 상세는 `planning/mso-PLAN-antigravity-provider-support.md` §7.
-- **설치**: `install.sh --gemini`는 `~/.gemini/antigravity/skills`에 설치한다(기존 기능, 문서 누락 정정).
-
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결, v0.12.0은 Qwen3-Reranker 재정렬 추가, v0.12.1은 Antigravity provider 지원이다.
-
-상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
+- **연관 저장소 work-memory**: 엄브렐러 repo 루트에서 열린 세션도 하위·별도 경로 MSO 저장소의
+  work-memory에 기록하고 커밋한다. `wm_node.py --repo/--repo-name`, 등록부 `linked-repos.yaml`
+  (서브모듈 자동 발견 + 별도 경로), 자동 커밋은 `autocommit: true`로 켠 저장소만 한다.
+  설정·점검 절차는 신규 스킬 `mso-work-memory-link`가 맡는다.
+- **TTL artifact 층**: artifact를 개념(안정 IRI)과 규약 버전(이름 규약, 형식, 디렉토리 템플릿,
+  유효 구간)으로 나눠 TTL로 정의하고 SHACL/SPARQL로 검증한다(`validate_artifact_layer.py`).
+  `consumerType`(Machine/Hybrid/Human), 템플릿 변수, 메타데이터 스키마, 규약 불변(git HEAD 비교),
+  파일 규약 스캔, 계보 질의(`artifact-lineage.rq`)를 포함한다. YAML 레지스트리는 두지 않는다.
+- **PROV-O 정렬 주석 확장(D-23a)**: Execution, Artifact, consumed_by, produces_to, evidence_of의
+  PROV-O 매핑을 TBox 주석에 명시한다. 공리로 단언하거나 `prov:`를 import하지 않는다.
+- **수정**: `sf_node.py` 등 8개 스크립트가 python 3.9에서 `X | None` 문법으로 죽어 scaffold-check
+  훅이 조용히 실패하던 문제를 고쳤다.
 
 ## Core Philosophy
 
@@ -144,7 +137,8 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 | `mso-repository-setup` | 새 repository에 `agent-context/` 구조와 hook을 부트스트랩한다. |
 | `mso-scaffold-design` | repository index와 artifact registry를 관리한다. |
 | `mso-workflow-design` | TTL workflow/artifact/eval node-edge shape와 migration tooling을 관리한다. |
-| `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. |
+| `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. 연관 저장소(`--repo`) 기록·커밋을 지원한다. |
+| `mso-work-memory-link` | 연관 저장소 work-memory 등록·점검(status/add/autocommit/sync-hooks/verify). |
 | `mso-graph-observability` | workflow, artifact stream, eval edge, runtime graph를 관측하고 개선 리포트를 만든다. |
 | `mso-workflow-observation` | workflow observation alias. `mso-graph-observability`의 workflow scope를 호출해 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다. |
 | `mso-workflow-optimizer` | TTL workflow를 실행 가능한 graph artifact로 컴파일하는 방향을 담당한다. |

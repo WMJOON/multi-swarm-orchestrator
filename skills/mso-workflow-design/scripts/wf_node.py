@@ -20,6 +20,8 @@ type: step | decision | eval | group
 - max_depth = 3 (root + 2단계). 순환 참조 차단.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys

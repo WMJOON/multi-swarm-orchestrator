@@ -18,6 +18,8 @@ type: project | module | subdir
 - 전역 module id unique.
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 import unicodedata

@@ -16,6 +16,12 @@ type ∈ {issue-note, agent-decision, user-decision, trouble-shooting,
 
 환경변수:
   WORKMEM_DIR — work-memory 루트 (기본: ./agent-context/work-memory)
+
+대상 저장소 선택 (모든 하위 명령에서, 위치 무관):
+  --repo <경로>        다른 MSO 저장소(루트 또는 work-memory 디렉토리)의 work-memory 를 대상으로 한다
+  --repo-name <이름>   linked-repos.yaml(또는 .gitmodules 자동 발견)에 등록된 이름으로 지정한다
+  둘 다 WORKMEM_DIR 보다 우선하며, 대상 저장소의 schema.yaml 로 어휘와 검증을 한다.
+  등록부 해석은 wm_repos.py 참고.
 """
 
 import argparse
@@ -27,6 +33,47 @@ import sys
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import wm_repos  # noqa: E402
+
+
+def _consume_repo_args(argv):
+    """--repo/--repo-name 을 argv 어디에 있든 꺼내 WORKMEM_DIR 로 반영한다.
+    어휘(_load_vocab)가 import 시점에 WORKMEM_DIR 을 읽으므로 그보다 먼저 호출해야 한다."""
+    repo = name = None
+    out, i = [], 0
+    while i < len(argv):
+        a = argv[i]
+        for flag in ("--repo", "--repo-name"):
+            if a == flag and i + 1 < len(argv):
+                v = argv[i + 1]; i += 1
+                if flag == "--repo": repo = v
+                else: name = v
+                break
+            if a.startswith(flag + "="):
+                v = a.split("=", 1)[1]
+                if flag == "--repo": repo = v
+                else: name = v
+                break
+        else:
+            out.append(a)
+        i += 1
+    if repo:
+        p = Path(repo).expanduser().resolve()
+        wm = p if (p / "schema.yaml").is_file() else p / "agent-context" / "work-memory"
+        if not (wm / "schema.yaml").is_file():
+            sys.exit(f"--repo: work-memory(schema.yaml)를 찾지 못했습니다: {wm}")
+        os.environ["WORKMEM_DIR"] = str(wm)
+    elif name:
+        wm = wm_repos.find_workmem(wm_repos.project_root(), name)
+        if wm is None:
+            sys.exit(f"--repo-name: 등록된 연관 저장소가 없습니다: {name} (linked-repos.yaml 또는 .gitmodules 확인)")
+        os.environ["WORKMEM_DIR"] = str(wm)
+    return out
+
+
+sys.argv[1:] = _consume_repo_args(sys.argv[1:])
 
 # ─── 타입·relation 어휘 (schema-driven, 하위호환) ────────────────────────
 # 기본값 = work-memory 표준(7 entry + auditlog/worklog). WORKMEM_DIR/schema.yaml 에

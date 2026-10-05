@@ -1,5 +1,71 @@
 # 변경 이력
 
+## v0.13.0 (2026-10-05) — 연관 저장소 work-memory, TTL artifact 층, PROV-O 정렬 주석
+
+> 세 갈래를 함께 낸다. (1) 엄브렐러 repo 루트 세션이 하위·별도 경로 MSO 저장소의 work-memory에 기록·커밋하지 못하던 공백을 메운다.
+> (2) artifact를 YAML이 아니라 TTL로 정의해 이름 규약, 형식, 디렉토리, 소비자 유형을 SHACL/SPARQL로 검증한다.
+> (3) PROV-O 정렬을 주석으로 확장한다(D-23 유지).
+
+### Added
+
+- `mso-work-memory`: `wm_node.py`에 `--repo <경로>`, `--repo-name <이름>`(명령 앞뒤 어디든). `scripts/wm_repos.py`가
+  `agent-context/work-memory/linked-repos.yaml`과 `.gitmodules`(work-memory가 있는 서브모듈 자동 발견)를 해석한다.
+  `commit-work-memory.sh`는 `autocommit: true`인 연관 저장소의 work-memory만 각자의 git에서 커밋한다
+  (push 없음, 서브모듈 포인터 불변, `MSO_WM_LINKED=0`으로 끔). `work-memory-check.sh`는 SessionStart에서 연관 저장소에
+  work-memory 최신 기록 이후의 작업 흔적이 있으면 알린다(파일 수정 시각 기준, 오탐 가능). 시험 `tests/test_linked_repos.py`.
+- `mso-work-memory-link`(신규 스킬, v0.1.0): `status`/`add`/`remove`/`autocommit`/`sync-hooks`(기본 dry-run)/`verify`.
+  포함하는 git의 HEAD 손상도 `verify`가 표시한다. `install.sh` 설치 목록에 추가.
+- `mso-workflow-design` artifact 층(TBox/SHACL은 additive 파일, GENERATED `workflow-tbox-v07.ttl`은 소스 주석만 변경):
+  - `references/tbox/workflow-artifact-layer-tbox.ttl`, `references/shapes/workflow-artifact-layer-shapes.ttl`.
+  - 개념 `wf:RegisteredArtifact`(안정 IRI, 유형·소비자·설명)과 규약 버전 `wf:ArtifactConvention`(`directoryTemplate`,
+    `namingConvention`, `fileFormat` 각각 1개, 변수 `[name]`+`wf:hasParam`, 메타데이터 `wf:hasMetadata`, `validFrom`/`validUntil`/`supersededBy`).
+  - `consumerType`(Machine|Hybrid|Human)과 소비 Execution `hasSubject` 교차 점검. producer/consumer는 속성으로 저장하지 않고
+    `wf:Stream`에서 도출(소비하는데 생산자 없음, 생산하는데 소비자 없음은 Violation, `wf:externalSource` 면제).
+  - `scripts/validate_artifact_layer.py`: SHACL/SPARQL + git HEAD와 비교한 규약 불변 검사(커밋된 규약의 세 요소 변경·삭제는 Violation)
+    + `--scan`(항목 날짜로 유효 규약을 골라 파일 규약, 기간 밖, 레거시, 현행 미분류, 필수 메타데이터 누락과 현행 규약 대비 갭 집계, `--json`).
+  - `references/queries/artifact-lineage.rq`: 어떤 artifact가 어떤 Execution을 거쳐 어떤 artifact가 되는지(변형 파일 계보).
+  - `scripts/pattern_to_workflow_draft.py`: 절차형 pattern(에피소드 2개 이상 + 번호 단계)에서 draft 순차 Task 체인 ABox를 만든다
+    (결정론, 모델 호출 없음, 항상 `draft`, 승격은 사람 승인).
+- `mso-scaffold-design/scripts/check_artifact_index.py`: workflow TTL의 경로·locator 참조가 index와 artifact registry에 매핑되는지 읽기 전용 점검.
+- 시험: `test_validate_artifact_layer.py`, `test_pattern_to_workflow_draft.py`, `test_check_artifact_index.py`, `test_linked_repos.py`, `test_wm_link.py`.
+
+### Changed
+
+- `mso-repository-setup`: `--hook`이 `wm_repos.py`도 프로젝트 hook 디렉토리로 복사한다(없으면 새 프로젝트에서 연관 저장소 기능이 조용히 빠진다).
+- PROV-O 정렬 주석(D-23a): `wf:Execution`/`wf:Artifact`(equivalentClass 표기), `wf:consumed_by`/`wf:produces_to`/`wf:evidence_of`의
+  inverseOf(`prov:used`/`prov:wasGeneratedBy`/`prov:wasDerivedFrom`)를 TBox 소스(`schemas/v07/tbox.ttl`)에 주석으로 명시하고
+  `schemas_to_tbox.py`로 생성 TBox를 재생성했다. 공리로 단언하지 않고 `prov:`를 import하지 않는다. 방향 주의(역 관계)를 주석에 적었다.
+- `tests/test_skill_interactions.py`: 하드코딩된 `0.10.1` 요구를 위 방식으로 교체.
+- 패키지 동기 버전은 v0.13.0으로 올렸다. 스킬 독립 semver: `mso-work-memory` 0.11.0, `mso-scaffold-design` 0.11.0,
+  `mso-workflow-design` 0.12.0(IRI lint 0.11.0 위), `mso-repository-setup` 0.12.2. 변경 없는 스킬은 유지한다.
+
+### Fixed
+
+- `sf_node.py`, `wf_node.py`, `wf_to_ttl.py`, `schemas_to_tbox.py`, `workflow_to_markdown.py`, `workflow_to_mermaid.py`, `init.py`,
+  `workflow-context-hook.py`에 `from __future__ import annotations`를 넣었다. 시스템 python3(3.9)에서 `X | None` 문법으로 죽어
+  `scaffold-check` 훅이 비차단이라 조용히 실패하던 문제다.
+
+### Tests
+
+- Python 3.11 + `pyshacl`, `rdflib`, `pytest` 환경에서 이 브랜치에 실행: `mso-workflow-design` `126 passed`, `mso-work-memory` `78 passed`,
+  `mso-repository-setup` `16 passed`, `mso-work-memory-link` `6 passed`, `mso-scaffold-design` `5 passed`, 패키지 `tests/` `15 passed`(합계 246).
+- 패키지 `tests/test_skill_interactions.py`는 원격 `main`에서 이미 3건 실패하던 상태였다. README 헤더와 모든 스킬 버전이 `0.10.1`이라고
+  하드코딩해 두었기 때문이다. 이번에 README 헤더가 changelog 최신 버전과 같은지, 각 스킬 버전이 semver 형식인지만 확인하도록 바꿨다
+  (스킬 독립 semver 방침과 맞춤). 나머지 1건(`scaffold-check` 인벤토리 불일치)은 3.9 호환 수정으로 통과한다.
+- 시스템 python 3.9에서는 기존 시험 일부(`X | None`을 시험 코드가 직접 쓰는 파일, `tomllib`)가 수집 단계에서 실패한다. 이 변경과 무관한 기존 한계다.
+
+### Known Gaps / 미검증
+
+- `evidence_of`의 PROV-O 정렬 주석 중 "PROV는 사용·생성만으로 파생을 함의하지 않는다"는 서술은 W3C 명세로 확인하지 못했다.
+- 연관 저장소 넛지는 파일 수정 시각 기준이라 체크아웃·풀로 바뀐 파일도 흔적으로 센다.
+- artifact 층의 디렉토리 층 연결(`wf:inModule`)은 임시 문자열이다. 디렉토리 층(index.yaml)을 TTL로 옮기면 객체 속성으로 바꾼다.
+- `pattern_to_workflow_draft.py`는 순차 Task 체인만 만든다(분기·Decision·artifact stream은 사람이 설계).
+- 이 저장소에는 artifact registry 예시를 두지 않았다(소비 프로젝트의 `agent-context/index/artifacts.abox.ttl`).
+
+### Note
+
+- 바로 아래 `v0.11.0 (2026-09-28)` 항목은 `mso-workflow-design` 스킬의 독립 버전 라벨(IRI lint)이다. 패키지 동기 버전은 v0.12.1까지 진행돼 있어 이번 릴리스를 v0.13.0으로 올렸다.
+
 ## v0.11.0 (2026-09-28) — mso-workflow-design IRI Lint Gate
 
 > `mso-workflow-design`의 `validate_abox.py`가 SHACL(v06/v07 shape) 옆에 IRI 표기

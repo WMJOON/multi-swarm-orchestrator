@@ -1,0 +1,12 @@
+# artifact 계보: 어떤 artifact 가 어떤 Execution 을 거쳐 어떤 artifact 가 되는가 (변형 파일의 추적).
+# registry(artifacts.abox.ttl) + workflow ABox 를 한 그래프로 합쳐 실행한다. 같은 Execution 이 소비한 모든 입력과 생산한 모든 출력의 조합이므로
+# Execution 단위의 계보다(어느 입력이 어느 출력의 근거인지는 wf:evidence_of 로 더 좁힐 수 있다).
+PREFIX wf: <https://mso.dev/ontology/workflow#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT DISTINCT ?source ?execution ?produced WHERE {
+  ?c a wf:Stream ; wf:streamType "consumed_by" ; wf:from ?source ; wf:to ?e .
+  ?p a wf:Stream ; wf:streamType "produces_to" ; wf:from ?e ; wf:to ?produced .
+  ?source a wf:RegisteredArtifact . ?produced a wf:RegisteredArtifact .
+  ?e rdfs:label ?execution .
+}
+ORDER BY ?execution ?source ?produced

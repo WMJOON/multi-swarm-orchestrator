@@ -3,6 +3,8 @@
 workflow YAML을 마크다운으로 변환
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path

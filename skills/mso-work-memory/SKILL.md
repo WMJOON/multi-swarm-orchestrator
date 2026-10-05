@@ -21,7 +21,7 @@ description: >
       camelCase hooks.json(PostToolUse/Stop/PreInvocation) 을 기존 snake_case
       훅 계약으로 변환한다 (등록은 mso-repository-setup 담당).
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # MSO Work Memory
@@ -74,6 +74,28 @@ agent-context/work-memory/
 > `scripts/wm_migrate.py`(dry-run 기본, `--apply`)로 타입별 aggregate 로 합치고 원본은
 > `.migration-archive/` 로 옮긴다. reader(validate/show/graph/stats/ttl)는 신/구를 모두
 > 읽지만 **같은 트리 안 공존은 DUP-ID 를 유발**하므로 마이그레이션 후 archive 가 필수다.
+
+## 연관 저장소 work-memory (버전 미지정, v0.10.1 이후 변경)
+
+한 세션이 프로젝트 루트(예: 엄브렐러 repo)에서 열려도 하위 저장소(서브모듈)나 별도 경로의 MSO 저장소에서 일할 수 있다. 훅은 `CLAUDE_PROJECT_DIR` 하나만 대상으로 하므로, 그 저장소 work-memory 에는 기록도 커밋도 되지 않던 공백을 메운다.
+
+**등록부** `<root>/agent-context/work-memory/linked-repos.yaml` (선택):
+
+```yaml
+discover_gitmodules: true          # 기본 true. .gitmodules 서브모듈 중 work-memory 가 있는 곳을 자동 발견
+linked_repos:
+  - name: my-knowledge-base        # --repo-name 으로 부르는 이름
+    path: my-knowledge-base        # 절대, ~, 또는 루트 기준 상대
+    autocommit: true               # Stop 훅이 이 저장소 work-memory 를 자동 커밋 (기본 false)
+  - name: mso
+    path: ~/Library/Mobile Documents/.../00_multi-swarm-orchestrator
+```
+
+- 자동 발견된 서브모듈은 `autocommit: false`다. 켜려면 같은 `path` 로 항목을 두고 `autocommit: true` 를 준다(등록부 항목이 이긴다). 없는 경로는 조용히 건너뛴다.
+- **기록**: `wm_node.py <명령> --repo <경로>` 또는 `--repo-name <이름>`(위치 무관). 대상 저장소의 `schema.yaml` 로 어휘와 검증을 한다. `WORKMEM_DIR` 보다 우선한다.
+- **커밋**: `commit-work-memory.sh` 가 루트에 더해 `autocommit: true` 저장소의 work-memory 를 각자의 git 에서 커밋한다. work-memory 경로만 stage 하고 push 하지 않으며 서브모듈 포인터는 건드리지 않는다. `MSO_WM_LINKED=0` 으로 이 확장만 끈다.
+- **넛지**: `work-memory-check.sh` 는 SessionStart 에서, 연관 저장소의 work-memory 최신 기록보다 나중에 바뀐 파일이 있으면 어느 저장소에 기록이 필요할 수 있는지 알린다. 파일 수정 시각 기준이라 체크아웃·풀로 바뀐 파일도 흔적으로 센다(오탐 가능).
+- 해석기: `scripts/wm_repos.py list|resolve`. 시험: `tests/test_linked_repos.py`.
 
 ## Entry 타입 매트릭스
 

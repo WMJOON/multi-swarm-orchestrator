@@ -38,7 +38,7 @@ wf:Node a owl:Class ; rdfs:label "Node"@ko ;
     rdfs:comment "Repository Graph의 정점. Execution/Artifact/Terminal(Start/End)의 상위."@ko .
 
 wf:Execution a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Execution"@ko ;
-    rdfs:comment "실행 단위의 상위 개념 (D-13). Task/Decision/Eval의 상위. 모든 Execution은 hasSubject를 가진다(기본 self). '무엇을 실행하는가'뿐 아니라 '누가 실행하는가'를 함께 표현한다."@ko .
+    rdfs:comment "실행 단위의 상위 개념 (D-13). Task/Decision/Eval의 상위. 모든 Execution은 hasSubject를 가진다(기본 self). '무엇을 실행하는가'뿐 아니라 '누가 실행하는가'를 함께 표현한다. PROV-O 정렬(주석, 공리 아님, D-23): wf:Execution owl:equivalentClass prov:Activity. 설계 단계의 Execution 은 계획된 단계(p-plan:Step), 실행 기록의 Execution 은 prov:Activity 로 읽는다."@ko .
 
 wf:Task a owl:Class ; rdfs:subClassOf wf:Execution ; rdfs:label "Task"@ko ;
     rdfs:comment "순차 실행 Execution. out default-Rail 정확히 1. 분기 불가 — 분기는 Decision. (r2: Execution의 한 유형, v0.6 Step 승계)"@ko .
@@ -50,7 +50,7 @@ wf:Eval a owl:Class ; rdfs:subClassOf wf:Execution ; rdfs:label "Eval"@ko ;
     rdfs:comment "측정/평가/검증 Execution. in measured_by Rail(증거) + measures Rail(평가 단위: WorkflowGraph closure) 필수. OracleWorkflow에만 속한다."@ko .
 
 wf:Artifact a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Artifact"@ko ;
-    rdfs:comment "공급망 산출물 정식 노드 (Artifact First — Document/Prompt/Policy/Ontology/KB/Dataset/DB 전부). locator + artifactType 보유."@ko .
+    rdfs:comment "공급망 산출물 정식 노드 (Artifact First — Document/Prompt/Policy/Ontology/KB/Dataset/DB 전부). locator + artifactType 보유. PROV-O 정렬(주석, 공리 아님, D-23): wf:Artifact owl:equivalentClass prov:Entity. 설계 단계의 artifact 개념은 p-plan:Variable, 구체 파일은 prov:Entity 로 읽는다."@ko .
 
 wf:Terminal a owl:Class ; rdfs:subClassOf wf:Node ; rdfs:label "Terminal"@ko ;
     rdfs:comment "Execution Graph의 경계 노드 상위 개념 (ROADMAP §2). Start/End의 상위. Execution이 아니며 Stream에 참여하지 않는다."@ko .
@@ -127,6 +127,17 @@ wf:metricDimension a owl:DatatypeProperty ; rdfs:label "metricDimension"@ko ;
     rdfs:domain wf:Eval ; rdfs:range xsd:string ;
     rdfs:comment "다목적 측정 차원: trust | quality | cost | speed | safety | robustness | resource_usage. 0..n. Evaluation은 WorkflowGraph 전체를 이 차원들로 측정한다 (ROADMAP §0)."@ko .
 
+# ─── PROV-O 정렬 선언 (문서화 전용, 주석, 공리로 단언하지 않는다 — D-23 유지) ──────────────────
+# 2026-10-05 사용자 결정: 정렬은 주석으로만 두고 prov: 를 import 하지 않는다. 아래 선언은 소비 팩(MSM 등)과 외부 도구가
+# 변환·정렬할 때 기준으로 삼는 매핑이다. 단언하지 않는 이유: wf:Execution/Artifact 는 설계 단계 노드이고 prov:Activity/Entity 는
+# 실행 기록이라, equivalentClass 를 단언하면 prov:Activity 인 모든 것이 wf:Execution 이 되어 SHACL 대상이 퍼지고 계획과 사건이 섞인다.
+#   wf:Execution   owl:equivalentClass prov:Activity .        # 설계 단계는 p-plan:Step
+#   wf:Artifact    owl:equivalentClass prov:Entity .          # 설계 단계의 개념은 p-plan:Variable
+#   wf:consumed_by owl:inverseOf prov:used .
+#   wf:produces_to owl:inverseOf prov:wasGeneratedBy .
+#   wf:evidence_of owl:inverseOf prov:wasDerivedFrom .
+# 공리로 쓰고 싶으면 별도 opt-in 정렬 파일로 분리해 기본 로딩에서 제외한다(prov: import 없음 원칙 유지).
+
 # ─── Provenance 층 (v0.9.0, ROADMAP §6·§7 / SPEC mso-v0.9.0) ─────────────────
 # 모든 Artifact와 Execution은 Provenance를 가진다. 어휘 정본은 MSO(wf:)이며
 # W3C PROV-O 정렬은 주석으로 문서화한다 (D-23, 운영 원칙 3). 소비 팩(MSM 등)은
@@ -165,14 +176,14 @@ wf:policy a owl:DatatypeProperty ; rdfs:label "policy"@ko ;
 
 wf:consumed_by a owl:ObjectProperty ; rdfs:label "consumed_by"@ko ;
     rdfs:domain wf:Artifact ; rdfs:range wf:Execution ;
-    rdfs:comment "Stream(consumed_by)의 술어 projection. materialize가 인스턴스에서 파생 emit."@ko .
+    rdfs:comment "Stream(consumed_by)의 술어 projection. materialize가 인스턴스에서 파생 emit. PROV-O 정렬(주석, 공리 아님, D-23): wf:consumed_by owl:inverseOf prov:used. 방향 주의: consumed_by 는 Artifact→Execution, prov:used 는 Activity→Entity."@ko .
 wf:produces_to a owl:ObjectProperty ; rdfs:label "produces_to"@ko ;
     rdfs:domain wf:Execution ; rdfs:range wf:Artifact ;
-    rdfs:comment "Stream(produces_to)의 술어 projection."@ko .
+    rdfs:comment "Stream(produces_to)의 술어 projection. PROV-O 정렬(주석, 공리 아님, D-23): wf:produces_to owl:inverseOf prov:wasGeneratedBy. 방향 주의: produces_to 는 Execution→Artifact, prov:wasGeneratedBy 는 Entity→Activity."@ko .
 wf:evidence_of a owl:ObjectProperty ; rdfs:label "evidence_of"@ko ;
     rdfs:domain wf:Artifact ; rdfs:range wf:Artifact ;
     owl:propertyChainAxiom ( wf:consumed_by wf:produces_to ) ;
-    rdfs:comment "근거 관계. consumed_by ∘ produces_to = evidence_of (ROADMAP §5). 소비된 Artifact는 그 Execution이 생산한 Artifact의 근거다."@ko .
+    rdfs:comment "근거 관계. consumed_by ∘ produces_to = evidence_of (ROADMAP §5). 소비된 Artifact는 그 Execution이 생산한 Artifact의 근거다. PROV-O 정렬(주석, 공리 아님, D-23): wf:evidence_of owl:inverseOf prov:wasDerivedFrom. 방향 주의: evidence_of(입력, 출력) 은 wasDerivedFrom(파생=출력, 원천=입력)의 역이다. PROV 는 사용·생성 사실만으로 파생을 함의하지 않는 것으로 알고 있어(W3C 명세 확인 필요) 이 chain 은 MSO 정의가 PROV 를 강화한 것이다."@ko .
 
 wf:derived a owl:DatatypeProperty ; rdfs:label "derived"@ko ;
     rdfs:domain wf:Edge ; rdfs:range xsd:boolean ;

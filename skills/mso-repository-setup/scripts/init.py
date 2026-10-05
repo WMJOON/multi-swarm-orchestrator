@@ -26,6 +26,8 @@ init.py — MSO Repository Setup CLI
                                     adapter_antigravity.py 로 camelCase I/O 변환)
 """
 
+from __future__ import annotations
+
 import argparse
 import datetime as dt
 import json
@@ -367,6 +369,13 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         shutil.copy(wm_context_src, scripts_dst / "wm_context.py")
         (scripts_dst / "wm_context.py").chmod(0o755)
         copied.append("wm_context.py")
+    # commit-work-memory.sh / work-memory-check.sh 가 연관 저장소(linked-repos.yaml)를 해석하는 wm_repos.py
+    # 도 동봉한다 — 훅은 자기 옆의 wm_repos.py 를 먼저 찾는다.
+    wm_repos_src = hooks_dir.parent / "scripts" / "wm_repos.py"
+    if wm_repos_src.exists():
+        shutil.copy(wm_repos_src, scripts_dst / "wm_repos.py")
+        (scripts_dst / "wm_repos.py").chmod(0o755)
+        copied.append("wm_repos.py")
     scaffold_hooks_dir = scaffold_skill_dir / "hooks"
     for fn in SCAFFOLD_HOOK_FILES:
         src = scaffold_hooks_dir / fn
