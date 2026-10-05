@@ -115,6 +115,12 @@ Execution Rail + Artifact Stream Graph = **Repository Graph** 이며, 여기에 
 | `local_database` | `cache.sqlite`, DuckDB cache | Agent | 빠른 조회와 질의를 제공한다. |
 | `document` | `README.md`, `report.md`, `prompt.md` | Human + Agent | 사람과 에이전트가 함께 읽고 수정하는 협업 인터페이스다. |
 | `media` | `html`, `pdf`, `pptx`, `png`, `svg` | Human | 외부 전달을 위한 human-native deliverable이다. |
+| `table` | `csv`, `tsv`, `xlsx` | Human + Agent | 사람도 열어 보는 표 형태 데이터다. |
+| `tool` | `py`, `sh` 스크립트 | Agent | 에이전트가 실행하는 도구다. |
+
+v0.13.0부터 artifact는 TTL registry에서 **개념(안정 IRI)과 규약 버전**으로 정의하고, 개별 artifact마다 소비자 유형
+`consumerType`(Machine / Hybrid / Human)을 선언한다. 위 표의 Primary Consumer는 유형의 기본값이다. 자세한 모델은
+[docs/artifact-model.md](docs/artifact-model.md)를 본다.
 
 ## What MSO Provides
 
@@ -152,7 +158,8 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 ```text
 agent-context/
 ├── index/
-│   └── index.yaml
+│   ├── index.yaml                  # 디렉토리 층 SSOT
+│   └── artifacts.abox.ttl          # artifact 층 SSOT (v0.13.0, 선택)
 ├── workflow/
 │   └── *.abox.ttl
 ├── observability/
@@ -173,7 +180,8 @@ agent-context/
     ├── auditlog/
     ├── worklog/
     ├── track-record/
-    └── insight-record/
+    ├── insight-record/
+    └── linked-repos.yaml           # 연관 저장소 등록부 (v0.13.0, 선택)
 ```
 
 ## Quick Start
@@ -249,6 +257,38 @@ python3 skills/mso-work-memory/scripts/wm_node.py new user-decision \
 python3 skills/mso-work-memory/scripts/wm_node.py validate agent-context/work-memory
 ```
 
+### Link Related Repositories (v0.13.0)
+
+엄브렐러 repo 루트에서 연 세션도 하위·별도 경로 MSO 저장소의 work-memory에 기록하고 커밋한다.
+
+```bash
+LINK=skills/mso-work-memory-link/scripts/wm_link.py
+python3 $LINK status                      # 등록·발견된 저장소, autocommit, 훅 사본 일치, git 건강
+python3 $LINK add mso ~/path/to/mso --autocommit
+python3 $LINK autocommit my-knowledge-base on
+python3 $LINK sync-hooks                  # 훅 사본 vs 스킬 최신판 비교(기본 dry-run, --apply 로 교체)
+python3 $LINK verify
+
+# 연관 저장소에 기록
+python3 skills/mso-work-memory/scripts/wm_node.py new agent-decision --title "..." --repo-name my-knowledge-base
+```
+
+서브모듈 중 work-memory가 있는 곳은 자동 발견되며 자동 커밋은 꺼져 있다. 켜려면 `autocommit on`으로 등록부에 항목을 만든다.
+push는 하지 않고 서브모듈 포인터도 건드리지 않는다.
+
+### Validate The Artifact Layer (v0.13.0)
+
+```bash
+# artifact registry(TTL)와 workflow Stream을 SHACL/SPARQL로 검증하고, 실제 파일이 규약에 맞는지 스캔한다
+python3 skills/mso-workflow-design/scripts/validate_artifact_layer.py --root . --scan [--json out.json]
+
+# workflow의 경로·locator 참조가 index와 registry에 매핑되는지 점검
+python3 skills/mso-scaffold-design/scripts/check_artifact_index.py --root . [--suggest]
+
+# 변형 파일의 계보: registry + workflow ABox에 artifact-lineage.rq 를 실행한다
+# (skills/mso-workflow-design/references/queries/artifact-lineage.rq)
+```
+
 ## Design Principles
 
 **Provider Free.** MSO는 Claude Code, Codex, Antigravity 등 provider runtime 위에서 동작하지만 특정 provider에 종속되지 않는다.
@@ -270,10 +310,16 @@ rdflib>=7.0
 pyshacl>=0.31
 ```
 
+시험은 python 3.11 이상 환경을 권장한다(일부 시험이 `tomllib`을 쓰고 SHACL 시험은 `pyshacl`이 필요하다). 스크립트 자체는 python 3.9에서도 동작한다.
+
 ## References
 
 - [docs/artifact-model.md](docs/artifact-model.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/getting-started.md](docs/getting-started.md)
 - [docs/changelog.md](docs/changelog.md)
 - [skills/mso-graph-observability/SKILL.md](skills/mso-graph-observability/SKILL.md)
 - [skills/mso-workflow-design/SKILL.md](skills/mso-workflow-design/SKILL.md)
 - [skills/mso-work-memory/SKILL.md](skills/mso-work-memory/SKILL.md)
+- [skills/mso-work-memory-link/SKILL.md](skills/mso-work-memory-link/SKILL.md)
+- [skills/mso-scaffold-design/SKILL.md](skills/mso-scaffold-design/SKILL.md)
