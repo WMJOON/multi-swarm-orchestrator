@@ -59,13 +59,13 @@ wf:AnyToken  a wf:ParamType ; wf:paramRegex "[^/]+" ; rdfs:label "AnyToken"@ko ;
 # ─── 속성: 세 요소 ───────────────────────────────────────────────────────────────
 wf:namingConvention a owl:DatatypeProperty ; rdfs:label "namingConvention"@ko ;
     rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
-    rdfs:comment "파일 이름(확장자 제외)의 템플릿. 변수는 [name]. 예: [date]-naver-[blog_title]. 정확히 하나."@ko .
+    rdfs:comment "파일 이름(확장자 제외)의 템플릿. 변수는 [name]. 예: [date]-post-[blog_title]. 정확히 하나."@ko .
 wf:fileFormat a owl:DatatypeProperty ; rdfs:label "fileFormat"@ko ;
     rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
     rdfs:comment "파일 확장자(점 없음, 소문자). 정확히 하나."@ko .
 wf:directoryTemplate a owl:DatatypeProperty ; rdfs:label "directoryTemplate"@ko ;
     rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
-    rdfs:comment "artifact 가 만들어지는 디렉토리의 템플릿(repo-root 기준, 끝 '/'). 변수는 [name]. 예: [project]/naver-blog/[date]/. 정확히 하나."@ko .
+    rdfs:comment "artifact 가 만들어지는 디렉토리의 템플릿(repo-root 기준, 끝 '/'). 변수는 [name]. 예: [project]/blog/[date]/. 정확히 하나."@ko .
 
 # ─── 속성: 변수, 유형, 소비자, 메타데이터 ────────────────────────────────────────────
 wf:hasParam a owl:ObjectProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range wf:ArtifactParam ;

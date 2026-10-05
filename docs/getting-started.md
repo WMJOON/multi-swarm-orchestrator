@@ -305,8 +305,8 @@ cp skills/mso-workflow-design/hooks/workflow-check.sh .claude/scripts/
 ```yaml
 discover_gitmodules: true          # 기본 true. work-memory가 있는 서브모듈을 자동 발견 (autocommit 은 꺼짐)
 linked_repos:
-  - name: my-knowledge-base
-    path: my-knowledge-base        # 절대, ~, 또는 루트 기준 상대
+  - name: child-repo
+    path: child-repo        # 절대, ~, 또는 루트 기준 상대
     autocommit: true               # Stop 훅이 이 저장소의 work-memory 만 자동 커밋
 ```
 
@@ -314,13 +314,13 @@ linked_repos:
 LINK=~/.claude/skills/mso-work-memory-link/scripts/wm_link.py
 python3 $LINK status                          # 저장소별 autocommit, git 건강, work-memory 미커밋, 훅 사본 일치
 python3 $LINK add mso ~/path/to/repo --autocommit
-python3 $LINK autocommit my-knowledge-base on   # 발견만 된 서브모듈은 항목을 새로 만든다
+python3 $LINK autocommit child-repo on   # 발견만 된 서브모듈은 항목을 새로 만든다
 python3 $LINK sync-hooks                      # 훅 사본과 스킬 최신판 비교 (기본 dry-run, --apply 로 교체)
 python3 $LINK verify                          # 경로, git HEAD, 훅 문법
 
 # 연관 저장소 work-memory 에 기록
 WM=~/.claude/skills/mso-work-memory/scripts/wm_node.py
-python3 $WM new agent-decision --title "..." --repo-name my-knowledge-base
+python3 $WM new agent-decision --title "..." --repo-name child-repo
 python3 $WM stats --repo ~/path/to/repo       # 경로로 직접 지정해도 된다
 ```
 

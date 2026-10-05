@@ -13,22 +13,42 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.13.0 (2026-10-05) — 연관 저장소 work-memory, TTL artifact 층, PROV-O 정렬 주석
+### v0.13.0 (2026-10-05) — 여러 저장소를 횡단하며 작업하고, 맥락을 TTL 지식 그래프로 찾는다
 
-세 가지를 추가한다. 상세와 시험 결과는 [changelog](docs/changelog.md)에 있다.
+작업은 한 저장소에서 끝나지 않는다. 엄브렐러 repo 아래에 서브모듈과 별도 경로의 저장소가 여럿 있고, 한 세션이 그 사이를 오가며 일한다.
+그런데 결정, 산출물, 실행 흐름이 저장소마다 따로 기록되면 "이 파일은 어떤 규약으로 어떤 작업에서 만들어졌나", "이 결정은 어떤 이슈에서
+나왔나"를 찾을 수 없다. v0.13.0은 **여러 저장소를 횡단하면서 작업할 수 있게** 하고, 이를 위해 작업 맥락을 **TTL 형태의 지식 그래프**로
+구조화해 서로 연결하고 질의로 찾을 수 있게 한다.
 
-- **연관 저장소 work-memory**: 엄브렐러 repo 루트에서 열린 세션도 하위·별도 경로 MSO 저장소의
-  work-memory에 기록하고 커밋한다. `wm_node.py --repo/--repo-name`, 등록부 `linked-repos.yaml`
-  (서브모듈 자동 발견 + 별도 경로), 자동 커밋은 `autocommit: true`로 켠 저장소만 한다.
-  설정·점검 절차는 신규 스킬 `mso-work-memory-link`가 맡는다.
-- **TTL artifact 층**: artifact를 개념(안정 IRI)과 규약 버전(이름 규약, 형식, 디렉토리 템플릿,
-  유효 구간)으로 나눠 TTL로 정의하고 SHACL/SPARQL로 검증한다(`validate_artifact_layer.py`).
-  `consumerType`(Machine/Hybrid/Human), 템플릿 변수, 메타데이터 스키마, 규약 불변(git HEAD 비교),
-  파일 규약 스캔, 계보 질의(`artifact-lineage.rq`)를 포함한다. YAML 레지스트리는 두지 않는다.
-- **PROV-O 정렬 주석 확장(D-23a)**: Execution, Artifact, consumed_by, produces_to, evidence_of의
-  PROV-O 매핑을 TBox 주석에 명시한다. 공리로 단언하거나 `prov:`를 import하지 않는다.
-- **수정**: `sf_node.py` 등 8개 스크립트가 python 3.9에서 `X | None` 문법으로 죽어 scaffold-check
-  훅이 조용히 실패하던 문제를 고쳤다.
+**여러 저장소를 횡단하는 방식**
+
+| 무엇을 | 어떻게 횡단하나 | 도구 |
+|---|---|---|
+| 작업 기록(결정, 이슈, 해결, 회고) | 어느 저장소에서 일했든 **그 저장소의** work-memory에 기록하고 커밋한다. 등록부 `linked-repos.yaml`이 서브모듈과 별도 경로를 묶는다 | `wm_node.py --repo/--repo-name`, `commit-work-memory.sh`(autocommit 옵트인) |
+| 산출물 규약(어디에 어떤 이름과 형식으로 만드는가) | 프로젝트의 **하나의 registry**(`artifacts.abox.ttl`)가 여러 저장소의 산출물을 정의한다. 디렉토리 템플릿에 저장소 경로가 들어가고 `wf:inModule`로 모듈에 연결한다 | `validate_artifact_layer.py` |
+| 실행 흐름(누가 무엇을 소비하고 생산하는가) | workflow `*.abox.ttl` 한 곳의 `wf:Stream`이 여러 저장소의 artifact 개념 IRI를 잇는다 | `artifact-lineage.rq` |
+| 기록 누락 점검 | 여러 저장소에 작업 흔적이 있는데 기록이 비어 있는지 한 번에 본다 | `wm_link.py status`, `work-memory-check.sh` |
+
+**TTL 지식 그래프로 맥락을 찾는다.** 작업 기록은 JSONL이 정본이고 관계 그래프(TTL projection)로 투영된다. 산출물 규약과 실행 흐름은 처음부터 TTL이다.
+세 층이 같은 어휘(`wf:`, PROV-O 정렬 주석)로 이어지므로 아래 질문에 답할 수 있다.
+
+| 찾고 싶은 맥락 | 어디서 답하나 | 도구 |
+|---|---|---|
+| 이 결정은 어떤 이슈나 사고에서 나왔나, 어떤 회고로 이어졌나 | work-memory 관계 그래프(`caused-by`, `resolved-by`, `analyzed-in` 등) | `wm_node.py graph <id> --repo-name <이름>` |
+| 지금 하는 작업과 관련된 과거 기록은 | work-memory context pack | `wm_context.py node` / `query` |
+| 이 파일은 어떤 규약을 따르고 그 규약은 언제 바뀌었나 | artifact 규약 버전과 유효 구간, 파일 규약 스캔 | `validate_artifact_layer.py --scan` |
+| 이 artifact는 어떤 실행을 거쳐 만들어졌나 | workflow Stream(소비와 생산) | `references/queries/artifact-lineage.rq` |
+
+**함께 바뀐 것**
+- 신규 스킬 `mso-work-memory-link`가 연관 저장소 등록, 자동 커밋 켜기/끄기, 훅 사본 갱신, 점검을 맡는다.
+- artifact 층은 개념(안정 IRI)과 규약 버전(이름 규약, 형식, 디렉토리 템플릿, 유효 구간)으로 나뉘고, `consumerType`(Machine / Hybrid / Human), 템플릿 변수,
+  메타데이터 스키마, 규약 불변(git HEAD 비교)을 SHACL/SPARQL로 검증한다. YAML 레지스트리는 두지 않는다.
+- PROV-O 정렬은 TBox 주석으로 확장했다(D-23a). 공리로 단언하거나 `prov:`를 import하지 않는다.
+- `sf_node.py` 등 8개 스크립트가 python 3.9에서 `X | None` 문법으로 죽어 scaffold-check 훅이 조용히 실패하던 문제를 고쳤다.
+
+**현재 범위.** 기록, 커밋, 점검, 산출물 규약, 실행 흐름은 여러 저장소를 가로질러 한 세션에서 다룬다. 다만 work-memory 자체의 **그래프 조회와 검색은 저장소 단위**다
+(`--repo-name`으로 저장소를 골라 한 번에 한 저장소씩). 여러 저장소의 work-memory를 하나의 그래프로 합쳐 한 번에 질의하는 기능은 아직 없다.
+디렉토리 층(`index.yaml`)과 artifact 층의 연결(`wf:inModule`)도 임시 문자열이다. 자세한 한계는 [changelog](docs/changelog.md)의 Known Gaps에 있다.
 
 ## Core Philosophy
 
@@ -265,12 +285,12 @@ python3 skills/mso-work-memory/scripts/wm_node.py validate agent-context/work-me
 LINK=skills/mso-work-memory-link/scripts/wm_link.py
 python3 $LINK status                      # 등록·발견된 저장소, autocommit, 훅 사본 일치, git 건강
 python3 $LINK add mso ~/path/to/mso --autocommit
-python3 $LINK autocommit my-knowledge-base on
+python3 $LINK autocommit child-repo on
 python3 $LINK sync-hooks                  # 훅 사본 vs 스킬 최신판 비교(기본 dry-run, --apply 로 교체)
 python3 $LINK verify
 
 # 연관 저장소에 기록
-python3 skills/mso-work-memory/scripts/wm_node.py new agent-decision --title "..." --repo-name my-knowledge-base
+python3 skills/mso-work-memory/scripts/wm_node.py new agent-decision --title "..." --repo-name child-repo
 ```
 
 서브모듈 중 work-memory가 있는 곳은 자동 발견되며 자동 커밋은 꺼져 있다. 켜려면 `autocommit on`으로 등록부에 항목을 만든다.

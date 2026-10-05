@@ -10,7 +10,7 @@ wm_repos.py — 연관 저장소(linked repos)의 work-memory 위치를 해석�
     discover_gitmodules: true        # 기본 true. .gitmodules 서브모듈 중 work-memory 가 있는 곳을 자동 발견
     linked_repos:
       - name: mso-orchestrator       # --repo-name 으로 부르는 이름
-        path: ~/Library/Mobile Documents/.../00_multi-swarm-orchestrator   # 절대, ~, 또는 프로젝트 루트 기준 상대
+        path: ~/path/to/another-repo   # 절대, ~, 또는 프로젝트 루트 기준 상대
         workmem: agent-context/work-memory   # 선택, 기본값
         autocommit: true             # Stop 훅이 이 저장소의 work-memory 를 자동 커밋 (기본 false)
 

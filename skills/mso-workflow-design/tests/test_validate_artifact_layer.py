@@ -190,9 +190,9 @@ def test_closing_a_convention_with_successor_is_allowed_after_commit(tmp_path):
 def test_template_compiles_with_backreference_and_param_regex():
     spec = importlib.util.spec_from_file_location("val", SCRIPT)
     mod = importlib.util.module_from_spec(spec); sys.modules["val"] = mod; spec.loader.exec_module(mod)
-    rx = mod.compile_template("p/naver-blog/[date]/", "[date]-naver-[title]", "md", {"date": r"\d{4}-\d{2}-\d{2}", "title": r"[^/\s]+"})
-    assert rx.match("p/naver-blog/2026-10-05/2026-10-05-naver-hello.md")
-    assert not rx.match("p/naver-blog/2026-10-05/2026-10-06-naver-hello.md")
+    rx = mod.compile_template("p/blog/[date]/", "[date]-post-[title]", "md", {"date": r"\d{4}-\d{2}-\d{2}", "title": r"[^/\s]+"})
+    assert rx.match("p/blog/2026-10-05/2026-10-05-post-hello.md")
+    assert not rx.match("p/blog/2026-10-05/2026-10-06-post-hello.md")
     assert mod.literal_prefix("[project]/x/") == "" and mod.literal_prefix("a/b/[d]/c/") == "a/b/"
     c = {"valid_from": "2026-06-01", "valid_until": None}
     assert mod.valid_at(c, "2026-06-01") and not mod.valid_at(c, "2026-05-31") and mod.valid_at(c, None)

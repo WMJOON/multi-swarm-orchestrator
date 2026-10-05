@@ -87,7 +87,7 @@ artifact는 TTL registry(`agent-context/index/artifacts.abox.ttl`)에서 두 층
 | 개념 | `wf:RegisteredArtifact` (안정 IRI `art:<name>`) | description, `wf:hasArtifactType`, `wf:consumerType`, `wf:inModule`, `wf:artifactInstruction` | 정체성이라 규약이 바뀌어도 그대로. workflow의 Stream이 이 IRI를 가리킨다 |
 | 규약 버전 | `wf:ArtifactConvention` (`art:<name>_cN`) | `wf:directoryTemplate`, `wf:namingConvention`, `wf:fileFormat`(각각 정확히 하나), 변수, 메타데이터 스키마, 유효 구간 | 한 번 커밋되면 세 요소는 바뀌지 않는다. 바꾸려면 새 버전을 만들고 이전 것에 `validUntil`과 `supersededBy`를 붙인다 |
 
-- **템플릿**: 변수는 `[name]`이다(예: `[project]/naver-blog/[date]/`, `[date]-naver-[blog_title]`). 정규식이 아니라 템플릿이라 agent가
+- **템플릿**: 변수는 `[name]`이다(예: `[project]/blog/[date]/`, `[date]-post-[blog_title]`). 정규식이 아니라 템플릿이라 agent가
   이름을 **만들 수** 있고 검증기가 정규식으로 컴파일해 **검사**한다. 변수는 `wf:hasParam`으로 선언하고 형식은 `wf:paramType`
   (DateYmd, MonthYm, Slug, ProjectId, Hash, Integer, AnyToken) 또는 `wf:paramRegex` 중 하나다. 같은 변수는 두 템플릿에서 같은 값이다.
 - **consumerType**: `Machine`(agent 친화) / `Hybrid` / `Human`(사람 친화) 중 정확히 하나. 유형의 audience(KnowledgeStore, EventStore,

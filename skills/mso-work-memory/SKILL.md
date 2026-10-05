@@ -84,11 +84,11 @@ agent-context/work-memory/
 ```yaml
 discover_gitmodules: true          # 기본 true. .gitmodules 서브모듈 중 work-memory 가 있는 곳을 자동 발견
 linked_repos:
-  - name: my-knowledge-base        # --repo-name 으로 부르는 이름
-    path: my-knowledge-base        # 절대, ~, 또는 루트 기준 상대
+  - name: child-repo        # --repo-name 으로 부르는 이름
+    path: child-repo        # 절대, ~, 또는 루트 기준 상대
     autocommit: true               # Stop 훅이 이 저장소 work-memory 를 자동 커밋 (기본 false)
   - name: mso
-    path: ~/Library/Mobile Documents/.../00_multi-swarm-orchestrator
+    path: ~/path/to/another-repo
 ```
 
 - 자동 발견된 서브모듈은 `autocommit: false`다. 켜려면 같은 `path` 로 항목을 두고 `autocommit: true` 를 준다(등록부 항목이 이긴다). 없는 경로는 조용히 건너뛴다.

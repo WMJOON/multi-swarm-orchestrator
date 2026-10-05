@@ -276,22 +276,22 @@ workflow 의 Execution 이 소비·생산하는 artifact 를 TTL 로 정의하�
 - **변형 파일은 별도 artifact**다. `main.md` → `main_v1.md` → `main_v2.pass1.md` 는 Execution 이 소비하고 생산하는 서로 다른 artifact 이고, 그 계보는 workflow 의 Stream 이 맡는다.
 
 ```turtle
-art:hubPublishedMain a wf:Artifact, wf:RegisteredArtifact ;
-    rdfs:comment "published 단계 원문"@ko ;
-    wf:hasArtifactType wf:Document ; wf:consumerType wf:Hybrid ; wf:inModule "content-broadcast-hub" ;
-    wf:hasConvention art:hubPublishedMain_c1, art:hubPublishedMain_c2 .
-art:hubPublishedMain_c1 a wf:ArtifactConvention ;                       # 2026-06 이전: 필수 메타 없음
-    wf:directoryTemplate "content/published/[month]/[date]_[slug]/" ; wf:namingConvention "main" ; wf:fileFormat "md" ;
-    wf:validUntil "2026-06-01"^^xsd:date ; wf:supersededBy art:hubPublishedMain_c2 ; wf:changeKind "metadataChange" ;
+art:publishedReport a wf:Artifact, wf:RegisteredArtifact ;
+    rdfs:comment "발행된 리포트 본문"@ko ;
+    wf:hasArtifactType wf:Document ; wf:consumerType wf:Hybrid ; wf:inModule "reports" ;
+    wf:hasConvention art:publishedReport_c1, art:publishedReport_c2 .
+art:publishedReport_c1 a wf:ArtifactConvention ;                        # 2026-06 이전: 필수 메타 없음
+    wf:directoryTemplate "reports/published/[month]/[date]_[slug]/" ; wf:namingConvention "main" ; wf:fileFormat "md" ;
+    wf:validUntil "2026-06-01"^^xsd:date ; wf:supersededBy art:publishedReport_c2 ; wf:changeKind "metadataChange" ;
     wf:hasParam [ wf:paramName "month" ; wf:paramType wf:MonthYm ], [ wf:paramName "date" ; wf:paramType wf:DateYmd ], [ wf:paramName "slug" ; wf:paramType wf:Slug ] .
-art:hubPublishedMain_c2 a wf:ArtifactConvention ;                       # 2026-06 이후: title, date, status, channels 필수
+art:publishedReport_c2 a wf:ArtifactConvention ;                        # 2026-06 이후: title, date, status 필수
     wf:validFrom "2026-06-01"^^xsd:date ; ... wf:hasMetadata [ a wf:MetadataField ; wf:fieldName "title" ; wf:fieldType "string" ; wf:fieldRequired true ] .
 ```
 
 - **템플릿**: 변수는 `[name]`. 정규식이 아니라 템플릿이라 agent 가 이름을 **만들 수** 있고, 검증기가 정규식으로 컴파일해 **검사**한다. 같은 변수는 두 템플릿에서 같은 값(역참조)이다. 변수는 `wf:hasParam` 으로 선언하고 형식은 `wf:paramType`(DateYmd, MonthYm, Slug, ProjectId, Hash, Integer, AnyToken) 또는 `wf:paramRegex` 중 정확히 하나다. 선언 없는 `[변수]` 는 Violation.
 - **consumerType**: `Machine`(agent 친화) | `Hybrid` | `Human`(사람 친화) 중 정확히 하나. 유형(`wf:hasArtifactType`: KnowledgeStore, EventStore, LocalDatabase, Tool = Machine / Table, Document = Hybrid / Media = Human)의 audience 는 기본값이다. 소비 Execution 의 `hasSubject` 와 교차 점검한다.
 - **producer/consumer 는 저장하지 않고 Stream 에서 도출**한다. 소비하는데 생산자가 없으면 Violation(`wf:externalSource true` 면제), 생산하는데 소비자가 없으면 Violation(사람이 소비하면 `hasSubject human` Execution 으로). 어떤 Stream 도 쓰지 않는 등록 artifact 와 미등록 artifact 를 가리키는 Stream 은 Warning.
-- **계보 조회**: `references/queries/artifact-lineage.rq` 를 registry 와 workflow ABox 를 합친 그래프에 실행하면 "어떤 artifact 가 어떤 Execution 을 거쳐 어떤 artifact 가 되는가"를 얻는다. 허브 콘텐츠 생애(`agent-context/workflow/workflow-hub-content-lifecycle.abox.ttl`)가 `main → main_vN → published` 계보의 실사례다.
+- **계보 조회**: `references/queries/artifact-lineage.rq` 를 registry 와 workflow ABox 를 합친 그래프에 실행하면 "어떤 artifact 가 어떤 Execution 을 거쳐 어떤 artifact 가 되는가"를 얻는다. 소비 프로젝트가 `main → main_vN → published` 같은 단계를 workflow 로 정의하면 이 질의로 계보를 얻는다.
 - **어휘 위치**: `references/tbox/workflow-artifact-layer-tbox.ttl`(손 유지, `workflow-tbox-v07.ttl` 은 GENERATED 라 건드리지 않는다), `references/shapes/workflow-artifact-layer-shapes.ttl`. registry 는 `agent-context/index/artifacts.abox.ttl`, IRI 는 `https://mso.dev/id/<project>/artifact/<name>`.
 
 ```bash
