@@ -16,7 +16,7 @@ description: >
   (4) user/agent decision subject 명시,
   (5) 모듈 간 dependencies 선언.
 metadata:
-  version: "0.11.0"
+  version: "0.12.0"
 ---
 
 # MSO Workflow Design v2
@@ -263,6 +263,55 @@ SHACL shape가 `Eval`의 `wf:target`, `wf:targetArtifact`, `Eval --on:fail--> Ta
 <wf:node/my-d-001_branch_rejected_my-s-005> a wf:Branch ;
     wf:on "rejected" ; wf:goto "my-s-005" .
 ```
+
+### Artifact 층 (TTL registry, v0.10 additive)
+
+workflow 의 Execution 이 소비·생산하는 artifact 를 TTL 로 정의하고 SHACL/SPARQL 로 검증한다. YAML 레지스트리는 두지 않는다.
+
+**두 층: 개념과 규약 버전.**
+- **개념**(`wf:RegisteredArtifact`, 안정된 IRI `art:<name>`)은 정체성이다: description(`rdfs:comment`), `wf:hasArtifactType`, `wf:consumerType`, `wf:inModule`, `wf:artifactInstruction`(선택). workflow 의 Stream 은 개념 IRI 를 가리키므로 규약이 바뀌어도 workflow 는 그대로다.
+- **규약 버전**(`wf:ArtifactConvention`, `art:<name>_cN`)은 `wf:directoryTemplate`, `wf:namingConvention`, `wf:fileFormat` 각각 정확히 하나와 변수(`wf:hasParam`), 메타데이터 스키마(`wf:hasMetadata`), 유효 구간(`wf:validFrom` 포함, `wf:validUntil` 제외), `wf:supersededBy`, `wf:changeKind`, `wf:migrationNote` 를 가진다. 규약은 정확히 한 개념(`wf:hasConvention`)에 속한다.
+- 규약이 바뀌면 개념은 그대로 두고 **새 규약 버전**을 만든다. 이전 것에 `validUntil` 과 `supersededBy` 를 붙인다. 같은 개념의 규약은 유효 구간이 겹치면 Violation, 서로 다른 개념의 규약이 세 요소가 같으면 Violation 이다.
+- **규약 불변**: git HEAD 에 이미 커밋된 규약의 세 요소를 바꾸거나 규약을 지우면 검증기가 Violation 으로 잡는다(바꾸려면 새 규약 + supersededBy). 오타 수정처럼 규약 밖의 변경은 영향이 없다. `--no-history-check` 로 끌 수 있다.
+- **변형 파일은 별도 artifact**다. `main.md` → `main_v1.md` → `main_v2.pass1.md` 는 Execution 이 소비하고 생산하는 서로 다른 artifact 이고, 그 계보는 workflow 의 Stream 이 맡는다.
+
+```turtle
+art:publishedReport a wf:Artifact, wf:RegisteredArtifact ;
+    rdfs:comment "발행된 리포트 본문"@ko ;
+    wf:hasArtifactType wf:Document ; wf:consumerType wf:Hybrid ; wf:inModule "reports" ;
+    wf:hasConvention art:publishedReport_c1, art:publishedReport_c2 .
+art:publishedReport_c1 a wf:ArtifactConvention ;                        # 2026-06 이전: 필수 메타 없음
+    wf:directoryTemplate "reports/published/[month]/[date]_[slug]/" ; wf:namingConvention "main" ; wf:fileFormat "md" ;
+    wf:validUntil "2026-06-01"^^xsd:date ; wf:supersededBy art:publishedReport_c2 ; wf:changeKind "metadataChange" ;
+    wf:hasParam [ wf:paramName "month" ; wf:paramType wf:MonthYm ], [ wf:paramName "date" ; wf:paramType wf:DateYmd ], [ wf:paramName "slug" ; wf:paramType wf:Slug ] .
+art:publishedReport_c2 a wf:ArtifactConvention ;                        # 2026-06 이후: title, date, status 필수
+    wf:validFrom "2026-06-01"^^xsd:date ; ... wf:hasMetadata [ a wf:MetadataField ; wf:fieldName "title" ; wf:fieldType "string" ; wf:fieldRequired true ] .
+```
+
+- **템플릿**: 변수는 `[name]`. 정규식이 아니라 템플릿이라 agent 가 이름을 **만들 수** 있고, 검증기가 정규식으로 컴파일해 **검사**한다. 같은 변수는 두 템플릿에서 같은 값(역참조)이다. 변수는 `wf:hasParam` 으로 선언하고 형식은 `wf:paramType`(DateYmd, MonthYm, Slug, ProjectId, Hash, Integer, AnyToken) 또는 `wf:paramRegex` 중 정확히 하나다. 선언 없는 `[변수]` 는 Violation.
+- **consumerType**: `Machine`(agent 친화) | `Hybrid` | `Human`(사람 친화) 중 정확히 하나. 유형(`wf:hasArtifactType`: KnowledgeStore, EventStore, LocalDatabase, Tool = Machine / Table, Document = Hybrid / Media = Human)의 audience 는 기본값이다. 소비 Execution 의 `hasSubject` 와 교차 점검한다.
+- **producer/consumer 는 저장하지 않고 Stream 에서 도출**한다. 소비하는데 생산자가 없으면 Violation(`wf:externalSource true` 면제), 생산하는데 소비자가 없으면 Violation(사람이 소비하면 `hasSubject human` Execution 으로). 어떤 Stream 도 쓰지 않는 등록 artifact 와 미등록 artifact 를 가리키는 Stream 은 Warning.
+- **계보 조회**: `references/queries/artifact-lineage.rq` 를 registry 와 workflow ABox 를 합친 그래프에 실행하면 "어떤 artifact 가 어떤 Execution 을 거쳐 어떤 artifact 가 되는가"를 얻는다. 소비 프로젝트가 `main → main_vN → published` 같은 단계를 workflow 로 정의하면 이 질의로 계보를 얻는다.
+- **어휘 위치**: `references/tbox/workflow-artifact-layer-tbox.ttl`(손 유지, `workflow-tbox-v07.ttl` 은 GENERATED 라 건드리지 않는다), `references/shapes/workflow-artifact-layer-shapes.ttl`. registry 는 `agent-context/index/artifacts.abox.ttl`, IRI 는 `https://mso.dev/id/<project>/artifact/<name>`.
+
+```bash
+python scripts/validate_artifact_layer.py --root . [--scan] [--json out.json] [--strict]   # rdflib, pyshacl 필요
+```
+
+`--scan` 은 registry 전체 기준으로 파일을 분류한다. 파일의 **항목 날짜**(템플릿의 date 또는 month 변수, 없으면 경로의 첫 날짜)로 유효한 규약을 골라 검사한다. 규약에 맞으면 **분류됨**, 규약 경로는 맞지만 유효 구간 밖이면 **기간 밖**, 어느 규약에도 안 맞으면 미분류다. 미분류는 날짜가 마지막으로 끝난 규약의 `validUntil` 이전이면 `legacy`, 날짜를 못 읽으면 `undated`, 그 외는 **현행 미분류**(정의되지 않은 파일 종류이거나 규약 이탈, 형태별 목록을 보고 판단)다. 필수 메타데이터는 **적용 규약 기준 누락**과 **현행 규약 대비 갭**(옛 규약 항목이 현행 스키마를 못 채운 정도, 마이그레이션 규모)으로 나눠 센다. 디렉토리가 변수로 시작하면 탐색 시작점이 없어 건너뛴다. 디렉토리 층(index.yaml)과는 `wf:inModule` 과 템플릿 접두부로만 교차 점검한다.
+
+### 패턴에서 draft workflow 만들기 (pattern_to_workflow_draft.py)
+
+work-memory 의 pattern(PT)이 에피소드 2개 이상으로 일반화돼 있고 본문이 번호 매긴 절차("1. ... 2. ...")이면, 결정론적으로 순차 Task 체인 ABox 초안을 만든다. 모델을 부르지 않는다.
+
+```bash
+python scripts/pattern_to_workflow_draft.py --pattern PT-0001 [--root .] [--workmem DIR] [--min-episodes 2] [--dry-run]
+```
+
+- 산출물: `<workflow-dir>/drafts/workflow-pt-NNNN.abox.ttl`, 항상 `wf:status "draft"`. `drafts/` 는 활성 workflow 로 관측되지 않는다.
+- 검증/게이트 성격 단계는 `wf:description` 에 "Gate candidates" 로만 적는다. Decision, 분기 rail, artifact stream 은 사람이 설계한다.
+- 승격(정식 workflow 로 이동)은 **사용자 승인 후 수동**이다. workflow topology 변경 규칙을 따른다.
+- 종료 코드: 0 생성, 2 패턴 없음 또는 절차 아님, 3 근거 에피소드 부족.
 
 ### 다중 Workflow 패턴 (Repo당 N개 workflow)
 

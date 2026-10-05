@@ -27,6 +27,8 @@ Artifact
 | `local_database` | `cache.sqlite`, DuckDB cache | Agent | 빠른 조회와 질의를 제공한다. |
 | `document` | `README.md`, `report.md`, `prompt.md` | Human + Agent | 사람이 읽고 수정하며 Agent context로도 활용한다. |
 | `media` | `html`, `pdf`, `pptx`, `png`, `svg` | Human | repository 밖으로 전달되는 human-native deliverable이다. |
+| `table` | `csv`, `tsv`, `xlsx` | Human + Agent | 사람도 열어 보는 표 형태 데이터다. |
+| `tool` | `py`, `sh` | Agent | 에이전트가 실행하는 도구다. |
 
 ## Consumption Modes
 
@@ -73,3 +75,45 @@ MSO는 task 중심 Workflow, artifact 중심 Supply Chain, knowledge 중심 Sema
 `wf:artifactType`은 TTL 명시 선언이 최우선이며, 관측기 추론은 미선언 fallback일 뿐이다.
 Artifact 간 근거 계보는 `evidence_of` stream으로 표현되고,
 `consumed_by ∘ produces_to = evidence_of` chain이 파생을 보충한다.
+
+## Artifact 층: 개념과 규약 버전 (v0.13.0)
+
+artifact는 TTL registry(`agent-context/index/artifacts.abox.ttl`)에서 두 층으로 정의한다. YAML 레지스트리는 두지 않는다.
+어휘는 `mso-workflow-design/references/tbox/workflow-artifact-layer-tbox.ttl`, 형상은 `.../shapes/workflow-artifact-layer-shapes.ttl`이다.
+기존 `wf:Artifact`/`wf:Stream`/`wf:artifactType`은 그대로이고 이 층은 그 위에 얹는 추가 어휘다.
+
+| 층 | 클래스 | 가진 것 | 바뀌는가 |
+|---|---|---|---|
+| 개념 | `wf:RegisteredArtifact` (안정 IRI `art:<name>`) | description, `wf:hasArtifactType`, `wf:consumerType`, `wf:inModule`, `wf:artifactInstruction` | 정체성이라 규약이 바뀌어도 그대로. workflow의 Stream이 이 IRI를 가리킨다 |
+| 규약 버전 | `wf:ArtifactConvention` (`art:<name>_cN`) | `wf:directoryTemplate`, `wf:namingConvention`, `wf:fileFormat`(각각 정확히 하나), 변수, 메타데이터 스키마, 유효 구간 | 한 번 커밋되면 세 요소는 바뀌지 않는다. 바꾸려면 새 버전을 만들고 이전 것에 `validUntil`과 `supersededBy`를 붙인다 |
+
+- **템플릿**: 변수는 `[name]`이다(예: `[project]/blog/[date]/`, `[date]-post-[blog_title]`). 정규식이 아니라 템플릿이라 agent가
+  이름을 **만들 수** 있고 검증기가 정규식으로 컴파일해 **검사**한다. 변수는 `wf:hasParam`으로 선언하고 형식은 `wf:paramType`
+  (DateYmd, MonthYm, Slug, ProjectId, Hash, Integer, AnyToken) 또는 `wf:paramRegex` 중 하나다. 같은 변수는 두 템플릿에서 같은 값이다.
+- **consumerType**: `Machine`(agent 친화) / `Hybrid` / `Human`(사람 친화) 중 정확히 하나. 유형의 audience(KnowledgeStore, EventStore,
+  LocalDatabase, Tool = Machine / Table, Document = Hybrid / Media = Human)는 기본값이고, 소비 Execution의 `hasSubject`와 교차 점검한다.
+- **producer/consumer는 저장하지 않는다.** workflow의 `wf:Stream`(`produces_to`/`consumed_by`)에서 도출한다. 소비하는데 생산자가 없으면
+  Violation(`wf:externalSource true` 면제), 생산하는데 소비자가 없으면 Violation이다(사람이 소비하면 `hasSubject human` Execution으로 둔다).
+- **유효 구간**: `validFrom`(포함)과 `validUntil`(제외)으로 어느 날짜의 항목이 어느 규약을 따르는지 정한다. 같은 개념의 규약은 구간이
+  겹치면 Violation이다. 규약이 바뀐 시점 이전의 옛 항목은 위반이 아니라 이전 규약의 항목이며, 현행 규약 대비 갭으로 따로 센다.
+- **변형 파일은 별도 artifact**다. `main.md → main_v1.md → main_v2.pass1.md`는 Execution이 소비하고 생산하는 서로 다른 artifact이고,
+  계보는 workflow의 Stream이 맡는다(`references/queries/artifact-lineage.rq`).
+
+검증은 `validate_artifact_layer.py`가 한다. SHACL/SPARQL에 더해 (1) 디렉토리 층(`index.yaml`)과의 교차 점검(`wf:inModule`, 템플릿 접두부),
+(2) git HEAD와 비교한 규약 불변 검사, (3) `--scan`(항목 날짜로 유효 규약을 골라 파일 규약, 기간 밖, 레거시, 현행 미분류, 필수 메타데이터 누락과
+현행 규약 대비 갭 집계)을 파이썬이 보조한다.
+
+### PROV-O 정렬 (주석, D-23 / D-23a)
+
+어휘 정본은 `wf:`이고 W3C PROV-O 정렬은 TBox **주석**으로만 문서화한다. `prov:`를 import하지 않고 공리로 단언하지도 않는다.
+
+| MSO (`wf:`) | PROV-O | 비고 |
+|---|---|---|
+| `Execution` | `prov:Activity` | 설계 단계는 계획된 단계(`p-plan:Step`), 실행 기록은 `prov:Activity` |
+| `Artifact` | `prov:Entity` | 설계 단계의 개념은 `p-plan:Variable`, 구체 파일은 `prov:Entity` |
+| `consumed_by` | `prov:used`의 역 | Artifact→Execution 대 Activity→Entity |
+| `produces_to` | `prov:wasGeneratedBy`의 역 | Execution→Artifact 대 Entity→Activity |
+| `evidence_of` | `prov:wasDerivedFrom`의 역 | 입력→출력 대 파생→원천 |
+
+equivalentClass를 단언하면 `prov:Activity`인 모든 것이 `wf:Execution`(SHACL 대상)이 되고 계획과 사건이 섞여서 주석으로만 둔다.
+공리가 필요하면 별도 opt-in 파일로 분리한다.

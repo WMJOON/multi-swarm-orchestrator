@@ -15,6 +15,7 @@ SKILLS=(
   mso-workflow-observation
   mso-workflow-optimizer
   mso-work-memory
+  mso-work-memory-link
   mso-intent-analytics
   mso-conversation-analytics
 )

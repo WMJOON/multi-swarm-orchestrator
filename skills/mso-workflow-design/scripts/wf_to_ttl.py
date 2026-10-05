@@ -25,6 +25,8 @@
 선택/라우팅 판단은 `type: decision`, 산출물 측정·평가·검증은 `type: eval`로
 분리한다.
 """
+
+from __future__ import annotations
 import argparse
 import hashlib
 import json

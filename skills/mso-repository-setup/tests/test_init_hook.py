@@ -68,7 +68,7 @@ def test_hook_copies_scripts_including_wm_context(init_mod, project):
     assert init_mod.cmd_hook(project) != 1
 
     scripts = project / ".claude" / "scripts"
-    for name in ("workflow-context-hook.py", "wm_context.py", "wm_release.py",
+    for name in ("workflow-context-hook.py", "wm_context.py", "wm_release.py", "wm_repos.py",
                  "release-context.sh", "auditlog.py"):
         assert (scripts / name).exists(), f"{name} 미복사"
 

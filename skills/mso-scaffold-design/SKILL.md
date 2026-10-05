@@ -16,7 +16,7 @@ description: >
   (5) workflow TTL 의 `wf:dirPath` 가 참조하는 경로 등록,
   (6) artifact stream TTL을 확인한 뒤 index/sub_index/data_registry 연결 점검.
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # MSO Scaffold Design v2
@@ -56,6 +56,25 @@ metadata:
 4. **workflow 수정 시** — 새 경로가 필요하면 **scaffold(index.yaml 또는 sub_index)에 먼저 등록**한 다음 TTL에서 참조한다.
 
 > 한쪽 수정이 일어나면 다른 쪽 검토가 필수다.
+
+### 두 층 분리: 디렉토리 층과 artifact 층 (TTL only)
+
+| 층 | 정본 | 맡는 질문 | 검증 |
+|---|---|---|---|
+| 디렉토리 | `agent-context/index/index.yaml` | 모듈과 서브디렉토리가 어떻게 놓여 있는가 | `sf_node.py validate/inventory` |
+| artifact | `agent-context/index/artifacts.abox.ttl` | artifact 가 어떤 이름 규약, 형식, 디렉토리 템플릿으로 만들어지고 누가 소비하는가 | `mso-workflow-design/scripts/validate_artifact_layer.py` (SHACL/SPARQL) |
+
+- artifact 층에는 YAML 정본을 두지 않는다. 어휘는 `mso-workflow-design/references/tbox/workflow-artifact-layer-tbox.ttl`, 형상은 `.../shapes/workflow-artifact-layer-shapes.ttl`이다.
+- 연결은 `wf:inModule`(index 의 module id) 하나뿐이다(디렉토리 층이 TTL 이 되면 객체 속성으로 바꾼다). `sf_node.py` 는 registry 를 읽지 않는다.
+- workflow 의 Stream 은 registry 의 `art:` IRI 를 가리킨다. 자세한 규칙은 mso-workflow-design SKILL.md 의 "Artifact 층" 절을 본다.
+
+### artifact 참조 점검 (check_artifact_index.py)
+
+```bash
+python scripts/check_artifact_index.py --root . [--suggest] [--strict]
+```
+
+workflow TTL 의 `wf:locator`/`directory`/`dirPath`/`deliverables`/`targetArtifact`/`orderArtifact` 값이 index 에 연결되는지 읽기 전용으로 점검한다. 판정은 `mapped-registry`(data_registry locator 일치, `index:<id>`), `mapped-module`(module/subdir 경로 아래), `external`(Firestore:/Storage:/http/mcp 등 미등록), `unmapped-path`(어느 module 아래도 아님)다. `--suggest` 는 data_registry 초안을 출력만 하고 파일을 고치지 않는다. 의존 규칙 2 의 수동 확인을 대체한다.
 
 ## SSOT 원칙
 

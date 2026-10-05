@@ -13,6 +13,8 @@ Workflow YAML to Mermaid Diagram Converter
   python workflow_to_mermaid.py --dependencies
 """
 
+from __future__ import annotations
+
 import yaml
 import argparse
 import json

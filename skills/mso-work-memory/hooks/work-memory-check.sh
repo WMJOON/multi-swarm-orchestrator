@@ -27,6 +27,9 @@
 #   PROJECT_DIR         provider wrapper 가 넘긴 프로젝트 루트
 set -uo pipefail
 
+# cd 하기 전에 훅 위치를 고정한다(상대 $0 대비).
+_HD="$(cd "$(dirname "$0")" && pwd)"
+
 # stdin payload 파싱 (파이프일 때만 읽어 수동 실행 차단 방지).
 # python3 로 파싱 — BSD/GNU sed 차이(예: \| 교대 미지원)에 의존하지 않기 위함.
 HOOK_EVENT=""
@@ -149,6 +152,33 @@ newest_ep=$(ls -t "$WM"/insight-record/episode.jsonl "$WM"/insight-record/episod
 
 if [ -n "$newest_ts" ] && { [ -z "$newest_ep" ] || [ "$newest_ts" -nt "$newest_ep" ]; }; then
   add_msg "[work-memory] 종결된 trouble-shooting(TS) 이후 회고(EP)가 없습니다. 사건이 일단락됐다면 episode 로 회고하세요 — EP 가 누적되면 pattern(PT) → principle(PR) 로 추상화할 수 있습니다."
+fi
+
+# ── (5) 연관 저장소 넛지 — SessionStart 전용 ────────────────────────────
+# 하위·연관 MSO 저장소(linked-repos.yaml, .gitmodules 자동 발견)에서 이 세션이 일했다면
+# 그 저장소의 work-memory 에도 기록해야 한다. 루트 훅은 루트 work-memory 만 보므로 따로 알린다.
+# 원칙: 미커밋 변경이 있고 그 저장소 work-memory 가 정리돼(커밋돼) 있으면 기록 누락 가능성을 알린다.
+if [ "$HOOK_EVENT" = "SessionStart" ] && [ "${MSO_WM_LINKED:-1}" != "0" ]; then
+  _HELPER=""
+  for c in "$_HD/../scripts/wm_repos.py" "$_HD/wm_repos.py" "$HOME/.claude/skills/mso-work-memory/scripts/wm_repos.py"; do
+    [ -f "$c" ] && { _HELPER="$c"; break; }
+  done
+  if [ -n "$_HELPER" ]; then
+    _linked=""
+    while IFS=$'\t' read -r _n _w _a; do
+      [ -n "$_w" ] || continue
+      _r=$(git -C "$_w" rev-parse --show-toplevel 2>/dev/null) || continue
+      [ "$_r" = "$ROOT" ] && continue
+      # 그 저장소 work-memory 의 최신 기록 파일보다 나중에 바뀐 (git 밖) 파일이 있으면 기록 누락 가능성.
+      _newest=$(ls -t "$_w"/track-record/*.jsonl "$_w"/insight-record/*.jsonl 2>/dev/null | head -1)
+      [ -n "$_newest" ] || continue
+      _recent=$(find "$_r" \( -name .git -o -path "$_w" \) -prune -o -type f -newer "$_newest" -print -quit 2>/dev/null)
+      [ -n "$_recent" ] && _linked="$_linked $_n"
+    done < <(python3 "$_HELPER" list --root "$ROOT" --tsv 2>/dev/null)
+    if [ -n "$_linked" ]; then
+      add_msg "[work-memory] 연관 저장소에 work-memory 최신 기록 이후의 작업 흔적이 있습니다:$_linked. 그 저장소에서 한 작업의 결정·이슈는 wm_node.py new <type> --repo-name <이름> 으로 해당 저장소 work-memory 에 기록하세요 (autocommit 은 linked-repos.yaml 에서 켠 저장소만)."
+    fi
+  fi
 fi
 
 # ── 전달 ────────────────────────────────────────────────────────────────

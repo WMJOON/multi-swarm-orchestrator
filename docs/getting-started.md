@@ -1,4 +1,4 @@
-# 시작하기 (v0.12.1)
+# 시작하기 (v0.13.0)
 
 ## 0. 설치
 
@@ -296,3 +296,68 @@ hook을 등록하면 `.abox.ttl` 저장 시 위 체인이 자동 실행된다:
 cp skills/mso-workflow-design/hooks/workflow-check.sh .claude/scripts/
 # .claude/settings.json 의 PostToolUse 에 등록 (mso-repository-setup init 참조)
 ```
+
+## 7. 연관 저장소 work-memory (mso-work-memory-link, v0.13.0)
+
+엄브렐러 repo 루트에서 세션을 열면 훅은 루트 work-memory만 커밋한다. 하위 서브모듈이나 별도 경로의 MSO 저장소에도 기록하고
+커밋하려면 등록부를 쓴다. `agent-context/work-memory/linked-repos.yaml`(선택):
+
+```yaml
+discover_gitmodules: true          # 기본 true. work-memory가 있는 서브모듈을 자동 발견 (autocommit 은 꺼짐)
+linked_repos:
+  - name: child-repo
+    path: child-repo        # 절대, ~, 또는 루트 기준 상대
+    autocommit: true               # Stop 훅이 이 저장소의 work-memory 만 자동 커밋
+```
+
+```bash
+LINK=~/.claude/skills/mso-work-memory-link/scripts/wm_link.py
+python3 $LINK status                          # 저장소별 autocommit, git 건강, work-memory 미커밋, 훅 사본 일치
+python3 $LINK add mso ~/path/to/repo --autocommit
+python3 $LINK autocommit child-repo on   # 발견만 된 서브모듈은 항목을 새로 만든다
+python3 $LINK sync-hooks                      # 훅 사본과 스킬 최신판 비교 (기본 dry-run, --apply 로 교체)
+python3 $LINK verify                          # 경로, git HEAD, 훅 문법
+
+# 연관 저장소 work-memory 에 기록
+WM=~/.claude/skills/mso-work-memory/scripts/wm_node.py
+python3 $WM new agent-decision --title "..." --repo-name child-repo
+python3 $WM stats --repo ~/path/to/repo       # 경로로 직접 지정해도 된다
+```
+
+- 자동 커밋은 해당 저장소의 work-memory 경로만 stage 하고 push 하지 않으며 서브모듈 포인터는 건드리지 않는다. `MSO_WM_LINKED=0`으로 이 확장만 끈다.
+- `sync-hooks --apply`는 `.claude/` 훅 사본을 바꾸므로 사용자 승인 후에 실행한다.
+- 포함하는 git의 HEAD 객체가 손상된 저장소는 `verify`가 `BAD`로 표시한다. 그런 저장소는 `autocommit`을 끄고 먼저 복구한다.
+
+## 8. Artifact 층 (TTL registry, v0.13.0)
+
+artifact의 이름 규약, 형식, 디렉토리, 소비자 유형을 TTL로 정의하고 검증한다. 모델은 [artifact-model.md](artifact-model.md)를 본다.
+registry는 `agent-context/index/artifacts.abox.ttl`이다.
+
+```turtle
+art:reportDraft a wf:Artifact, wf:RegisteredArtifact ;
+    rdfs:comment "날짜별 리포트 초안"@ko ;
+    wf:hasArtifactType wf:Document ; wf:consumerType wf:Hybrid ; wf:inModule "reports" ;
+    wf:hasConvention art:reportDraft_c1 .
+art:reportDraft_c1 a wf:ArtifactConvention ;
+    wf:directoryTemplate "reports/[date]/" ; wf:namingConvention "[date]-report-[topic]" ; wf:fileFormat "md" ;
+    wf:hasParam [ wf:paramName "date" ; wf:paramType wf:DateYmd ], [ wf:paramName "topic" ; wf:paramType wf:Slug ] .
+```
+
+```bash
+# registry + workflow Stream 검증 (SHACL/SPARQL, 교차 층, git HEAD 기준 규약 불변)
+python3 skills/mso-workflow-design/scripts/validate_artifact_layer.py --root .
+
+# 실제 파일이 규약에 맞는지 스캔 (항목 날짜로 유효 규약을 고른다)
+python3 skills/mso-workflow-design/scripts/validate_artifact_layer.py --root . --scan --json scan.json
+
+# workflow 의 경로·locator 참조가 index 와 registry 에 매핑되는지
+python3 skills/mso-scaffold-design/scripts/check_artifact_index.py --root . --suggest
+```
+
+- 규약이 바뀌면 개념 IRI는 그대로 두고 새 규약 버전(`art:<name>_c2`)을 만들고, 이전 것에 `wf:validUntil`과 `wf:supersededBy`를 붙인다.
+  커밋된 규약의 세 요소를 직접 고치면 검증기가 Violation으로 잡는다(`--no-history-check`로 끌 수 있다).
+- producer/consumer는 속성으로 쓰지 않는다. workflow의 `wf:Stream`이 `art:` IRI를 가리키게 한다.
+- 계보 질의는 `skills/mso-workflow-design/references/queries/artifact-lineage.rq`를 registry와 workflow ABox를 합친 그래프에 실행한다.
+- 패턴에서 draft workflow를 만들려면 `pattern_to_workflow_draft.py --pattern PT-0001`을 쓴다(절차형 pattern, 에피소드 2개 이상, 결과는 항상 draft).
+- 이 층의 시험은 python 3.11 이상과 `pyshacl`이 필요하다.
+

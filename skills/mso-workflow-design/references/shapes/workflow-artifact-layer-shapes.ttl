@@ -1,0 +1,235 @@
+# Artifact 층 SHACL (additive). 개념(wf:RegisteredArtifact)과 규약 버전(wf:ArtifactConvention), 그리고 그것을 가리키는 workflow Stream.
+@prefix wf:  <https://mso.dev/ontology/workflow#> .
+@prefix sh:  <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ─── 개념: 정체성(유형, 소비자, 설명)과 규약 버전 연결 ───────────────────────────────────
+wf:RegisteredArtifactShape a sh:NodeShape ; sh:targetClass wf:RegisteredArtifact ;
+    sh:property [ sh:path rdfs:comment ; sh:minCount 1 ; sh:message "description(rdfs:comment)이 필요" ] ;
+    sh:property [ sh:path wf:hasArtifactType ; sh:minCount 1 ; sh:maxCount 1 ; sh:class wf:ArtifactType ;
+        sh:message "정확히 하나의 ArtifactType(wf:hasArtifactType)이 필요" ] ;
+    sh:property [ sh:path wf:consumerType ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( wf:Machine wf:Hybrid wf:Human ) ;
+        sh:message "consumerType 은 Machine|Hybrid|Human 중 정확히 하나" ] ;
+    sh:property [ sh:path wf:artifactInstruction ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path wf:inModule ; sh:minCount 1 ; sh:message "wf:inModule(디렉토리 층 module id)이 필요" ] ;
+    sh:property [ sh:path wf:hasConvention ; sh:minCount 1 ; sh:class wf:ArtifactConvention ;
+        sh:message "규약 버전(wf:hasConvention)이 최소 하나 필요" ] .
+
+# ─── 규약 버전: 세 요소는 각각 정확히 하나 ─────────────────────────────────────────────
+wf:ArtifactConventionShape a sh:NodeShape ; sh:targetClass wf:ArtifactConvention ;
+    sh:property [ sh:path wf:namingConvention ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+        sh:message "namingConvention 은 정확히 하나" ] ;
+    sh:property [ sh:path wf:fileFormat ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:pattern "^[a-z0-9]+$" ;
+        sh:message "fileFormat 은 점 없는 소문자 확장자 정확히 하나" ] ;
+    sh:property [ sh:path wf:directoryTemplate ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:pattern "^[^/].*/$" ;
+        sh:message "directoryTemplate 은 정확히 하나, 상대 경로(앞 '/' 없음), 끝은 '/'" ] ;
+    sh:property [ sh:path wf:validFrom ; sh:maxCount 1 ; sh:datatype xsd:date ] ;
+    sh:property [ sh:path wf:validUntil ; sh:maxCount 1 ; sh:datatype xsd:date ] ;
+    sh:property [ sh:path wf:supersededBy ; sh:maxCount 1 ; sh:class wf:ArtifactConvention ] ;
+    sh:property [ sh:path wf:changeKind ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path wf:migrationNote ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+
+# 규약은 정확히 한 개념에 속한다.
+wf:ConventionOwnerShape a sh:NodeShape ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "규약이 어느 개념(wf:hasConvention)에도 속하지 않음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { FILTER NOT EXISTS { ?c wf:hasConvention $this } } """ ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "규약이 둘 이상의 개념에 속함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { ?c1 wf:hasConvention $this . ?c2 wf:hasConvention $this . FILTER(?c1 != ?c2) } """ ] .
+
+# ─── 템플릿 변수: [name] 은 모두 hasParam 으로 선언되어야 한다 (이름+디렉토리, 최대 8개 검사) ──────────
+wf:TemplateVarsDeclaredShape a sh:NodeShape ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "namingConvention/directoryTemplate 의 [변수]가 wf:hasParam 으로 선언되지 않음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:namingConvention ?n ; wf:directoryTemplate ?d .
+              BIND(CONCAT(?d, " ", ?n) AS ?t)
+              BIND(STRAFTER(?t, "[") AS ?a1) BIND(STRBEFORE(?a1, "]") AS ?v1) BIND(STRAFTER(?a1, "]") AS ?r1)
+              BIND(STRAFTER(?r1, "[") AS ?a2) BIND(STRBEFORE(?a2, "]") AS ?v2) BIND(STRAFTER(?a2, "]") AS ?r2)
+              BIND(STRAFTER(?r2, "[") AS ?a3) BIND(STRBEFORE(?a3, "]") AS ?v3) BIND(STRAFTER(?a3, "]") AS ?r3)
+              BIND(STRAFTER(?r3, "[") AS ?a4) BIND(STRBEFORE(?a4, "]") AS ?v4) BIND(STRAFTER(?a4, "]") AS ?r4)
+              BIND(STRAFTER(?r4, "[") AS ?a5) BIND(STRBEFORE(?a5, "]") AS ?v5) BIND(STRAFTER(?a5, "]") AS ?r5)
+              BIND(STRAFTER(?r5, "[") AS ?a6) BIND(STRBEFORE(?a6, "]") AS ?v6) BIND(STRAFTER(?a6, "]") AS ?r6)
+              BIND(STRAFTER(?r6, "[") AS ?a7) BIND(STRBEFORE(?a7, "]") AS ?v7) BIND(STRAFTER(?a7, "]") AS ?r7)
+              BIND(STRAFTER(?r7, "[") AS ?a8) BIND(STRBEFORE(?a8, "]") AS ?v8) BIND(STRAFTER(?a8, "]") AS ?r8)
+              FILTER( (?v1 != "" && NOT EXISTS { $this wf:hasParam ?p1 . ?p1 wf:paramName ?v1 }) || (?v2 != "" && NOT EXISTS { $this wf:hasParam ?p2 . ?p2 wf:paramName ?v2 }) || (?v3 != "" && NOT EXISTS { $this wf:hasParam ?p3 . ?p3 wf:paramName ?v3 }) || (?v4 != "" && NOT EXISTS { $this wf:hasParam ?p4 . ?p4 wf:paramName ?v4 }) || (?v5 != "" && NOT EXISTS { $this wf:hasParam ?p5 . ?p5 wf:paramName ?v5 }) || (?v6 != "" && NOT EXISTS { $this wf:hasParam ?p6 . ?p6 wf:paramName ?v6 }) || (?v7 != "" && NOT EXISTS { $this wf:hasParam ?p7 . ?p7 wf:paramName ?v7 }) || (?v8 != "" && NOT EXISTS { $this wf:hasParam ?p8 . ?p8 wf:paramName ?v8 }) )
+            } """ ] .
+
+wf:ArtifactParamShape a sh:NodeShape ; sh:targetObjectsOf wf:hasParam ;
+    sh:property [ sh:path wf:paramName ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z_][A-Za-z0-9_]*$" ;
+        sh:message "paramName 은 식별자 형태 정확히 하나" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "변수는 paramType 또는 paramRegex 중 정확히 하나로 형식을 선언해야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              OPTIONAL { $this wf:paramType ?t } OPTIONAL { $this wf:paramRegex ?r }
+              BIND((IF(BOUND(?t), 1, 0) + IF(BOUND(?r), 1, 0)) AS ?n)
+              FILTER(?n != 1)
+            } """ ] .
+
+wf:MetadataFieldShape a sh:NodeShape ; sh:targetObjectsOf wf:hasMetadata ;
+    sh:property [ sh:path wf:fieldName ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wf:fieldType ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:in ( "string" "date" "number" "boolean" "list" "url" ) ] ;
+    sh:property [ sh:path wf:fieldRequired ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:boolean ] .
+
+# ─── 규약 유일성: 서로 다른 개념의 규약이 세 요소가 같으면 안 된다 ─────────────────────────────
+wf:UniqueConventionShape a sh:NodeShape ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "(namingConvention, fileFormat, directoryTemplate)가 같은 규약이 서로 다른 개념에 있음 — 같은 규약이면 같은 개념이어야 함" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              ?o1 wf:hasConvention $this .
+              $this wf:namingConvention ?n ; wf:fileFormat ?f ; wf:directoryTemplate ?d .
+              ?x wf:namingConvention ?n ; wf:fileFormat ?f ; wf:directoryTemplate ?d .
+              FILTER(?x != $this)
+              ?o2 wf:hasConvention ?x .
+              FILTER(?o1 != ?o2)
+            } """ ] .
+
+# ─── 유효 구간: 같은 개념의 규약은 구간이 겹치면 안 된다 (validFrom 포함, validUntil 제외) ─────────────
+wf:ConventionOverlapShape a sh:NodeShape ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "같은 개념의 다른 규약과 유효 구간이 겹침" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT $this WHERE {
+              ?c wf:hasConvention $this . ?c wf:hasConvention ?o . FILTER(?o != $this)
+              OPTIONAL { $this wf:validFrom ?f1 } OPTIONAL { $this wf:validUntil ?u1 }
+              OPTIONAL { ?o wf:validFrom ?f2 } OPTIONAL { ?o wf:validUntil ?u2 }
+              BIND(COALESCE(?f1, "0001-01-01"^^xsd:date) AS ?F1) BIND(COALESCE(?u1, "9999-12-31"^^xsd:date) AS ?U1)
+              BIND(COALESCE(?f2, "0001-01-01"^^xsd:date) AS ?F2) BIND(COALESCE(?u2, "9999-12-31"^^xsd:date) AS ?U2)
+              FILTER(?F1 < ?U2 && ?F2 < ?U1)
+            } """ ] .
+
+# 후속 규약은 같은 개념의 규약이어야 한다.
+wf:SupersededSameConceptShape a sh:NodeShape ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "supersededBy 가 같은 개념의 규약이 아님" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:supersededBy ?n . ?c wf:hasConvention $this .
+              FILTER NOT EXISTS { ?c wf:hasConvention ?n }
+            } """ ] .
+
+# 끝난 규약에 후속이 지정되지 않았거나, 개념에 현행 규약이 하나도 없으면 경고.
+wf:ClosedWithoutSuccessorShape a sh:NodeShape ; sh:severity sh:Warning ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "validUntil 이 있는데 supersededBy(후속 규약)가 없음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE { $this wf:validUntil ?u . FILTER NOT EXISTS { $this wf:supersededBy ?n } } """ ] .
+
+wf:NoCurrentConventionShape a sh:NodeShape ; sh:severity sh:Warning ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "현행(validUntil 없는) 규약이 하나도 없음 — 폐기된 개념인가?" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:hasConvention ?any .
+              FILTER NOT EXISTS { $this wf:hasConvention ?c . FILTER NOT EXISTS { ?c wf:validUntil ?u } }
+            } """ ] .
+
+wf:WindowNeedsDateShape a sh:NodeShape ; sh:severity sh:Warning ; sh:targetClass wf:ArtifactConvention ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "유효 구간을 쓰는데 date 또는 month 변수(wf:hasParam)가 없음(경로의 첫 날짜로 추정해야 함)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              { $this wf:validFrom ?d } UNION { $this wf:validUntil ?d }
+              FILTER NOT EXISTS { $this wf:hasParam ?p . ?p wf:paramName ?n . FILTER(?n IN ("date","month")) }
+            } """ ] .
+
+# ─── 유형 허용 형식과 어긋나면 경고(개념의 유형 대 규약의 fileFormat) ──────────────────────────────
+wf:AudienceFormatShape a sh:NodeShape ; sh:severity sh:Warning ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "규약의 fileFormat 이 유형의 allowedFormat 에 없음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:hasArtifactType ?ty ; wf:hasConvention ?c . ?c wf:fileFormat ?f .
+              FILTER NOT EXISTS { ?ty wf:allowedFormat ?f }
+            } """ ] .
+
+# ─── workflow Stream 규칙 (개념 단위) ───────────────────────────────────────────────────
+wf:StreamArtifactRegisteredShape a sh:NodeShape ; sh:severity sh:Warning ;
+    sh:target [ a sh:SPARQLTarget ; sh:select """
+        PREFIX wf: <https://mso.dev/ontology/workflow#>
+        SELECT ?this WHERE { ?this a wf:Stream ; wf:streamType ?st .
+          FILTER(?st IN ("consumed_by","produces_to")) } """ ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "Stream 이 registry 에 없는 artifact 를 가리킴(wf:RegisteredArtifact 아님)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:streamType ?st .
+              OPTIONAL { $this wf:from ?f } OPTIONAL { $this wf:to ?g }
+              BIND(IF(?st = "consumed_by", ?f, ?g) AS ?a)
+              FILTER(BOUND(?a))
+              FILTER NOT EXISTS { ?a a wf:RegisteredArtifact }
+            } """ ] .
+
+wf:MissingProducerShape a sh:NodeShape ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "workflow 가 소비하지만 생산하는 Execution 이 없음(producerExecution min 1, externalSource 면제)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              ?c a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this .
+              FILTER NOT EXISTS { ?p a wf:Stream ; wf:streamType "produces_to" ; wf:to $this }
+              FILTER NOT EXISTS { $this wf:externalSource true }
+            } """ ] .
+
+wf:MissingConsumerShape a sh:NodeShape ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "workflow 가 생산하지만 소비하는 Execution 이 없음(consumerExecution min 1, 사람 소비는 hasSubject human Execution 으로)" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              ?p a wf:Stream ; wf:streamType "produces_to" ; wf:to $this .
+              FILTER NOT EXISTS { ?c a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this }
+            } """ ] .
+
+wf:UnusedArtifactShape a sh:NodeShape ; sh:severity sh:Warning ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "등록되었으나 어떤 workflow Stream 도 이 artifact 를 쓰지 않음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              FILTER NOT EXISTS { ?s a wf:Stream ; wf:from $this }
+              FILTER NOT EXISTS { ?s2 a wf:Stream ; wf:to $this }
+            } """ ] .
+
+wf:ConsumerTypeConsistencyShape a sh:NodeShape ; sh:severity sh:Warning ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "consumerType 이 Machine 인데 소비 Execution 이 전부 hasSubject human" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:consumerType wf:Machine .
+              ?c a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this .
+              FILTER NOT EXISTS { ?c2 a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this ; wf:to ?e2 .
+                                  FILTER NOT EXISTS { ?e2 wf:hasSubject "human" } }
+            } """ ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "consumerType 이 Human 인데 hasSubject human 인 소비 Execution 이 없음" ;
+        sh:select """
+            PREFIX wf: <https://mso.dev/ontology/workflow#>
+            SELECT $this WHERE {
+              $this wf:consumerType wf:Human .
+              ?c a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this .
+              FILTER NOT EXISTS { ?c3 a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this ; wf:to ?e3 . ?e3 wf:hasSubject "human" }
+            } """ ] .

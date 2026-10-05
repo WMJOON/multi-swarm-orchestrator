@@ -20,7 +20,7 @@ description: >
       Stop/PreInvocation) 에 work-memory/scaffold-check hook 을 adapter_antigravity.py
       경유로 등록 (SessionStart/UserPromptSubmit 미대응 이벤트는 PreInvocation 으로 근사).
 metadata:
-  version: "0.12.1"
+  version: "0.12.2"
   triggers:
     - "v0.8.1 적용"
     - "Hermes 설정 정리"

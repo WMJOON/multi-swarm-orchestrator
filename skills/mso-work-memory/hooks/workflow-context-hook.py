@@ -18,6 +18,8 @@ context pack 을 컨텍스트에 주입한다 (UD-0015).
   WORKMEM_DIR                       work-memory 루트 (미설정 시 프로젝트 기본 경로)
   PROJECT_DIR / CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR  현재 레포 절대경로
 """
+
+from __future__ import annotations
 import json
 import os
 import subprocess

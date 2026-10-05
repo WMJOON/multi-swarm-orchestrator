@@ -1,0 +1,118 @@
+# Artifact 층 TBox (additive, 손으로 유지). workflow-tbox-v07.ttl 은 GENERATED 이므로 건드리지 않고 이 파일로 확장한다.
+# 두 층: 개념(wf:RegisteredArtifact, 안정된 IRI, workflow 의 Stream 이 가리킴)과 규약 버전(wf:ArtifactConvention).
+# 규약 버전 = (namingConvention, fileFormat, directoryTemplate) + 변수 + 메타데이터 스키마 + 유효 구간. 규약이 바뀌면
+# 개념 IRI 는 그대로 두고 새 규약 버전을 만든다(이전 것에 validUntil, supersededBy). 같은 개념에 유효 구간이 겹치는 규약은 둘일 수 없다.
+# 변형 파일(main -> main_v1 -> main_v2.pass1)은 별도 artifact 이고, 그 계보는 workflow 의 Execution(소비/생산)이 맡는다.
+# producer/consumer Execution 은 속성으로 저장하지 않고 workflow 의 wf:Stream 에서 도출한다(정본 하나).
+# 상태: draft (2026-10-05 사용자 승인 설계).
+@prefix wf:   <https://mso.dev/ontology/workflow#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ─── 클래스 ──────────────────────────────────────────────────────────────────
+wf:RegisteredArtifact a owl:Class ; rdfs:subClassOf wf:Artifact ; rdfs:label "RegisteredArtifact"@ko ;
+    rdfs:comment "프로젝트 registry(artifacts.abox.ttl)에 정의된 artifact. 이름 규약, 형식, 위치 규약, 소비자 유형을 반드시 가진다. workflow 의 Stream 은 이 IRI 를 가리킨다."@ko .
+wf:ArtifactType a owl:Class ; rdfs:label "ArtifactType"@ko ;
+    rdfs:comment "artifact 의 소비·운영 의미 분류. 각 유형은 기본 audience 와 허용 형식(allowedFormat)을 가진다."@ko .
+wf:Audience a owl:Class ; rdfs:label "Audience"@ko ;
+    rdfs:comment "산출물의 1차 소비자. Machine(agent 친화), Hybrid(사람과 agent 협업), Human(사람 친화 최종 전달물)."@ko .
+wf:ArtifactConvention a owl:Class ; rdfs:label "ArtifactConvention"@ko ;
+    rdfs:comment "한 artifact 개념의 규약 한 버전: 이름 규약, 형식, 디렉토리 템플릿, 변수, 메타데이터 스키마와 유효 구간. 한 번 커밋되면 세 요소를 바꾸지 않는다(바꾸려면 새 버전 + supersededBy)."@ko .
+wf:ParamType a owl:Class ; rdfs:label "ParamType"@ko ;
+    rdfs:comment "이름·디렉토리 템플릿 변수의 형식(정규식 조각). 자주 쓰는 형식을 미리 정의한다."@ko .
+wf:ArtifactParam a owl:Class ; rdfs:label "ArtifactParam"@ko ;
+    rdfs:comment "한 artifact 의 템플릿 변수 선언: paramName 과, paramType 또는 paramRegex 중 정확히 하나."@ko .
+wf:MetadataField a owl:Class ; rdfs:label "MetadataField"@ko ;
+    rdfs:comment "artifact 가 관리하는 메타데이터 필드 선언(md 는 frontmatter 키)."@ko .
+
+wf:Machine a wf:Audience ; rdfs:label "Machine"@ko ; rdfs:comment "agent 친화. 기계가 직접 읽고 쓰는 구조화 형식."@ko .
+wf:Hybrid  a wf:Audience ; rdfs:label "Hybrid"@ko  ; rdfs:comment "사람과 agent 가 함께 읽고 고치는 협업 인터페이스."@ko .
+wf:Human   a wf:Audience ; rdfs:label "Human"@ko   ; rdfs:comment "사람 친화 최종 전달물. agent 가 파싱하기 어렵다."@ko .
+
+# ─── 유형 개체 ────────────────────────────────────────────────────────────────
+wf:KnowledgeStore a wf:ArtifactType ; wf:artifactTypeKey "knowledge_store" ; wf:audience wf:Machine ;
+    wf:allowedFormat "ttl", "jsonl", "json", "md", "parquet" ; rdfs:label "KnowledgeStore"@ko .
+wf:EventStore a wf:ArtifactType ; wf:artifactTypeKey "event_store" ; wf:audience wf:Machine ;
+    wf:allowedFormat "jsonl", "json", "ttl" ; rdfs:label "EventStore"@ko .
+wf:LocalDatabase a wf:ArtifactType ; wf:artifactTypeKey "local_database" ; wf:audience wf:Machine ;
+    wf:allowedFormat "sqlite", "db", "duckdb", "parquet" ; rdfs:label "LocalDatabase"@ko .
+wf:Tool a wf:ArtifactType ; wf:artifactTypeKey "tool" ; wf:audience wf:Machine ;
+    wf:allowedFormat "py", "sh", "js", "ts" ; rdfs:label "Tool"@ko .
+wf:Table a wf:ArtifactType ; wf:artifactTypeKey "table" ; wf:audience wf:Hybrid ;
+    wf:allowedFormat "csv", "tsv", "xlsx", "md" ; rdfs:label "Table"@ko .
+wf:Document a wf:ArtifactType ; wf:artifactTypeKey "document" ; wf:audience wf:Hybrid ;
+    wf:allowedFormat "md", "txt", "rst" ; rdfs:label "Document"@ko .
+wf:Media a wf:ArtifactType ; wf:artifactTypeKey "media" ; wf:audience wf:Human ;
+    wf:allowedFormat "html", "pdf", "pptx", "png", "svg", "jpg" ; rdfs:label "Media"@ko .
+
+# ─── 변수 형식 개체 (정규식 조각) ─────────────────────────────────────────────────
+wf:DateYmd   a wf:ParamType ; wf:paramRegex "\\d{4}-\\d{2}-\\d{2}" ; rdfs:label "DateYmd"@ko ; rdfs:comment "YYYY-MM-DD"@ko .
+wf:MonthYm   a wf:ParamType ; wf:paramRegex "\\d{4}-\\d{2}" ; rdfs:label "MonthYm"@ko ; rdfs:comment "YYYY-MM"@ko .
+wf:Slug      a wf:ParamType ; wf:paramRegex "[^/\\s]+" ; rdfs:label "Slug"@ko ; rdfs:comment "공백과 '/' 없는 한 토큰"@ko .
+wf:ProjectId a wf:ParamType ; wf:paramRegex "[a-z0-9][a-z0-9-]*" ; rdfs:label "ProjectId"@ko .
+wf:Hash      a wf:ParamType ; wf:paramRegex "[0-9a-f]{6,64}" ; rdfs:label "Hash"@ko .
+wf:Integer   a wf:ParamType ; wf:paramRegex "\\d+" ; rdfs:label "Integer"@ko .
+wf:AnyToken  a wf:ParamType ; wf:paramRegex "[^/]+" ; rdfs:label "AnyToken"@ko ; rdfs:comment "'/' 만 제외한 임의 문자열(가장 느슨함)"@ko .
+
+# ─── 속성: 세 요소 ───────────────────────────────────────────────────────────────
+wf:namingConvention a owl:DatatypeProperty ; rdfs:label "namingConvention"@ko ;
+    rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
+    rdfs:comment "파일 이름(확장자 제외)의 템플릿. 변수는 [name]. 예: [date]-post-[blog_title]. 정확히 하나."@ko .
+wf:fileFormat a owl:DatatypeProperty ; rdfs:label "fileFormat"@ko ;
+    rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
+    rdfs:comment "파일 확장자(점 없음, 소문자). 정확히 하나."@ko .
+wf:directoryTemplate a owl:DatatypeProperty ; rdfs:label "directoryTemplate"@ko ;
+    rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
+    rdfs:comment "artifact 가 만들어지는 디렉토리의 템플릿(repo-root 기준, 끝 '/'). 변수는 [name]. 예: [project]/blog/[date]/. 정확히 하나."@ko .
+
+# ─── 속성: 변수, 유형, 소비자, 메타데이터 ────────────────────────────────────────────
+wf:hasParam a owl:ObjectProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range wf:ArtifactParam ;
+    rdfs:comment "템플릿 변수 선언. 두 템플릿에 쓰인 모든 [변수]는 선언되어야 한다. 같은 이름은 두 템플릿에서 같은 값."@ko .
+wf:paramName a owl:DatatypeProperty ; rdfs:domain wf:ArtifactParam ; rdfs:range xsd:string .
+wf:paramType a owl:ObjectProperty ; rdfs:domain wf:ArtifactParam ; rdfs:range wf:ParamType .
+wf:paramRegex a owl:DatatypeProperty ; rdfs:range xsd:string ;
+    rdfs:comment "ParamType 의 정규식 조각 또는 ArtifactParam 의 직접 지정(둘 중 하나만)."@ko .
+
+wf:hasArtifactType a owl:ObjectProperty ; rdfs:label "hasArtifactType"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range wf:ArtifactType .
+wf:artifactTypeKey a owl:DatatypeProperty ; rdfs:domain wf:ArtifactType ; rdfs:range xsd:string .
+wf:audience a owl:ObjectProperty ; rdfs:domain wf:ArtifactType ; rdfs:range wf:Audience ;
+    rdfs:comment "유형의 기본 소비자. 개별 artifact 는 consumerType 으로 확정한다."@ko .
+wf:allowedFormat a owl:DatatypeProperty ; rdfs:domain wf:ArtifactType ; rdfs:range xsd:string .
+wf:consumerType a owl:ObjectProperty ; rdfs:label "consumerType"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range wf:Audience ;
+    rdfs:comment "이 artifact 의 1차 소비자 유형. 정확히 하나(Machine|Hybrid|Human). 소비 Execution 의 hasSubject 와 교차 점검한다."@ko .
+wf:artifactInstruction a owl:DatatypeProperty ; rdfs:label "artifactInstruction"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range xsd:string ;
+    rdfs:comment "이 artifact 를 만들거나 읽을 때 특별히 필요한 지시(선택). Task 의 wf:instruction 과는 별개."@ko .
+wf:inModule a owl:DatatypeProperty ; rdfs:label "inModule"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range xsd:string ;
+    rdfs:comment "디렉토리 층의 module id. 디렉토리 층이 TTL 이 되면 객체 속성으로 바꾼다."@ko .
+wf:externalSource a owl:DatatypeProperty ; rdfs:label "externalSource"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range xsd:boolean ;
+    rdfs:comment "true 이면 이 workflow 밖에서 공급되는 입력이다(생산 Execution 이 없어도 정상)."@ko .
+wf:variantOf a owl:ObjectProperty ; rdfs:domain wf:RegisteredArtifact ; rdfs:range wf:RegisteredArtifact ;
+    rdfs:comment "같은 개념의 다른 규약 변형(이름·형식·디렉토리가 달라 IRI 가 다른 경우)."@ko .
+
+wf:hasMetadata a owl:ObjectProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range wf:MetadataField .
+wf:fieldName a owl:DatatypeProperty ; rdfs:domain wf:MetadataField ; rdfs:range xsd:string .
+wf:fieldType a owl:DatatypeProperty ; rdfs:domain wf:MetadataField ; rdfs:range xsd:string ;
+    rdfs:comment "string | date | number | boolean | list | url"@ko .
+wf:fieldRequired a owl:DatatypeProperty ; rdfs:domain wf:MetadataField ; rdfs:range xsd:boolean .
+
+# ─── 규약 버전 ───────────────────────────────────────────────────────────────────
+wf:hasConvention a owl:ObjectProperty ; rdfs:label "hasConvention"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range wf:ArtifactConvention ;
+    rdfs:comment "개념의 규약 버전들. 최소 하나. 한 규약은 한 개념에만 속한다."@ko .
+wf:validFrom a owl:DatatypeProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:date ;
+    rdfs:comment "이 규약이 적용되기 시작한 날(포함). 없으면 처음부터."@ko .
+wf:validUntil a owl:DatatypeProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:date ;
+    rdfs:comment "이 규약이 끝난 날(제외, 후속 규약의 validFrom 과 같게). 없으면 현행. 항목 날짜(템플릿의 date 또는 month 변수, 없으면 경로의 첫 날짜)로 어느 규약이 적용되는지 고른다."@ko .
+wf:supersededBy a owl:ObjectProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range wf:ArtifactConvention ;
+    rdfs:comment "후속 규약. 같은 개념의 규약이어야 한다."@ko .
+wf:changeKind a owl:DatatypeProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
+    rdfs:comment "이전 규약에서 무엇이 바뀌었나: rename | move | reformat | metadataChange | paramChange (콤마로 여러 개 가능)."@ko .
+wf:migrationNote a owl:DatatypeProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
+    rdfs:comment "이전 규약의 파일을 어떻게 다룰지(정정 대상인지, 그대로 두는지)에 대한 메모."@ko .

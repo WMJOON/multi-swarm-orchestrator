@@ -16,6 +16,9 @@
 # ── 경계 ────────────────────────────────────────────────────────────────
 #  - 커밋 대상은 WORKMEM_DIR 경로뿐 — 코드/문서 변경은 절대 자동 커밋하지 않는다.
 #  - push 는 하지 않는다 (원격 반영은 수동/별도 정책).
+#  - 연관 저장소: <root>/agent-context/work-memory/linked-repos.yaml 에서 autocommit: true 로 켠
+#    저장소의 work-memory 도 각자의 git 에서 같은 방식으로 커밋한다(wm_repos.py). 서브모듈 포인터,
+#    다른 경로의 변경은 건드리지 않는다. MSO_WM_LINKED=0 으로 이 확장만 끌 수 있다.
 #  - git repo 가 아니거나 변경이 없으면 조용히 종료.
 #
 # 환경변수:
@@ -29,19 +32,37 @@ set -uo pipefail
 ROOT="${CLAUDE_PROJECT_DIR:-${CODEX_PROJECT_DIR:-${PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}}"
 WM="${WORKMEM_DIR:-$ROOT/agent-context/work-memory}"
 
-[ -d "$WM" ] || exit 0
+# 한 work-memory 디렉토리를 그 소유 저장소에서 커밋한다. 실패해도 훅은 막지 않는다.
+commit_one() {
+  local wm="$1" repo rel
+  [ -d "$wm" ] || return 0
+  # work-memory가 프로젝트 루트와 다른 중첩 저장소에 있을 수 있다. 이 경우
+  # 루트 저장소에는 해당 경로가 gitlink/비추적 경로로만 보이므로, 실제 소유
+  # 저장소를 기준으로 stage/commit 해야 한다.
+  repo=$(git -C "$wm" rev-parse --show-toplevel 2>/dev/null) || return 0
+  git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  # work-memory 경로를 repo 루트 상대 pathspec 으로 변환 (절대경로 박지 않음).
+  rel=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$wm" "$repo" 2>/dev/null) || rel="work-memory"
+  git -C "$repo" add -- "$rel" 2>/dev/null || return 0
+  if ! git -C "$repo" diff --cached --quiet -- "$rel" 2>/dev/null; then
+    git -C "$repo" commit -q -m "chore(work-memory): auto log trail [hook]" -- "$rel" 2>/dev/null || true
+  fi
+  return 0
+}
 
-# work-memory가 프로젝트 루트와 다른 중첩 저장소에 있을 수 있다. 이 경우
-# 루트 저장소에는 해당 경로가 gitlink/비추적 경로로만 보이므로, 실제 소유
-# 저장소를 기준으로 stage/commit 해야 한다.
-WM_REPO=$(git -C "$WM" rev-parse --show-toplevel 2>/dev/null) || exit 0
-git -C "$WM_REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+commit_one "$WM"
 
-# work-memory 경로를 repo 루트 상대 pathspec 으로 변환 (절대경로 박지 않음).
-REL=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WM" "$WM_REPO" 2>/dev/null) || REL="work-memory"
-
-git -C "$WM_REPO" add -- "$REL" 2>/dev/null || exit 0
-if ! git -C "$WM_REPO" diff --cached --quiet -- "$REL" 2>/dev/null; then
-  git -C "$WM_REPO" commit -q -m "chore(work-memory): auto log trail [hook]" -- "$REL" 2>/dev/null || true
+# 연관 저장소(autocommit: true)
+if [ "${MSO_WM_LINKED:-1}" != "0" ]; then
+  HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+  HELPER=""
+  for c in "$HOOK_DIR/../scripts/wm_repos.py" "$HOOK_DIR/wm_repos.py" "$HOME/.claude/skills/mso-work-memory/scripts/wm_repos.py"; do
+    [ -f "$c" ] && { HELPER="$c"; break; }
+  done
+  if [ -n "$HELPER" ]; then
+    python3 "$HELPER" list --root "$ROOT" --tsv --autocommit 2>/dev/null | while IFS=$'\t' read -r _name _wm _auto; do
+      [ -n "$_wm" ] && [ "$_wm" != "$WM" ] && commit_one "$_wm"
+    done
+  fi
 fi
 exit 0

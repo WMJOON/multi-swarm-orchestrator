@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -123,7 +124,9 @@ def test_dissolved_utterance_grounding_not_routed():
 def test_readme_reflects_current_version_and_structure():
     """README 헤더 버전과 핵심 구조 어휘가 현재 패치와 일치한다."""
     readme = (ROOT / "README.md").read_text()
-    assert "MSO) v0.10.1" in readme, "README header is not v0.10.1"
+    changelog = (ROOT / "docs" / "changelog.md").read_text()
+    top = re.search(r"^## v(\d+\.\d+\.\d+)", changelog, re.M).group(1)
+    assert f"MSO) v{top}" in readme, f"README header is not the changelog's latest version v{top}"
     assert "Repository Execution System" in readme
     assert "Core Philosophy" in readme
     assert "Artifact Supply Chain" in readme
@@ -133,22 +136,17 @@ def test_readme_reflects_current_version_and_structure():
     assert "docs/changelog.md" in readme
 
 
-# 재사용 fat skill / optimizer 는 패키지 릴리스와 별도의 자체 semver 트랙을 가진다.
-INDEPENDENT_VERSIONING_SKILLS = {
-    "mso-work-memory": "0.8.1",
-    "mso-workflow-optimizer": "0.7.0",
-}
+# 스킬은 패키지 동기 버전과 별개로 자체 semver 를 가진다(바뀐 스킬만 올린다). 형식만 강제한다.
+SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
 
-def test_skill_versions_are_current_patch():
-    """패키지 스킬은 v0.10.1, 독립 semver 스킬은 명시 버전과 일치한다."""
+def test_skill_versions_are_semver():
+    """모든 SKILL.md 는 metadata.version 에 semver 문자열을 가진다."""
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
         text = skill_md.read_text()
         frontmatter = yaml.safe_load(text.split("---", 2)[1])
-        expected = INDEPENDENT_VERSIONING_SKILLS.get(skill_md.parent.name, "0.10.1")
-        assert frontmatter.get("metadata", {}).get("version") == expected, (
-            f"{skill_md.parent.name} version is not {expected}"
-        )
+        version = str(frontmatter.get("metadata", {}).get("version", ""))
+        assert SEMVER.match(version), f"{skill_md.parent.name} version is not semver: {version!r}"
 
 
 def test_skill_frontmatter_is_codex_compatible():

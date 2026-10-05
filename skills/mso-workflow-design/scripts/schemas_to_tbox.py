@@ -23,6 +23,8 @@ milestones)은 _GRAPH_OVERLAY 에 명시한다 — 정직하게 "스키마 없�
 사용:  python schemas_to_tbox.py           # 두 파일 생성(덮어쓰기)
        python schemas_to_tbox.py --check  # 생성결과가 현재 파일과 같은지만 확인(CI drift 가드)
 """
+
+from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path

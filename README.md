@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.12.1
+# Multi-Swarm Orchestrator (MSO) v0.13.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,29 +13,42 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.12.1 (2026-08-28) — Antigravity Provider Support
+### v0.13.0 (2026-10-05) — 여러 저장소를 횡단하며 작업하고, 맥락을 TTL 지식 그래프로 찾는다
 
-`init.py --hook`에 `--provider antigravity`를 추가해, Claude Code/Codex 두 provider만
-지원하던 work-memory/scaffold-check hook 자동 등록을 Antigravity(`.agents/hooks.json`)까지
-확장했다.
+작업은 한 저장소에서 끝나지 않는다. 엄브렐러 repo 아래에 서브모듈과 별도 경로의 저장소가 여럿 있고, 한 세션이 그 사이를 오가며 일한다.
+그런데 결정, 산출물, 실행 흐름이 저장소마다 따로 기록되면 "이 파일은 어떤 규약으로 어떤 작업에서 만들어졌나", "이 결정은 어떤 이슈에서
+나왔나"를 찾을 수 없다. v0.13.0은 **여러 저장소를 횡단하면서 작업할 수 있게** 하고, 이를 위해 작업 맥락을 **TTL 형태의 지식 그래프**로
+구조화해 서로 연결하고 질의로 찾을 수 있게 한다.
 
-- **Antigravity hook 등록**: `.agents/hooks.json`에 hook-name(`mso-work-memory`) 하위로
-  `PostToolUse`(audit/scaffold), `Stop`(stop-check/commit), `PreInvocation`(work-memory-check/
-  release-context/workflow-context/UUG-context)를 등록한다. hooks.json 스펙(hook-name 키잉,
-  event별 flat vs matcher-그룹 구조, camelCase I/O)은 [Antigravity Hooks 공식 문서](https://antigravity.google/docs/hooks/)로 검증했다.
-- **camelCase 어댑터**: Antigravity에는 `SessionStart`/`UserPromptSubmit`/`PreCompact`에
-  직접 대응하는 이벤트가 없다. `hooks/adapter_antigravity.py`가 `PreInvocation`을
-  `invocationNum==0`(세션 시작 근사) / 매 호출(발화 근사) 두 모드로 나눠 처리하고,
-  기존 snake_case 훅 스크립트를 그대로 재사용한다 — 훅 로직 자체는 수정하지 않았다.
-- **미검증 항목**: hook 프로세스의 cwd가 workspace root라는 가정, `command` 문자열의
-  셸 실행 방식, exit code/timeout 처리, `.agents/hooks.json` vs 전역
-  `~/.gemini/config/hooks.json` 우선순위는 공식 문서에도 없어 실제 Antigravity 세션에서
-  아직 검증하지 못했다. 상세는 `planning/mso-PLAN-antigravity-provider-support.md` §7.
-- **설치**: `install.sh --gemini`는 `~/.gemini/antigravity/skills`에 설치한다(기존 기능, 문서 누락 정정).
+**여러 저장소를 횡단하는 방식**
 
-- **version ladder**: v0.6.x는 workflow shape/observability 강화 패치 계열이고, v0.7.0은 Repository Graph edge-first 온톨로지 재설계, v0.7.1은 UUG 연동 패치, v0.8.0은 Hermes Bridge 실험, v0.8.1은 Hermes Bridge 폐기와 LangGraph execution plane 우선 전환, v0.8.2는 workflow observation alias와 `execution-rail.md` 산출물 분리, v0.9.0은 work-memory release governance, v0.9.2는 중첩 work-memory 저장소 hook 보정, v0.10.0은 runtime context-pack 검색, v0.10.1은 Codex hook parity 패치, v0.11.0은 zvec 시맨틱 검색 자체완결, v0.12.0은 Qwen3-Reranker 재정렬 추가, v0.12.1은 Antigravity provider 지원이다.
+| 무엇을 | 어떻게 횡단하나 | 도구 |
+|---|---|---|
+| 작업 기록(결정, 이슈, 해결, 회고) | 어느 저장소에서 일했든 **그 저장소의** work-memory에 기록하고 커밋한다. 등록부 `linked-repos.yaml`이 서브모듈과 별도 경로를 묶는다 | `wm_node.py --repo/--repo-name`, `commit-work-memory.sh`(autocommit 옵트인) |
+| 산출물 규약(어디에 어떤 이름과 형식으로 만드는가) | 프로젝트의 **하나의 registry**(`artifacts.abox.ttl`)가 여러 저장소의 산출물을 정의한다. 디렉토리 템플릿에 저장소 경로가 들어가고 `wf:inModule`로 모듈에 연결한다 | `validate_artifact_layer.py` |
+| 실행 흐름(누가 무엇을 소비하고 생산하는가) | workflow `*.abox.ttl` 한 곳의 `wf:Stream`이 여러 저장소의 artifact 개념 IRI를 잇는다 | `artifact-lineage.rq` |
+| 기록 누락 점검 | 여러 저장소에 작업 흔적이 있는데 기록이 비어 있는지 한 번에 본다 | `wm_link.py status`, `work-memory-check.sh` |
 
-상세 변경은 [docs/changelog.md](docs/changelog.md)를 본다.
+**TTL 지식 그래프로 맥락을 찾는다.** 작업 기록은 JSONL이 정본이고 관계 그래프(TTL projection)로 투영된다. 산출물 규약과 실행 흐름은 처음부터 TTL이다.
+세 층이 같은 어휘(`wf:`, PROV-O 정렬 주석)로 이어지므로 아래 질문에 답할 수 있다.
+
+| 찾고 싶은 맥락 | 어디서 답하나 | 도구 |
+|---|---|---|
+| 이 결정은 어떤 이슈나 사고에서 나왔나, 어떤 회고로 이어졌나 | work-memory 관계 그래프(`caused-by`, `resolved-by`, `analyzed-in` 등) | `wm_node.py graph <id> --repo-name <이름>` |
+| 지금 하는 작업과 관련된 과거 기록은 | work-memory context pack | `wm_context.py node` / `query` |
+| 이 파일은 어떤 규약을 따르고 그 규약은 언제 바뀌었나 | artifact 규약 버전과 유효 구간, 파일 규약 스캔 | `validate_artifact_layer.py --scan` |
+| 이 artifact는 어떤 실행을 거쳐 만들어졌나 | workflow Stream(소비와 생산) | `references/queries/artifact-lineage.rq` |
+
+**함께 바뀐 것**
+- 신규 스킬 `mso-work-memory-link`가 연관 저장소 등록, 자동 커밋 켜기/끄기, 훅 사본 갱신, 점검을 맡는다.
+- artifact 층은 개념(안정 IRI)과 규약 버전(이름 규약, 형식, 디렉토리 템플릿, 유효 구간)으로 나뉘고, `consumerType`(Machine / Hybrid / Human), 템플릿 변수,
+  메타데이터 스키마, 규약 불변(git HEAD 비교)을 SHACL/SPARQL로 검증한다. YAML 레지스트리는 두지 않는다.
+- PROV-O 정렬은 TBox 주석으로 확장했다(D-23a). 공리로 단언하거나 `prov:`를 import하지 않는다.
+- `sf_node.py` 등 8개 스크립트가 python 3.9에서 `X | None` 문법으로 죽어 scaffold-check 훅이 조용히 실패하던 문제를 고쳤다.
+
+**현재 범위.** 기록, 커밋, 점검, 산출물 규약, 실행 흐름은 여러 저장소를 가로질러 한 세션에서 다룬다. 다만 work-memory 자체의 **그래프 조회와 검색은 저장소 단위**다
+(`--repo-name`으로 저장소를 골라 한 번에 한 저장소씩). 여러 저장소의 work-memory를 하나의 그래프로 합쳐 한 번에 질의하는 기능은 아직 없다.
+디렉토리 층(`index.yaml`)과 artifact 층의 연결(`wf:inModule`)도 임시 문자열이다. 자세한 한계는 [changelog](docs/changelog.md)의 Known Gaps에 있다.
 
 ## Core Philosophy
 
@@ -122,6 +135,12 @@ Execution Rail + Artifact Stream Graph = **Repository Graph** 이며, 여기에 
 | `local_database` | `cache.sqlite`, DuckDB cache | Agent | 빠른 조회와 질의를 제공한다. |
 | `document` | `README.md`, `report.md`, `prompt.md` | Human + Agent | 사람과 에이전트가 함께 읽고 수정하는 협업 인터페이스다. |
 | `media` | `html`, `pdf`, `pptx`, `png`, `svg` | Human | 외부 전달을 위한 human-native deliverable이다. |
+| `table` | `csv`, `tsv`, `xlsx` | Human + Agent | 사람도 열어 보는 표 형태 데이터다. |
+| `tool` | `py`, `sh` 스크립트 | Agent | 에이전트가 실행하는 도구다. |
+
+v0.13.0부터 artifact는 TTL registry에서 **개념(안정 IRI)과 규약 버전**으로 정의하고, 개별 artifact마다 소비자 유형
+`consumerType`(Machine / Hybrid / Human)을 선언한다. 위 표의 Primary Consumer는 유형의 기본값이다. 자세한 모델은
+[docs/artifact-model.md](docs/artifact-model.md)를 본다.
 
 ## What MSO Provides
 
@@ -144,7 +163,8 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 | `mso-repository-setup` | 새 repository에 `agent-context/` 구조와 hook을 부트스트랩한다. |
 | `mso-scaffold-design` | repository index와 artifact registry를 관리한다. |
 | `mso-workflow-design` | TTL workflow/artifact/eval node-edge shape와 migration tooling을 관리한다. |
-| `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. |
+| `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. 연관 저장소(`--repo`) 기록·커밋을 지원한다. |
+| `mso-work-memory-link` | 연관 저장소 work-memory 등록·점검(status/add/autocommit/sync-hooks/verify). |
 | `mso-graph-observability` | workflow, artifact stream, eval edge, runtime graph를 관측하고 개선 리포트를 만든다. |
 | `mso-workflow-observation` | workflow observation alias. `mso-graph-observability`의 workflow scope를 호출해 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다. |
 | `mso-workflow-optimizer` | TTL workflow를 실행 가능한 graph artifact로 컴파일하는 방향을 담당한다. |
@@ -158,7 +178,8 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 ```text
 agent-context/
 ├── index/
-│   └── index.yaml
+│   ├── index.yaml                  # 디렉토리 층 SSOT
+│   └── artifacts.abox.ttl          # artifact 층 SSOT (v0.13.0, 선택)
 ├── workflow/
 │   └── *.abox.ttl
 ├── observability/
@@ -179,7 +200,8 @@ agent-context/
     ├── auditlog/
     ├── worklog/
     ├── track-record/
-    └── insight-record/
+    ├── insight-record/
+    └── linked-repos.yaml           # 연관 저장소 등록부 (v0.13.0, 선택)
 ```
 
 ## Quick Start
@@ -255,6 +277,38 @@ python3 skills/mso-work-memory/scripts/wm_node.py new user-decision \
 python3 skills/mso-work-memory/scripts/wm_node.py validate agent-context/work-memory
 ```
 
+### Link Related Repositories (v0.13.0)
+
+엄브렐러 repo 루트에서 연 세션도 하위·별도 경로 MSO 저장소의 work-memory에 기록하고 커밋한다.
+
+```bash
+LINK=skills/mso-work-memory-link/scripts/wm_link.py
+python3 $LINK status                      # 등록·발견된 저장소, autocommit, 훅 사본 일치, git 건강
+python3 $LINK add mso ~/path/to/mso --autocommit
+python3 $LINK autocommit child-repo on
+python3 $LINK sync-hooks                  # 훅 사본 vs 스킬 최신판 비교(기본 dry-run, --apply 로 교체)
+python3 $LINK verify
+
+# 연관 저장소에 기록
+python3 skills/mso-work-memory/scripts/wm_node.py new agent-decision --title "..." --repo-name child-repo
+```
+
+서브모듈 중 work-memory가 있는 곳은 자동 발견되며 자동 커밋은 꺼져 있다. 켜려면 `autocommit on`으로 등록부에 항목을 만든다.
+push는 하지 않고 서브모듈 포인터도 건드리지 않는다.
+
+### Validate The Artifact Layer (v0.13.0)
+
+```bash
+# artifact registry(TTL)와 workflow Stream을 SHACL/SPARQL로 검증하고, 실제 파일이 규약에 맞는지 스캔한다
+python3 skills/mso-workflow-design/scripts/validate_artifact_layer.py --root . --scan [--json out.json]
+
+# workflow의 경로·locator 참조가 index와 registry에 매핑되는지 점검
+python3 skills/mso-scaffold-design/scripts/check_artifact_index.py --root . [--suggest]
+
+# 변형 파일의 계보: registry + workflow ABox에 artifact-lineage.rq 를 실행한다
+# (skills/mso-workflow-design/references/queries/artifact-lineage.rq)
+```
+
 ## Design Principles
 
 **Provider Free.** MSO는 Claude Code, Codex, Antigravity 등 provider runtime 위에서 동작하지만 특정 provider에 종속되지 않는다.
@@ -276,10 +330,16 @@ rdflib>=7.0
 pyshacl>=0.31
 ```
 
+시험은 python 3.11 이상 환경을 권장한다(일부 시험이 `tomllib`을 쓰고 SHACL 시험은 `pyshacl`이 필요하다). 스크립트 자체는 python 3.9에서도 동작한다.
+
 ## References
 
 - [docs/artifact-model.md](docs/artifact-model.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/getting-started.md](docs/getting-started.md)
 - [docs/changelog.md](docs/changelog.md)
 - [skills/mso-graph-observability/SKILL.md](skills/mso-graph-observability/SKILL.md)
 - [skills/mso-workflow-design/SKILL.md](skills/mso-workflow-design/SKILL.md)
 - [skills/mso-work-memory/SKILL.md](skills/mso-work-memory/SKILL.md)
+- [skills/mso-work-memory-link/SKILL.md](skills/mso-work-memory-link/SKILL.md)
+- [skills/mso-scaffold-design/SKILL.md](skills/mso-scaffold-design/SKILL.md)
