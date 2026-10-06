@@ -1,5 +1,15 @@
 # 변경 이력
 
+## Unreleased — mso-workflow-design: Oracle workflow 가 registry 에 선언된 artifact 를 evolve 할 수 있게
+
+> `validate_abox.py` 가 registry 의 artifact 를 `wf:RegisteredArtifact ⊑ wf:Artifact` 로만 합쳐서, `?t a wf:Artifact` 를 SPARQL 로 직접 검사하는 shape(`evolves_to`/`tests_to` 의 대상 검사 등)는
+> 하위 클래스를 따라가지 못했다. artifact 층을 쓰는 repo 에서 Oracle workflow 를 처음 만들면 "evolves_to/tests_to Rail의 to는 Workflow 또는 Artifact여야 함" 이 나온다
+> (korean-tax 의 개정 조문 분류기 Oracle workflow 에서 발견).
+
+### Fixed
+
+- `validate_abox.py`: registry 의 `wf:RegisteredArtifact` 개체에 `rdf:type wf:Artifact` 를 v0.7 검증 그래프 안에서 직접 부여한다. 시험 1개 추가(수정 없이는 실패).
+
 ## v0.14.0 (2026-10-07) — TTL 컴파일을 없애고 optimizer 를 분석 도구로, 관측은 그림보다 brief 로
 
 > 두 가지가 바뀐다. (1) workflow TTL → LangGraph 컴파일 기능을 과감하게 없애고 `mso-workflow-optimizer` 를 **work-memory 분석 도구**로 바꿨다.
