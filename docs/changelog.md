@@ -1,5 +1,16 @@
 # 변경 이력
 
+## v0.13.2 (2026-10-06) — mso-workflow-optimizer: 미결정 decision은 halt
+
+> 생성된 LangGraph에서 `decisions[node]`가 없거나 분기에 없는 값이면 `branches[0]`으로 조용히 진행하던 문제를 고친다. 검증이 실행되지 않았는데 `gates_ok`가 `pass`로 처리되는 식이다.
+> korean-tax 법령 개정 반영 workflow 점검에서 발견했다.
+
+### Changed
+
+- `mso-workflow-optimizer` v0.8.1: decision 노드에 유효한 결정이 없으면 `awaiting_decision:<node>`로 halt한다(LangGraph 모드). 선형 fallback은 분기를 무시하므로 적용하지 않는다.
+- 시험 1개 추가(미결정 분기 halt).
+- 이미 컴파일된 `graph.py`는 재컴파일해야 반영된다. decision을 비워 두고 기본 분기에 기대던 실행 코드는 이제 멈춘다.
+
 ## v0.13.1 (2026-10-06) — mso-workflow-optimizer: v0.7 네이티브 컴파일, 사람 승인 halt, 로컬 서빙 엔진
 
 > v0.7 Rail/Stream workflow를 `compile_workflow.py`에 넣으면 에러 없이 일부 노드(Decision만)와 엣지 0개로 컴파일되고, 사람 결정 노드가 로컬 LLM에 배정되는 문제를 고친다.

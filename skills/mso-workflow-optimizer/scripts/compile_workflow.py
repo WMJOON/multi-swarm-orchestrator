@@ -681,6 +681,11 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         if spec.get("requires_human") and not (node_result or (state.get("decisions", {{}}) or {{}}).get(node_id)):
             state["halted"] = True
             state["halt_reason"] = f"awaiting_human:{{node_id}}"
+        branch_ons = {{edge["on"] for edge in PAYLOAD["branch_edges"] if edge["source"] == node_id}}
+        # fallback(선형) 모드는 분기를 무시하므로 decision 미결정 halt 는 LangGraph 모드에서만 적용한다.
+        if LANGGRAPH_AVAILABLE and branch_ons and not state.get("halted") and (state.get("decisions", {{}}) or {{}}).get(node_id) not in branch_ons:
+            state["halted"] = True
+            state["halt_reason"] = f"awaiting_decision:{{node_id}}"
         control_event = node_result.get("control_plane_event")
         if control_event:
             event = dict(control_event)
@@ -737,7 +742,7 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         allowed = {{edge["on"] for edge in branches}}
         if selected in allowed:
             return selected
-        return branches[0]["on"] if branches else "__end__"
+        return "__halt__" if branches else "__end__"
 
 
     class FallbackGraph:

@@ -1,6 +1,8 @@
 import importlib.util
 import json
 import sys
+
+import pytest
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
@@ -354,3 +356,15 @@ ex:rs a wf:Edge, wf:Rail ; wf:railType "default" ; wf:from ex:sub ; wf:to ex:end
     assert any("reads rail is not control flow" in w for w in ir["warnings"])
     assert any("sub-workflow" in w for w in ir["warnings"])
     assert {n["id"]: n["judge"] for n in ir["nodes"]}["sub"] == "HOTL"
+
+
+def test_undecided_branch_halts_instead_of_taking_first_branch(tmp_path):
+    ttl = tmp_path / "workflow.abox.ttl"
+    ttl.write_text(TTL, encoding="utf-8")
+    artifact_dir = compile_workflow.compile_workflow(ttl, tmp_path / "generated", None, "cost")
+    generated = _load_generated_graph(artifact_dir / "graph.py")
+    if not generated.LANGGRAPH_AVAILABLE:
+        pytest.skip("langgraph not installed")
+    state = generated.invoke({})
+    assert state["halted"] is True
+    assert state["halt_reason"].startswith("awaiting_decision:")
