@@ -167,3 +167,19 @@ def test_registry_given_explicitly_is_merged_not_validated_as_v06(tmp_path):
     wf, registry = _project(tmp_path, with_registry=True)
     res = validate_abox.validate_abox([wf, registry])
     assert res["ok"] and res["v06_files"] == [] and res["artifact_registry_files"] == [str(registry)]
+
+
+def test_oracle_evolves_to_registered_artifact_passes(tmp_path):
+    """evolves_to 의 대상이 registry 에 선언된 artifact 여도 `?t a wf:Artifact` SPARQL shape 를 통과한다(Oracle workflow)."""
+    pytest.importorskip("pyshacl")
+    wf, registry = _project(tmp_path, with_registry=True)
+    oracle = _STREAM_WORKFLOW.replace("x:workflow", "o:workflow").replace("x:", "o:").replace("https://example.org/x#", "https://example.org/o#")
+    oracle = oracle.replace('wf:workflowType "base"', 'wf:workflowType "oracle"').replace("o:run a wf:Node, wf:Execution, wf:Task", "o:run a wf:Node, wf:Execution, wf:Task")
+    # 평가 대상은 같은 디렉토리의 base workflow(x:workflow). 간단히 하려고 oracle 은 Task 가 art:out 을 evolve 하는 구조만 검증한다.
+    extra = """
+o:evolve a wf:Edge, wf:Rail ; wf:railType "evolves_to" ; wf:from o:run ; wf:to art:out .
+"""
+    (wf / "o.abox.ttl").write_text(oracle + extra, encoding="utf-8")
+    res = validate_abox.validate_abox([wf])
+    report = res["v07"]["shacl_report"]
+    assert "evolves_to/tests_to Rail의 to는 Workflow 또는 Artifact여야 함" not in report, report

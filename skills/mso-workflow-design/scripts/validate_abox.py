@@ -503,6 +503,9 @@ def validate_abox(targets: list[Path]) -> dict:
             for registry in registry_paths:
                 g7.parse(str(registry), format="turtle")
             g7.add((WF.RegisteredArtifact, RDFS.subClassOf, WF.Artifact))
+            # evolves_to/tests_to 등 SPARQL 로 `?t a wf:Artifact` 를 직접 검사하는 shape 는 subClassOf 를 따라가지 않으므로 타입도 직접 부여한다.
+            for artifact in list(g7.subjects(RDF.type, WF.RegisteredArtifact)):
+                g7.add((artifact, RDF.type, WF.Artifact))
         conforms7, shacl_text7 = run_shacl_v07(g7)
         oracle_issues, oracle_warnings = find_oracle_disjoint_violations_v07(g7)
         partition_issues = find_task_sharing_v07(g7)
