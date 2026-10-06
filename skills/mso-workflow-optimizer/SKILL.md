@@ -1,7 +1,7 @@
 ---
 name: mso-workflow-optimizer
 metadata:
-  version: "0.8.0"
+  version: "0.9.0"
 description: >
   MSO workflow TTL ABox를 실행 가능한 LangGraph artifact로 컴파일하는 optimizer 스킬.
   TTL을 SSOT로 유지하면서 Vertex별 instruction, work-memory ContextPack,
@@ -36,6 +36,8 @@ workflow/*.abox.ttl  ->  optimizer IR  ->  generated/langgraph/workflow-id/graph
 - `HITL`, `HITLFE`, `HOTL`, `HOOTL` decision은 graph 조건부 edge/gate로 보존한다.
 - **v0.7 Rail/Stream workflow를 그대로 컴파일한다.** 제어 흐름 추출은 **`mso-workflow-design`의 `wf_v07.control_graph`(>=0.13.0)가 정본**이고, 이 스킬은 그 결과에 실행 정책(judge→provider)만 입힌다. sibling `skills/` 우선, `~/.claude/skills/` fallback이며 design 스킬이 없으면 컴파일이 중단된다. 제어 Rail은 `default`·`escalates_to`뿐이고 `reads`·`delegates_to`·oracle Rail은 건너뛰며 경고로 남긴다. `wf:hasSubject`를 judge로 옮긴다(human=HITL, model·self·workflow=HOTL, system=HOOTL). `hasSubject=workflow`(하위 workflow)는 펼치지 않고 단일 노드로 둔다. v0.6(Project/Phase/Step) 어휘도 계속 지원한다. v0.7인데 읽을 수 없는 rail(없는 노드 참조)·출구 없는 decision은 조용히 넘기지 않고 오류로 중단한다.
 - `hasSubject=human` 노드는 `requires_human`이다. `decisions[node]` 또는 `node_results[node]` 없이는 execution plane이 `awaiting_human:<node>`로 halt하며 자동 승인하지 않는다. halt 상태에서는 조건부 edge가 END로 간다.
+- decision 노드에 유효한 `decisions[node]`가 없으면 첫 분기로 보내지 않고 `awaiting_decision:<node>`로 halt한다(LangGraph 모드. 선형 fallback은 분기를 무시하므로 적용 안 됨).
+- **구조는 컴파일, 본문은 바인딩.** TTL에서 컴파일되는 것은 제어 구조뿐이다. 노드가 실제로 실행할 것(script/agent/interrupt)은 대상 프로젝트에서 **AI 에이전트가 `bindings.yaml`로 작성**하고 `--bindings`(+`--strict-bindings`)로 컴파일하면 TTL과 어긋남을 컴파일 시점에 검증한다. 스킬은 `examples/bindings.example.yaml` 예시와 `references/bindings.md` 계약만 제공하고 바인딩을 대신 만들지 않는다. script는 `state.execute`가 참일 때만 실행된다(기본 dry-run). 체크포인터(`graph.start/resume`, `sqlite_checkpointer`)를 쓰면 사람·에이전트 대기를 LangGraph `interrupt`로 멈췄다가 같은 지점에서 이어간다.
 - 되돌림 루프는 정책 `loop_limit`(기본 5)를 넘으면 `loop_limit:<node>`로 halt한다.
 - **로컬 AI 서빙 엔진**: `ollama | vllm | sglang | lmstudio | omlx`(모두 OpenAI 호환 `/v1`). 일반 local 슬롯의 엔진은 정책 `local_engine` 또는 `--local-engine`으로 고르고, 엔드포인트는 정책 `engines.<name>.base_url`로 덮어쓴다(기본 포트: ollama 11434, vllm 8000, sglang 30000, lmstudio 1234, omlx 8000). 생성된 `graph.py`의 `engine_for(node_id)`가 노드의 엔진 설정을 돌려준다. API key는 TTL·정책에 넣지 않는다.
 - Claude Code/Codex 같은 client agent는 **control plane**, LangGraph는 **execution plane**이다.
@@ -112,3 +114,5 @@ governance:
 ## References
 
 - [references/langgraph-adapter.md](references/langgraph-adapter.md): IR, provider policy, generated graph 계약.
+- [references/bindings.md](references/bindings.md): 노드 본문 바인딩 계약, 에이전트 작성 절차, 멈춤·재개.
+- [examples/bindings.example.yaml](examples/bindings.example.yaml): 바인딩 형식 예시(적용되지 않음).

@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.13.1
+# Multi-Swarm Orchestrator (MSO) v0.13.2
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,12 +13,10 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.13.1 (2026-10-06) — v0.7 workflow를 LangGraph로 그대로 컴파일하고, 로컬 AI 서빙 엔진을 고른다
+### v0.13.2 (2026-10-06) — 결정이 비어 있으면 첫 분기로 가지 않고 멈춘다
 
-`mso-workflow-optimizer`가 v0.7 Rail/Stream workflow(`wf:Execution`·`wf:Rail`·`wf:Start/End`)를 어댑터 없이 컴파일한다. `hasSubject=human` 노드는 결정 없이는 멈추고,
-되돌림 루프는 `loop_limit`에서 멈춘다. 로컬 슬롯은 ollama·vLLM·SGLang·LM Studio·oMLX 중에서 정책(`local_engine`)이나 `--local-engine`으로 고른다.
-v0.7 제어 흐름 추출의 정본은 `mso-workflow-design`의 `wf_v07.control_graph`(>=0.13.0)이고 optimizer는 이를 소비한다.
-Python 의존성은 `requirements.txt`(+ 선택 `requirements-langgraph.txt`)로 선언하며, venv는 저장소에 두지 않고 `bash install.sh --venv`가 `~/.mso/venv`에 만든다. 상세는 changelog.
+`mso-workflow-optimizer`가 컴파일한 LangGraph에서 decision 노드에 유효한 `decisions[node]`가 없으면 첫 번째 분기로 보내지 않고 `awaiting_decision:<node>`로 멈춘다.
+이전에는 검증 결과가 비어 있어도 `gates_ok`가 `pass`로 처리됐고, 변경 감지가 비어 있으면 조용히 종료됐다. 상세는 changelog.
 
 ### v0.13.0 (2026-10-05) — 여러 저장소를 횡단하며 작업하고, 맥락을 TTL 지식 그래프로 찾는다
 

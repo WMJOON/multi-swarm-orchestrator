@@ -368,7 +368,7 @@ def _context_index_hash(entries: list[dict[str, Any]]) -> str:
 
 # hasSubject → judge. workflow(하위 workflow 위임)는 펼치지 않고 단일 노드로 두므로 HOTL 로 취급한다.
 V07_JUDGE = {"human": "HITL", "model": "HOTL", "system": "HOOTL", "self": "HOTL", "workflow": "HOTL"}
-V07_NODE_TYPE = {"task": "step", "decision": "decision", "eval": "validation", "end": "end"}
+V07_NODE_TYPE = {"task": "step", "decision": "decision", "eval": "validation", "event": "event", "end": "end"}
 
 
 def _parse_v07(g: Graph, policy: dict[str, Any], warnings: list[str]) -> tuple[dict[str, Node], list[dict[str, str]], list[str]]:
@@ -399,7 +399,7 @@ def _parse_v07(g: Graph, policy: dict[str, Any], warnings: list[str]) -> tuple[d
             judge=judge,
             harness=item["harness"] or item["method"],
             pass_criteria=criteria if node_type == "validation" else [],
-            provider=_provider_for(node_type, judge, policy),
+            provider="python" if node_type in {"event", "end"} else _provider_for(node_type, judge, policy),
             subject=subject,
             requires_human=subject == "human",
         )
@@ -580,7 +580,80 @@ def _topological_order(ir: dict[str, Any]) -> list[str]:
     return order if len(order) == len(nodes) else sorted(nodes)
 
 
-def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
+BINDING_KINDS = {"script", "agent", "interrupt"}
+# 바인딩이 필요 없는 노드 타입: 시작/끝 표지.
+UNBOUND_OK_TYPES = {"end", "start"}
+
+
+def load_bindings(path: Path | None) -> dict[str, dict[str, Any]]:
+    """노드 실행 바인딩(YAML/JSON)을 읽는다. 최상위 `bindings:` 키가 있으면 그 아래를, 없으면 전체를 노드 매핑으로 본다."""
+    if path is None:
+        return {}
+    text = _read_text(path)
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        try:
+            import yaml  # type: ignore
+        except ImportError as exc:  # pragma: no cover - env dependent
+            raise SystemExit("YAML bindings require PyYAML. Use JSON or install pyyaml.") from exc
+        loaded = yaml.safe_load(text) or {}
+    else:
+        loaded = json.loads(text)
+    if not isinstance(loaded, dict):
+        raise SystemExit(f"bindings must be a mapping of node id -> binding: {path}")
+    bindings = loaded.get("bindings", loaded)
+    if not isinstance(bindings, dict):
+        raise SystemExit(f"'bindings' must be a mapping of node id -> binding: {path}")
+    return bindings
+
+
+def validate_bindings(bindings: dict[str, dict[str, Any]], ir: dict[str, Any], strict: bool = False) -> tuple[list[str], list[str]]:
+    """바인딩을 IR 과 대조한다. (errors, warnings) 를 돌려준다. 컴파일은 errors 가 있으면 중단한다.
+
+    TTL(구조 정본)과 바인딩(수작업/에이전트 작성)이 어긋나는 것을 컴파일 시점에 잡는 게 목적이다.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    nodes = {node["id"]: node for node in ir["nodes"]}
+    for node_id, binding in bindings.items():
+        if node_id not in nodes:
+            errors.append(f"binding for unknown node {node_id!r} (not in TTL)")
+            continue
+        if not isinstance(binding, dict) or binding.get("kind") not in BINDING_KINDS:
+            errors.append(f"{node_id}: kind must be one of {sorted(BINDING_KINDS)}")
+            continue
+        node = nodes[node_id]
+        kind = binding["kind"]
+        if kind == "script":
+            run = binding.get("run")
+            if not (isinstance(run, str) and run.strip()) and not (isinstance(run, list) and run and all(isinstance(x, (str, int)) for x in run)):
+                errors.append(f"{node_id}: script binding needs `run` (string or argv list)")
+            rule = binding.get("decision")
+            branches = {edge["on"] for edge in ir["edges"] if edge["kind"] == "branch" and edge["source"] == node_id}
+            if node["type"] == "decision":
+                if not isinstance(rule, dict):
+                    errors.append(f"{node_id}: decision node script binding needs `decision` ({{source, map}}) to choose a branch")
+                else:
+                    if rule.get("source", "exit_code") not in {"exit_code", "stdout_json"}:
+                        errors.append(f"{node_id}: decision.source must be exit_code or stdout_json")
+                    targets = {v for k, v in (rule.get("map") or {}).items()}
+                    unknown = targets - branches
+                    if unknown:
+                        errors.append(f"{node_id}: decision.map targets {sorted(unknown)} are not branches {sorted(branches)}")
+            elif rule:
+                errors.append(f"{node_id}: `decision` is only valid on decision nodes")
+            if node.get("requires_human"):
+                warnings.append(f"{node_id}: script binding on a human node bypasses the human gate; use kind=interrupt")
+        if kind == "interrupt" and not node.get("requires_human") and node["type"] != "decision":
+            warnings.append(f"{node_id}: interrupt on a non-human, non-decision node")
+    for node_id, node in nodes.items():
+        if node_id in bindings or node["type"] in UNBOUND_OK_TYPES:
+            continue
+        message = f"{node_id}: no binding (runs as planned only)"
+        (errors if strict else warnings).append(message)
+    return errors, warnings
+
+
+def render_graph_py(ir: dict[str, Any], policy: dict[str, Any], bindings: dict[str, dict[str, Any]] | None = None) -> str:
     node_order = _topological_order(ir)
     node_specs = {node["id"]: node for node in ir["nodes"]}
     fixed_edges = [
@@ -609,6 +682,7 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         "local_engine": policy.get("local_engine", "ollama"),
         "planes": policy.get("planes", {}),
         "policy": policy,
+        "bindings": bindings or {},
     }
     payload_py = pformat(payload, width=100, sort_dicts=False).replace("\n", "\n    ")
 
@@ -622,8 +696,12 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
 
     from __future__ import annotations
 
+    import json
+    import os
+    import shlex
+    import subprocess
     from copy import deepcopy
-    from typing import Any
+    from typing import Annotated, Any
 
     PAYLOAD = {payload_py}
 
@@ -635,10 +713,134 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         START = "__start__"
         StateGraph = None
         LANGGRAPH_AVAILABLE = False
+    try:
+        from langgraph.types import Command, interrupt
+    except Exception:  # pragma: no cover - depends on optional runtime
+        Command = None
+        interrupt = None
+
+    # build_graph(checkpointer=...) 로 만든 그래프에서만 True. True 이면 사람/에이전트 대기를 halt 가 아니라
+    # interrupt 로 멈추고 resume() 으로 같은 지점에서 이어간다.
+    _CHECKPOINTED = False
 
 
     def node_specs() -> dict[str, dict[str, Any]]:
         return deepcopy(PAYLOAD["node_specs"])
+
+
+    def _pause(state: dict[str, Any], node_id: str, reason: str, event: dict[str, Any]) -> Any:
+        """체크포인터가 있으면 interrupt 로 멈추고 재개 값을 돌려준다. 없으면 halt 하고 None 을 돌려준다."""
+        if _CHECKPOINTED and interrupt is not None:
+            return interrupt(dict(event, node_id=node_id, reason=reason))
+        state["halted"] = True
+        state["halt_reason"] = reason
+        events = list(state.get("control_plane_events", []))
+        events.append(dict(event, node_id=node_id, status="pending-control-plane"))
+        state["control_plane_events"] = events
+        return None
+
+
+    def _apply_resume(state: dict[str, Any], node_id: str, value: Any) -> None:
+        """재개 값을 state 에 반영한다. 문자열은 분기 결정, dict 는 노드 결과(decision 키가 있으면 결정도)."""
+        results = dict(state.get("node_results", {{}}))
+        decisions = dict(state.get("decisions", {{}}))
+        if isinstance(value, dict):
+            results[node_id] = dict(results.get(node_id, {{}}), **value)
+            if value.get("decision") is not None:
+                decisions[node_id] = value["decision"]
+        elif value is not None:
+            results[node_id] = dict(results.get(node_id, {{}}), value=value)
+            decisions[node_id] = value
+        state["node_results"] = results
+        state["decisions"] = decisions
+        _mark_runtime(state, node_id)
+
+
+    def _mark_runtime(state: dict[str, Any], node_id: str) -> None:
+        """런타임(script/재개)에서 만들어진 결정·결과를 기록한다. 되돌림 루프 재진입 시 이것만 폐기한다(초기 입력은 유지)."""
+        # 목록이 아니라 dict: 변경분(delta)은 바뀐 키만 담기 때문에 목록을 걸러내고 다시 채우면 항목이 누락될 수 있다.
+        produced = dict(state.get("runtime_produced", {{}}))
+        produced[node_id] = True
+        state["runtime_produced"] = produced
+
+
+    def _branch_ons(node_id: str) -> set[str]:
+        return {{edge["on"] for edge in PAYLOAD["branch_edges"] if edge["source"] == node_id}}
+
+
+    def _run_script(state: dict[str, Any], node_id: str, binding: dict[str, Any]) -> None:
+        """script 바인딩 실행. state['execute'] 가 참일 때만 실제로 돌린다(기본은 dry-run)."""
+        results = dict(state.get("node_results", {{}}))
+        if not state.get("execute"):
+            state["node_outputs"][node_id]["status"] = "bound-dry-run"
+            return
+        if (results.get(node_id) or {{}}).get("executed"):
+            return
+        command = binding["run"]
+        argv = shlex.split(command) if isinstance(command, str) else [str(part) for part in command]
+        env = dict(os.environ, MSO_WORKFLOW_ID=PAYLOAD["workflow_id"], MSO_NODE_ID=node_id)
+        env.update({{str(k): str(v) for k, v in (binding.get("env") or {{}}).items()}})
+        payload = json.dumps(
+            {{"node_id": node_id, "node_results": state.get("node_results", {{}}), "decisions": state.get("decisions", {{}}),
+              "inputs": state.get("inputs", {{}})}},
+            ensure_ascii=False, default=str,
+        )
+        proc = subprocess.run(
+            argv, input=payload, capture_output=True, text=True, env=env,
+            cwd=binding.get("cwd") or state.get("cwd") or None, timeout=int(binding.get("timeout", 600)),
+        )
+        parsed = None
+        try:
+            parsed = json.loads(proc.stdout) if proc.stdout.strip() else None
+        except ValueError:
+            parsed = None
+        result = {{"executed": True, "returncode": proc.returncode, "stdout": proc.stdout[-4000:],
+                  "stderr": proc.stderr[-2000:], "output": parsed}}
+        results[node_id] = dict(results.get(node_id, {{}}), **result)
+        state["node_results"] = results
+        _mark_runtime(state, node_id)
+        state["node_outputs"][node_id]["status"] = "executed"
+        rule = binding.get("decision")
+        if rule:
+            source = rule.get("source", "exit_code")
+            if source == "exit_code":
+                raw = str(proc.returncode)
+            else:
+                raw = parsed.get(rule.get("key", "decision")) if isinstance(parsed, dict) else None
+            mapping = {{str(k): v for k, v in (rule.get("map") or {{}}).items()}}
+            value = mapping.get(str(raw), mapping.get("default")) if mapping else raw
+            if value in _branch_ons(node_id):
+                decisions = dict(state.get("decisions", {{}}))
+                decisions[node_id] = value
+                state["decisions"] = decisions
+                return
+            state["halted"] = True
+            state["halt_reason"] = "script_undecided:" + node_id
+        elif proc.returncode != 0:
+            state["halted"] = True
+            state["halt_reason"] = "script_failed:" + node_id
+
+
+    def _run_binding(state: dict[str, Any], node_id: str) -> None:
+        binding = (PAYLOAD.get("bindings") or {{}}).get(node_id)
+        if not binding or state.get("halted"):
+            return
+        kind = binding["kind"]
+        results = state.get("node_results", {{}}) or {{}}
+        if kind == "script":
+            _run_script(state, node_id, binding)
+        elif kind == "agent" and not results.get(node_id):
+            event = {{"action": "delegate_to_agent", "instruction": PAYLOAD["node_specs"][node_id].get("instruction"),
+                     "session": binding.get("session"), "expects": binding.get("expects")}}
+            value = _pause(state, node_id, "awaiting_agent:" + node_id, event)
+            if value is not None:
+                _apply_resume(state, node_id, value)
+        elif kind == "interrupt" and not results.get(node_id) and node_id not in (state.get("decisions", {{}}) or {{}}):
+            event = {{"action": "request_user_decision", "instruction": PAYLOAD["node_specs"][node_id].get("instruction"),
+                     "choices": sorted(_branch_ons(node_id))}}
+            value = _pause(state, node_id, "awaiting_human:" + node_id, event)
+            if value is not None:
+                _apply_resume(state, node_id, value)
 
 
     def _run_node(state: dict[str, Any], node_id: str) -> dict[str, Any]:
@@ -653,6 +855,11 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
             state["halted"] = True
             state["halt_reason"] = f"loop_limit:{{node_id}}"
             return state
+        if visits[node_id] > 1 and (state.get("runtime_produced", {{}}) or {{}}).get(node_id):
+            # 되돌림 루프로 다시 들어온 노드: 이전 라운드에서 런타임에 만든 결정·결과는 낡았으므로 버리고 다시 받는다.
+            state["decisions"] = {{k: v for k, v in (state.get("decisions", {{}}) or {{}}).items() if k != node_id}}
+            state["node_results"] = {{k: v for k, v in (state.get("node_results", {{}}) or {{}}).items() if k != node_id}}
+            state["runtime_produced"] = dict(state["runtime_produced"], **{{node_id: False}})
         context_pack = (
             (state.get("context_overrides", {{}}) or {{}}).get(node_id)
             or PAYLOAD.get("context_packs", {{}}).get(node_id)
@@ -677,10 +884,21 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
             "instruction": spec.get("instruction"),
             "context_entry_ids": [entry.get("id") for entry in context_pack.get("entries", [])],
         }}
+        _run_binding(state, node_id)
         node_result = (state.get("node_results", {{}}) or {{}}).get(node_id) or {{}}
-        if spec.get("requires_human") and not (node_result or (state.get("decisions", {{}}) or {{}}).get(node_id)):
-            state["halted"] = True
-            state["halt_reason"] = f"awaiting_human:{{node_id}}"
+        branch_ons = _branch_ons(node_id)
+        if spec.get("requires_human") and not state.get("halted") and not (node_result or (state.get("decisions", {{}}) or {{}}).get(node_id)):
+            event = {{"action": "request_user_decision", "instruction": spec.get("instruction"), "choices": sorted(branch_ons)}}
+            value = _pause(state, node_id, "awaiting_human:" + node_id, event)
+            if value is not None:
+                _apply_resume(state, node_id, value)
+                node_result = (state.get("node_results", {{}}) or {{}}).get(node_id) or {{}}
+        # fallback(선형) 모드는 분기를 무시하므로 decision 미결정 halt 는 LangGraph 모드에서만 적용한다.
+        if LANGGRAPH_AVAILABLE and branch_ons and not state.get("halted") and (state.get("decisions", {{}}) or {{}}).get(node_id) not in branch_ons:
+            event = {{"action": "request_decision", "instruction": spec.get("instruction"), "choices": sorted(branch_ons)}}
+            value = _pause(state, node_id, "awaiting_decision:" + node_id, event)
+            if value is not None:
+                _apply_resume(state, node_id, value)
         control_event = node_result.get("control_plane_event")
         if control_event:
             event = dict(control_event)
@@ -737,7 +955,49 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         allowed = {{edge["on"] for edge in branches}}
         if selected in allowed:
             return selected
-        return branches[0]["on"] if branches else "__end__"
+        return "__halt__" if branches else "__end__"
+
+
+    def _merge_state(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
+        """병렬 분기가 같은 step 에서 돌려주는 상태 변경분을 합친다(LangGraph reducer)."""
+        merged = dict(left or {{}})
+        for key, value in (right or {{}}).items():
+            current = merged.get(key)
+            if isinstance(value, list) and isinstance(current, list):
+                merged[key] = current + value
+            elif isinstance(value, dict) and isinstance(current, dict):
+                combined = dict(current)
+                combined.update(value)
+                merged[key] = combined
+            elif key == "halted":
+                merged[key] = bool(current) or bool(value)
+            else:
+                merged[key] = value
+        return merged
+
+
+    def _state_delta(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+        """노드가 바꾼 부분만 돌려준다. 전체 상태를 돌려주면 병렬 노드끼리 덮어써 InvalidUpdateError 가 난다."""
+        delta: dict[str, Any] = {{}}
+        for key, value in after.items():
+            old = before.get(key)
+            if key not in before:
+                delta[key] = value
+            elif isinstance(value, list) and isinstance(old, list):
+                if len(value) > len(old):
+                    delta[key] = value[len(old):]
+            elif isinstance(value, dict) and isinstance(old, dict):
+                changed = {{k: v for k, v in value.items() if k not in old or old[k] != v}}
+                if changed:
+                    delta[key] = changed
+            elif value != old:
+                delta[key] = value
+        return delta
+
+
+    def _node_update(state: dict[str, Any], node_id: str) -> dict[str, Any]:
+        before = deepcopy(state or {{}})
+        return _state_delta(before, _run_node(state, node_id))
 
 
     class FallbackGraph:
@@ -751,13 +1011,15 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
             return state
 
 
-    def build_graph():
+    def build_graph(checkpointer=None):
+        global _CHECKPOINTED
         if not LANGGRAPH_AVAILABLE:
             return FallbackGraph()
+        _CHECKPOINTED = checkpointer is not None
 
-        graph = StateGraph(dict)
+        graph = StateGraph(Annotated[dict, _merge_state])
         for node_id in PAYLOAD["node_order"]:
-            graph.add_node(node_id, lambda state, node_id=node_id: _run_node(state, node_id))
+            graph.add_node(node_id, lambda state, node_id=node_id: _node_update(state, node_id))
 
         for entry in PAYLOAD["entrypoints"]:
             graph.add_edge(START, entry)
@@ -785,11 +1047,32 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         for node_id in PAYLOAD["terminal_nodes"]:
             graph.add_edge(node_id, END)
 
-        return graph.compile()
+        return graph.compile(checkpointer=checkpointer) if checkpointer is not None else graph.compile()
 
 
     def invoke(initial_state: dict[str, Any] | None = None) -> dict[str, Any]:
         return build_graph().invoke(initial_state or {{}})
+
+
+    def sqlite_checkpointer(path: str):
+        """SQLite 체크포인터(pip install langgraph-checkpoint-sqlite). 프로세스가 끝나도 대기 지점이 남는다."""
+        import sqlite3
+        from langgraph.checkpoint.sqlite import SqliteSaver
+        return SqliteSaver(sqlite3.connect(path, check_same_thread=False))
+
+
+    def _config(thread_id: str) -> dict[str, Any]:
+        return {{"configurable": {{"thread_id": thread_id}}, "recursion_limit": 200}}
+
+
+    def start(thread_id: str, initial_state: dict[str, Any] | None, checkpointer) -> dict[str, Any]:
+        """thread_id 로 실행을 시작한다. interrupt 에서 멈추면 결과에 '__interrupt__' 가 담긴다."""
+        return build_graph(checkpointer).invoke(initial_state or {{}}, config=_config(thread_id))
+
+
+    def resume(thread_id: str, value: Any, checkpointer) -> dict[str, Any]:
+        """멈춘 지점에서 이어간다. value 는 분기 이름(문자열) 또는 노드 결과 dict(decision 키 선택)."""
+        return build_graph(checkpointer).invoke(Command(resume=value), config=_config(thread_id))
     ''')
 
 
@@ -800,6 +1083,8 @@ def compile_workflow(
     mode: str | None,
     workmem_dir: Path | None = None,
     local_engine: str | None = None,
+    bindings_path: Path | None = None,
+    strict_bindings: bool = False,
 ) -> Path:
     policy = _load_policy(policy_path, mode)
     if local_engine:
@@ -807,18 +1092,27 @@ def compile_workflow(
             raise SystemExit(f"unknown local engine {local_engine!r}; choose one of {sorted(policy['engines'])}")
         policy["local_engine"] = local_engine
     ir = parse_ttl(ttl_path, policy, workmem_dir=workmem_dir)
+    bindings = load_bindings(bindings_path)
+    if bindings_path is not None or strict_bindings:
+        binding_errors, binding_warnings = validate_bindings(bindings, ir, strict=strict_bindings)
+        ir["warnings"] = list(ir["warnings"]) + [f"bindings: {w}" for w in binding_warnings]
+        if binding_errors:
+            raise SystemExit("invalid bindings:\n  " + "\n  ".join(binding_errors))
     artifact_dir = out_root / _safe_id(ir["workflow_id"])
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     (artifact_dir / "workflow_ir.json").write_text(json.dumps(ir, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (artifact_dir / "optimizer_policy.json").write_text(json.dumps(policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (artifact_dir / "graph.py").write_text(render_graph_py(ir, policy), encoding="utf-8")
+    (artifact_dir / "graph.py").write_text(render_graph_py(ir, policy, bindings), encoding="utf-8")
     manifest = {
         "name": ir["workflow_id"],
         "source_ttl": ir["source_ttl"],
         "source_sha256": ir["source_sha256"],
         "workmem_dir": ir.get("workmem_dir"),
         "workmem_sha256": ir.get("workmem_sha256"),
+        "bindings": str(bindings_path) if bindings_path else None,
+        "bindings_sha256": _sha256(bindings_path) if bindings_path else None,
+        "bound_nodes": sorted(bindings),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "artifacts": ["graph.py", "workflow_ir.json", "optimizer_policy.json"],
         "warnings": ir["warnings"],
@@ -835,10 +1129,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=sorted(MODE_PROVIDER_DEFAULTS), help="override policy mode")
     parser.add_argument("--local-engine", choices=sorted(DEFAULT_ENGINES), help="local AI serving engine for the generic local slot (default: policy local_engine, else ollama)")
     parser.add_argument("--workmem", type=Path, help="agent-context/work-memory directory for ContextPack snapshot")
+    parser.add_argument("--bindings", type=Path, help="node execution bindings YAML/JSON (hand/agent-authored, validated against the TTL; see references/bindings.md)")
+    parser.add_argument("--strict-bindings", action="store_true", help="fail if any non-end node has no binding")
     parser.add_argument("--print-ir", action="store_true", help="print workflow_ir.json after compiling")
     args = parser.parse_args(argv)
 
-    artifact_dir = compile_workflow(args.ttl, args.out, args.policy, args.mode, workmem_dir=args.workmem, local_engine=args.local_engine)
+    artifact_dir = compile_workflow(args.ttl, args.out, args.policy, args.mode, workmem_dir=args.workmem, local_engine=args.local_engine,
+                                    bindings_path=args.bindings, strict_bindings=args.strict_bindings)
     if importlib.util.find_spec("langgraph") is None:
         print(
             "[note] langgraph is not installed: generated graph.py will use the linear fallback invoke() "
