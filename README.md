@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.13.2
+# Multi-Swarm Orchestrator (MSO) v0.14.0
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,11 +13,34 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### Unreleased — optimizer는 workflow를 컴파일하지 않고 work-memory를 분석해 제안한다
+### v0.14.0 (2026-10-07) — TTL 컴파일을 없애고 optimizer를 분석 도구로, 관측은 그림보다 brief로
 
-`mso-workflow-optimizer`(v1.0.0)가 TTL→LangGraph 컴파일을 그만두고 **work-memory를 읽기 전용으로 분석하는 LangGraph**가 됐다.
-결정적 분석이 회고 승격 후보(IN/TS→EP→PT→PR), workflow 개선안(재발 root cause·모듈 핫스팟), 낡은 결정·교훈, 기록 누락·품질을 근거 entry id와 함께 제안하고,
-모델은 선택적 요약 단계에만 쓴다(멈췄다가 이어가기). work-memory에는 쓰지 않고 리포트(`report.md`/`report.json`)만 남긴다. 상세는 changelog.
+두 가지가 바뀐다.
+
+**1. TTL → LangGraph 컴파일을 과감하게 없앴다. `mso-workflow-optimizer`는 이제 도구(tool)다.**
+workflow TTL에서 컴파일되는 것은 제어 구조뿐이고, 노드가 실제로 하는 일은 TTL에 없다. 그래서 컴파일 결과는 실행되지 않는 골격이었고, 바인딩으로 본문을 따로 채워도
+컴파일이 더해 주는 가치가 작았다. v0.13.1에서 도입한 `compile_workflow.py`와 바인딩을 제거하고, optimizer를 **work-memory를 읽기 전용으로 분석해 개선을 제안하는 도구**로 바꿨다.
+
+| 제안 | 내용 |
+|---|---|
+| 회고 승격 후보 | 회고되지 않은 유사 IN/TS → EP, 비슷한 EP → PT, 안정된 PT → PR |
+| workflow 개선안 | 같은 root cause로 반복 해결된 TS(게이트·테스트·hook 후보), 열린 issue가 몰린 모듈 |
+| 낡은 결정·교훈 | 사라진 경로를 인용한 결정, 최신 릴리스 뒤 재확인 없는 구조·정책 결정 |
+| 기록 누락·품질 | 끊긴·중복 id, 필수 필드 누락, 상태 불일치, 태그·어휘 드리프트 |
+
+분석은 결정적이고 모든 제안에 근거 entry id가 붙는다. 모델은 선택적 요약 단계에만 쓰며(LangGraph `interrupt`로 멈췄다가 이어간다), work-memory에는 쓰지 않고 `report.md`/`report.json`만 남긴다.
+
+**2. `mso-graph-observability`가 시각화보다 brief 중심이 됐다.**
+화면(Mermaid)을 읽을 일이 줄었다. 같은 TTL에서 **글로 된 요약**을 결정적으로 만든다.
+
+| 산출물 | 독자 | 내용 |
+|---|---|---|
+| `<scope>.brief.md/json`, `project-brief.md` | 에이전트 | workflow 한 장 요약: 흐름, 판단·분기, 사람 승인 지점, 되돌림 루프, 입출력 artifact, 결함 |
+| `report.md` | 사람 | 쉬운 한국어 보고서: 사람이 결정해야 하는 곳, workflow 간 인계와 공유 자료, 주의할 점 |
+
+`workflow-check.sh` 훅이 brief를 기본으로 생성한다. Mermaid 뷰와 기존 리포트는 호환을 위해 남아 있고, 정리는 후속 릴리스에서 한다.
+
+**업그레이드**: `generated/langgraph/`와 `--bindings`는 더 이상 쓰지 않는다(삭제 가능). `requirements-langgraph.txt`는 optimizer의 모델 요약 단계에서만 필요하다. 상세는 changelog.
 
 ### v0.13.0 (2026-10-05) — 여러 저장소를 횡단하며 작업하고, 맥락을 TTL 지식 그래프로 찾는다
 
@@ -102,7 +125,7 @@ Decision은 workflow의 진행과 분기를 제어한다. Eval은 산출물의 �
 
 workflow topology의 정본은 TTL ABox다. YAML은 신규 작성 대상이 아니라 legacy migration input으로만 남긴다.
 
-Mermaid Markdown, report, runtime analysis는 모두 파생 산출물이다. 관측 결과를 직접 고치지 않고 TTL 원본을 수정한 뒤 다시 생성한다.
+brief, report, Mermaid Markdown, runtime analysis는 모두 파생 산출물이다. 관측 결과를 직접 고치지 않고 TTL 원본을 수정한 뒤 다시 생성한다.
 
 ### Work Memory As Operational Memory
 
@@ -154,7 +177,7 @@ v0.13.0부터 artifact는 TTL registry에서 **개념(안정 IRI)과 규약 버�
 |---|---|---|
 | 구조 없음 | repository index와 artifact registry | `index.yaml`, `agent-context/index/index.yaml` |
 | 절차 없음 | TTL workflow topology | `agent-context/workflow/*.abox.ttl` |
-| 소비 관계 불명확 | artifact stream observability | `agent-context/observability/` (리포트) + `observability/graph/` (시각화) |
+| 소비 관계 불명확 | artifact stream observability | `agent-context/observability/brief/` (요약·보고서) + `observability/` (리포트), 시각화는 선택 |
 | 결정/품질 판단 혼재 | decision/eval gate 분리 | workflow TTL, SHACL |
 | 신뢰 근거 없음 | provenance + trust 계산 (저장 아님) | `trust_v07.py`, `observability/trust-report.md` |
 | 기억 없음 | work-memory JSONL + graph projection | `agent-context/work-memory/` |
@@ -171,9 +194,9 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 | `mso-workflow-design` | TTL workflow/artifact/eval node-edge shape와 migration tooling을 관리한다. |
 | `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. 연관 저장소(`--repo`) 기록·커밋을 지원한다. |
 | `mso-work-memory-link` | 연관 저장소 work-memory 등록·점검(status/add/autocommit/sync-hooks/verify). |
-| `mso-graph-observability` | workflow, artifact stream, eval edge, runtime graph를 관측하고 개선 리포트를 만든다. |
-| `mso-workflow-observation` | workflow observation alias. `mso-graph-observability`의 workflow scope를 호출해 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다. |
-| `mso-workflow-optimizer` | work-memory를 읽기 전용으로 분석해 회고 승격·workflow 개선·낡은 결정·기록 품질 제안 리포트를 만든다(LangGraph). |
+| `mso-graph-observability` | workflow TTL에서 **brief**(에이전트용 한 장 요약)와 **사람 보고서**를 만들고, artifact stream·runtime 리포트와 선택적 시각화를 제공한다. |
+| `mso-workflow-observation` | (후속 릴리스에서 제거 예정) workflow 시각화 alias. `mso-graph-observability`의 workflow scope를 호출해 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다. |
+| `mso-workflow-optimizer` | **도구**. work-memory를 읽기 전용으로 분석해 회고 승격·workflow 개선·낡은 결정·기록 품질 제안 리포트를 만든다(LangGraph, 모델 요약은 선택). TTL 컴파일은 하지 않는다. |
 | `mso-intent-analytics` | UUG가 제공한 intent를 MSO action으로 dispatch하고 분석한다. |
 | `mso-conversation-analytics` | de-routed 레거시 기능이다. 사용자/turn 패턴 분석은 UUG `uug-pattern-analytics` 흡수 대상이고, MSO runtime tier 신호는 `mso-intent-analytics`가 받는다. |
 
@@ -235,7 +258,21 @@ Claude Code hook을 만들 때는 `--provider claude`를 사용한다. Antigravi
 python3 skills/mso-scaffold-design/scripts/sf_node.py validate .
 ```
 
-### Generate Graph Observability
+### Generate Workflow Brief
+
+```bash
+# 에이전트용 한 장 요약 + 사람 보고서 (agent-context/observability/brief/)
+python3 skills/mso-graph-observability/scripts/brief_workflows.py --root .
+```
+
+### Analyze Work-Memory
+
+```bash
+# 회고 승격·workflow 개선·낡은 결정·기록 품질 제안 (work-memory는 수정하지 않는다)
+python3 skills/mso-workflow-optimizer/scripts/analyze_work_memory.py agent-context/work-memory
+```
+
+### Generate Graph Observability (선택)
 
 ```bash
 python3 skills/mso-graph-observability/scripts/observe_graph.py --root .

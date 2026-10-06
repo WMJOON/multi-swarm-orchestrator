@@ -3,9 +3,10 @@
 # Non-blocking guardrail for workflow TTL ABox (SSOT-of-record).
 #
 # Runs validate_abox.py on agent-context/workflow/*.abox.ttl after
-# workflow-sensitive changes, then regenerates observability views via
-# mso-graph-observability's observe_graph.py. Validation (design gate) runs
-# first; observation is projection-only and never judges.
+# workflow-sensitive changes, then regenerates the workflow brief (agent brief +
+# human report) via mso-graph-observability's brief_workflows.py, and the
+# remaining observability projections via observe_graph.py. Validation (design
+# gate) runs first; observation is projection-only and never judges.
 #
 # It warns by default and exits non-zero only when MSO_WORKFLOW_CHECK_STRICT=1.
 #
@@ -13,7 +14,9 @@
 #   PROJECT_DIR / CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR  project root
 #   WORKFLOW_DIR                 optional workflow dir (default agent-context/workflow)
 #   MSO_WORKFLOW_VALIDATE_TOOL   optional validate_abox.py path
+#   MSO_BRIEF_TOOL               optional brief_workflows.py path
 #   MSO_OBSERVE_TOOL             optional observe_graph.py path
+#   MSO_WORKFLOW_CHECK_NO_BRIEF=1    skip brief regeneration
 #   MSO_WORKFLOW_CHECK_STRICT=1  fail on validation error
 #   MSO_WORKFLOW_CHECK_NO_OBSERVE=1  skip observability regeneration
 set -uo pipefail
@@ -118,6 +121,17 @@ if [ "${MSO_WORKFLOW_CHECK_NO_TRUST:-0}" != "1" ]; then
     trust_out="$(python3 "$TRUST_TOOL" "$WF_DIR" --report "$ROOT/agent-context/observability/trust-report.md" 2>&1)" || {
       echo "[workflow-check] trust_v07.py failed (non-blocking):"
       echo "$trust_out"
+    }
+  fi
+fi
+
+# Workflow brief (v0.14.0): 에이전트용 한 장 요약 + 사람 보고서. 읽기 전용 projection.
+if [ "${MSO_WORKFLOW_CHECK_NO_BRIEF:-0}" != "1" ]; then
+  BRIEF_TOOL="$(find_tool "${MSO_BRIEF_TOOL:-}" "mso-graph-observability" "brief_workflows.py" || true)"
+  if [ -n "$BRIEF_TOOL" ]; then
+    brief_out="$(python3 "$BRIEF_TOOL" --root "$ROOT" --workflow-dir "$WF_DIR" 2>&1)" || {
+      echo "[workflow-check] brief_workflows.py failed (non-blocking):"
+      echo "$brief_out"
     }
   fi
 fi

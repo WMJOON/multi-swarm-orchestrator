@@ -16,7 +16,7 @@ description: >
   (4) user/agent decision subject 명시,
   (5) 모듈 간 dependencies 선언.
 metadata:
-  version: "0.13.0"
+  version: "0.13.1"
 ---
 
 # MSO Workflow Design v2

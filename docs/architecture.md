@@ -1,4 +1,4 @@
-# 아키텍처 (v0.13.2)
+# 아키텍처 (v0.14.0)
 
 ## 스킬 관계
 
@@ -195,20 +195,40 @@ Repository Graph
   → validate_abox.py    (SSOT shape/oracle/partition/loop 검증 — 설계 게이트)
   → materialize_v07.py  (property chain 파생 → *.inferred.ttl)
   → trust_v07.py        (Trust 계산 → observability/trust-report.md)
-  → observe_graph.py    (v0.7 native 렌더 → observability/graph/)
+  → brief_workflows.py  (brief + 사람 보고서 → observability/brief/)   ← v0.14.0, 기본
+  → observe_graph.py    (리포트 + Mermaid 렌더 → observability/, observability/graph/)   ← 선택·후속 정리 예정
 ```
 
 ### 관측 출력 규약
 
 ```text
 agent-context/observability/          # 분석 리포트
+├── brief/                            # v0.14.0: 글로 된 요약 (기본)
+│   ├── <scope>.brief.md|json         #   에이전트용 workflow 한 장 요약
+│   ├── project-brief.md              #   에이전트용 목록·인계·공유 저장소
+│   └── report.md                     #   사람용 한국어 보고서
 ├── artifact-stream-report.md · workflow-ssot-report.md
 ├── runtime-analysis.md · trust-report.md
-└── graph/                            # 시각화 md
+└── graph/                            # 시각화 md (선택, 후속 릴리스에서 정리 예정)
     ├── README.md · workflow-subgraph-index.md · oracle-graph.md
     ├── class-layer-map.md · property-map.md
     └── <scope>/{repository,workflow,artifact-stream}-graph.md
 ```
+
+## 분석 도구: mso-workflow-optimizer (v0.14.0)
+
+optimizer 는 TTL 을 컴파일하지 않는다. **work-memory 를 읽기 전용으로 분석해 개선을 제안하는 도구**다.
+
+```text
+load ─┬─ promotion ─┐
+      ├─ workflow  ─┤
+      ├─ stale     ─┼─ collect ─┬─ draft(모델 요약, 선택) ─┐
+      └─ quality   ─┘           └──────────────────────────┴─ publish → report.md / report.json
+```
+
+- 분석(승격 후보·workflow 개선·낡은 결정·기록 품질)은 결정적 코드이고 모든 제안이 근거 entry id 를 가진다.
+- `draft` 는 체크포인터가 있고 `--draft` 일 때만 LangGraph `interrupt` 로 멈춘다. control plane(Claude Code/Codex)이 요약을 써서 `--resume` 으로 돌려준다.
+- work-memory 에는 쓰지 않는다. 제안을 채택해 entry 를 만드는 일은 `mso-work-memory` 절차로 사람이 승인한 뒤 한다.
 
 ## Artifact 층 (v0.13.0)
 
