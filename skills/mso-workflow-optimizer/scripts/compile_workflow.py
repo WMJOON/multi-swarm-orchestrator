@@ -368,7 +368,7 @@ def _context_index_hash(entries: list[dict[str, Any]]) -> str:
 
 # hasSubject → judge. workflow(하위 workflow 위임)는 펼치지 않고 단일 노드로 두므로 HOTL 로 취급한다.
 V07_JUDGE = {"human": "HITL", "model": "HOTL", "system": "HOOTL", "self": "HOTL", "workflow": "HOTL"}
-V07_NODE_TYPE = {"task": "step", "decision": "decision", "eval": "validation", "end": "end"}
+V07_NODE_TYPE = {"task": "step", "decision": "decision", "eval": "validation", "event": "event", "end": "end"}
 
 
 def _parse_v07(g: Graph, policy: dict[str, Any], warnings: list[str]) -> tuple[dict[str, Node], list[dict[str, str]], list[str]]:
@@ -399,7 +399,7 @@ def _parse_v07(g: Graph, policy: dict[str, Any], warnings: list[str]) -> tuple[d
             judge=judge,
             harness=item["harness"] or item["method"],
             pass_criteria=criteria if node_type == "validation" else [],
-            provider=_provider_for(node_type, judge, policy),
+            provider="python" if node_type in {"event", "end"} else _provider_for(node_type, judge, policy),
             subject=subject,
             requires_human=subject == "human",
         )
@@ -701,7 +701,7 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any], bindings: dict[s
     import shlex
     import subprocess
     from copy import deepcopy
-    from typing import Any
+    from typing import Annotated, Any
 
     PAYLOAD = {payload_py}
 
@@ -758,9 +758,9 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any], bindings: dict[s
 
     def _mark_runtime(state: dict[str, Any], node_id: str) -> None:
         """런타임(script/재개)에서 만들어진 결정·결과를 기록한다. 되돌림 루프 재진입 시 이것만 폐기한다(초기 입력은 유지)."""
-        produced = list(state.get("runtime_produced", []))
-        if node_id not in produced:
-            produced.append(node_id)
+        # 목록이 아니라 dict: 변경분(delta)은 바뀐 키만 담기 때문에 목록을 걸러내고 다시 채우면 항목이 누락될 수 있다.
+        produced = dict(state.get("runtime_produced", {{}}))
+        produced[node_id] = True
         state["runtime_produced"] = produced
 
 
@@ -855,11 +855,11 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any], bindings: dict[s
             state["halted"] = True
             state["halt_reason"] = f"loop_limit:{{node_id}}"
             return state
-        if visits[node_id] > 1 and node_id in state.get("runtime_produced", []):
+        if visits[node_id] > 1 and (state.get("runtime_produced", {{}}) or {{}}).get(node_id):
             # 되돌림 루프로 다시 들어온 노드: 이전 라운드에서 런타임에 만든 결정·결과는 낡았으므로 버리고 다시 받는다.
             state["decisions"] = {{k: v for k, v in (state.get("decisions", {{}}) or {{}}).items() if k != node_id}}
             state["node_results"] = {{k: v for k, v in (state.get("node_results", {{}}) or {{}}).items() if k != node_id}}
-            state["runtime_produced"] = [n for n in state["runtime_produced"] if n != node_id]
+            state["runtime_produced"] = dict(state["runtime_produced"], **{{node_id: False}})
         context_pack = (
             (state.get("context_overrides", {{}}) or {{}}).get(node_id)
             or PAYLOAD.get("context_packs", {{}}).get(node_id)
@@ -958,6 +958,48 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any], bindings: dict[s
         return "__halt__" if branches else "__end__"
 
 
+    def _merge_state(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
+        """병렬 분기가 같은 step 에서 돌려주는 상태 변경분을 합친다(LangGraph reducer)."""
+        merged = dict(left or {{}})
+        for key, value in (right or {{}}).items():
+            current = merged.get(key)
+            if isinstance(value, list) and isinstance(current, list):
+                merged[key] = current + value
+            elif isinstance(value, dict) and isinstance(current, dict):
+                combined = dict(current)
+                combined.update(value)
+                merged[key] = combined
+            elif key == "halted":
+                merged[key] = bool(current) or bool(value)
+            else:
+                merged[key] = value
+        return merged
+
+
+    def _state_delta(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+        """노드가 바꾼 부분만 돌려준다. 전체 상태를 돌려주면 병렬 노드끼리 덮어써 InvalidUpdateError 가 난다."""
+        delta: dict[str, Any] = {{}}
+        for key, value in after.items():
+            old = before.get(key)
+            if key not in before:
+                delta[key] = value
+            elif isinstance(value, list) and isinstance(old, list):
+                if len(value) > len(old):
+                    delta[key] = value[len(old):]
+            elif isinstance(value, dict) and isinstance(old, dict):
+                changed = {{k: v for k, v in value.items() if k not in old or old[k] != v}}
+                if changed:
+                    delta[key] = changed
+            elif value != old:
+                delta[key] = value
+        return delta
+
+
+    def _node_update(state: dict[str, Any], node_id: str) -> dict[str, Any]:
+        before = deepcopy(state or {{}})
+        return _state_delta(before, _run_node(state, node_id))
+
+
     class FallbackGraph:
         def invoke(self, initial_state: dict[str, Any] | None = None) -> dict[str, Any]:
             state = dict(initial_state or {{}})
@@ -975,9 +1017,9 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any], bindings: dict[s
             return FallbackGraph()
         _CHECKPOINTED = checkpointer is not None
 
-        graph = StateGraph(dict)
+        graph = StateGraph(Annotated[dict, _merge_state])
         for node_id in PAYLOAD["node_order"]:
-            graph.add_node(node_id, lambda state, node_id=node_id: _run_node(state, node_id))
+            graph.add_node(node_id, lambda state, node_id=node_id: _node_update(state, node_id))
 
         for entry in PAYLOAD["entrypoints"]:
             graph.add_edge(START, entry)

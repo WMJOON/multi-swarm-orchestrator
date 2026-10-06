@@ -243,7 +243,7 @@ def control_graph(g: Graph) -> dict:
     """v0.7 workflow 의 제어 흐름을 실행 엔진이 쓰기 좋은 구조로 추출한다 (원본 불변, 결정론).
 
     반환:
-      nodes: [{id, uri, kind(task|decision|eval|end), label, subject, status, instruction, criteria, method, harness}]
+      nodes: [{id, uri, kind(task|decision|eval|event|end), label, subject, status, instruction, criteria, method, harness}]
       edges: [{source, target, type(default|escalates_to), on}]  — 제어 Rail 만
       entrypoints: Start 에서 default Rail 로 이어지는 노드 id
       ignored: [{rail, railType, reason}] — 제어 흐름이 아니어서 건너뛴 Rail (reads/delegates_to/oracle 등)
@@ -257,9 +257,9 @@ def control_graph(g: Graph) -> dict:
     ids: dict = {}
 
     def add(node, kind: str) -> None:
-        subject = execution_subject(g, node) if kind != "end" else None
+        subject = execution_subject(g, node) if kind not in {"end", "event"} else None
         declared = g.value(node, WF.hasSubject)
-        if kind != "end":
+        if kind not in {"end", "event"}:
             if declared is None:
                 warnings.append(f"{_node_id(node)}: wf:hasSubject missing, treated as self")
             elif str(declared) not in SUBJECTS:
@@ -279,6 +279,13 @@ def control_graph(g: Graph) -> dict:
         add(node, kind)
     for node in sorted(g.subjects(RDF.type, WF.End), key=str):
         add(node, "end")
+    # wf:Event 는 v0.6 에서 온 트리거 클래스다(스케줄러·웹훅 등). v0.7 TBox 에는 없지만 기존 workflow 가
+    # Start 다음 진입 노드로 계속 쓰므로 거부하지 않고 트리거 노드(event)로 받는다.
+    for node in sorted(g.subjects(RDF.type, WF.Event), key=str):
+        if node in ids:
+            continue
+        warnings.append(f"{_node_id(node)}: wf:Event is a v0.6 trigger class not defined in the v0.7 TBox; treated as an entry trigger node")
+        add(node, "event")
     starts = set(g.subjects(RDF.type, WF.Start))
 
     edges: list[dict] = []

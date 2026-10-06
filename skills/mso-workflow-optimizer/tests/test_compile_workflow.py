@@ -504,3 +504,49 @@ def test_loop_back_discards_runtime_decisions_but_keeps_initial_inputs(tmp_path)
     assert r["__interrupt__"][0].value["reason"] == "awaiting_agent:apply"
     r = graph.resume("t", {"summary": "ok"}, saver)
     assert r["trace"][-1]["node_id"] == "end"
+    # 변경분(delta) reducer 를 거쳐도 런타임 산출 표시가 누락되지 않는다
+    assert r["runtime_produced"].get("approve") and r["runtime_produced"].get("apply")
+
+
+def test_v06_event_trigger_node_compiles_as_python_entry_and_runs(tmp_path):
+    ttl = tmp_path / "workflow.abox.ttl"
+    ttl.write_text(
+        V07_TTL.replace("ex:r0 a wf:Edge, wf:Rail ; wf:from ex:start ; wf:to ex:collect .",
+                        "ex:trigger a wf:Node, wf:Event ; wf:label \"Webhook\" .\n"
+                        "ex:r0 a wf:Edge, wf:Rail ; wf:from ex:start ; wf:to ex:trigger .\n"
+                        "ex:r00 a wf:Edge, wf:Rail ; wf:from ex:trigger ; wf:to ex:collect ."),
+        encoding="utf-8",
+    )
+    out = compile_workflow.compile_workflow(ttl, tmp_path / "generated", None, None)
+    ir = json.loads((out / "workflow_ir.json").read_text(encoding="utf-8"))
+    trigger = next(n for n in ir["nodes"] if n["id"] == "trigger")
+    assert trigger["type"] == "event" and trigger["provider"] == "python" and not trigger.get("requires_human")
+    assert ir["entrypoints"] == ["trigger"]
+    state = _load_generated_graph(out / "graph.py").invoke({"decisions": {"check": "no"}})
+    assert [t["node_id"] for t in state["trace"]][:3] == ["trigger", "collect", "check"]
+
+
+def test_parallel_fanout_nodes_merge_state_without_overwriting(tmp_path):
+    import pytest
+    pytest.importorskip("langgraph")
+    ttl = tmp_path / "workflow.abox.ttl"
+    ttl.write_text("""\
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix ex: <https://example.org/par#> .
+ex:workflow a wf:Workflow ; wf:label "Par" .
+ex:start a wf:Node, wf:Start .
+ex:end a wf:Node, wf:End .
+ex:a a wf:Node, wf:Execution, wf:Task ; wf:label "A" ; wf:hasSubject "system" ; wf:instruction "a" .
+ex:b a wf:Node, wf:Execution, wf:Task ; wf:label "B" ; wf:hasSubject "system" ; wf:instruction "b" .
+ex:c a wf:Node, wf:Execution, wf:Task ; wf:label "C" ; wf:hasSubject "system" ; wf:instruction "c" .
+ex:r0 a wf:Edge, wf:Rail ; wf:from ex:start ; wf:to ex:a .
+ex:r1 a wf:Edge, wf:Rail ; wf:from ex:a ; wf:to ex:b .
+ex:r2 a wf:Edge, wf:Rail ; wf:from ex:a ; wf:to ex:c .
+ex:r3 a wf:Edge, wf:Rail ; wf:from ex:b ; wf:to ex:end .
+ex:r4 a wf:Edge, wf:Rail ; wf:from ex:c ; wf:to ex:end .
+""", encoding="utf-8")
+    out = compile_workflow.compile_workflow(ttl, tmp_path / "generated", None, None)
+    state = _load_generated_graph(out / "graph.py").invoke({})
+    visited = [t["node_id"] for t in state["trace"]]
+    assert {"a", "b", "c"} <= set(visited) and visited[-1] == "end"
+    assert {"a", "b", "c"} <= set(state["node_outputs"])  # 병렬 노드가 서로의 결과를 덮어쓰지 않는다
