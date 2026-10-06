@@ -1,4 +1,4 @@
-# 시작하기
+# 시작하기 (v0.14.0)
 
 > **Python 환경**: 스킬 스크립트는 `requirements.txt`(PyYAML, rdflib, jsonschema, duckdb, pyshacl)만 있으면 돈다. `mso-workflow-optimizer`의 모델 요약 단계(멈췄다가 이어가기)를
 > 쓰려면 `requirements-langgraph.txt`(langgraph, 체크포인터)가 추가로 필요하다(결정적 분석은 없어도 선형으로 동작). venv는 저장소에 내장하지 않는다 — `bash install.sh --venv`가 저장소 밖
@@ -254,6 +254,32 @@ python3 $WM graph IN-0001 --depth 2 --direction both
 | auditlog | AU | auditlog/ (hook 자동) |
 | worklog | WL | worklog/ (workflow TTL node 실행 기록) |
 
+### work-memory 분석 (mso-workflow-optimizer, v0.14.0)
+
+기록이 쌓였으면 개선할 것을 제안받는다. 분석만 하고 work-memory 는 수정하지 않는다.
+
+```bash
+# 결정적 분석 → generated/work-memory-analysis/<date>/report.md, report.json
+python3 skills/mso-workflow-optimizer/scripts/analyze_work_memory.py agent-context/work-memory
+
+# 모델 요약을 얹을 때 (requirements-langgraph.txt 필요): 멈췄다가 이어서 마무리
+python3 skills/mso-workflow-optimizer/scripts/analyze_work_memory.py agent-context/work-memory \
+  --draft --checkpoint run.sqlite --thread t1
+python3 skills/mso-workflow-optimizer/scripts/analyze_work_memory.py \
+  --resume t1 --checkpoint run.sqlite --draft-file narrative.json
+```
+
+제안은 휴리스틱이라 오탐이 있다. `report.md` 의 근거 entry 를 직접 열어 확인한 뒤 채택하고, entry 생성은 사용자 승인 후 위의 `wm_node.py` 절차로 한다.
+
+### workflow 요약 (brief)
+
+```bash
+python3 skills/mso-graph-observability/scripts/brief_workflows.py --root .
+```
+
+`agent-context/observability/brief/` 에 에이전트용 한 장 요약(`<scope>.brief.md`)과 사람용 보고서(`report.md`)가 생긴다.
+사람 보고서는 사람이 결정하는 지점에 판단 기준이 없는 경우, 아무도 쓰지 않는 산출물 등을 짚는다.
+
 ---
 
 ## 5. Hook 동작 확인
@@ -291,7 +317,8 @@ python3 skills/mso-workflow-design/scripts/validate_abox.py agent-context/workfl
 python3 skills/mso-workflow-design/scripts/materialize_v07.py agent-context/workflow
 python3 skills/mso-workflow-design/scripts/trust_v07.py agent-context/workflow \
   --report agent-context/observability/trust-report.md
-python3 skills/mso-graph-observability/scripts/observe_graph.py --root .
+python3 skills/mso-graph-observability/scripts/brief_workflows.py --root .   # brief + 사람 보고서 (기본)
+python3 skills/mso-graph-observability/scripts/observe_graph.py --root .      # 리포트 + Mermaid (선택)
 ```
 
 hook을 등록하면 `.abox.ttl` 저장 시 위 체인이 자동 실행된다:

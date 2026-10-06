@@ -1,58 +1,51 @@
 # 변경 이력
 
-## Unreleased — mso-graph-observability v0.11.0: 그림 대신 글로 요약(brief)과 사람 보고서
+## v0.14.0 (2026-10-07) — TTL 컴파일을 없애고 optimizer 를 분석 도구로, 관측은 그림보다 brief 로
 
-> 화면(Mermaid)을 읽을 일이 줄었다. 같은 TTL 에서 에이전트용 한 장 요약과 사람이 읽는 한국어 보고서를 결정적으로 만든다. 기존 Mermaid 뷰는 그대로 두는 추가 단계(1단계)다.
+> 두 가지가 바뀐다. (1) workflow TTL → LangGraph 컴파일 기능을 과감하게 없애고 `mso-workflow-optimizer` 를 **work-memory 분석 도구**로 바꿨다.
+> (2) `mso-graph-observability` 가 시각화(Mermaid)보다 **brief**(글로 된 요약) 중심이 됐다.
+> 배경: TTL 에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL 에 없어서 컴파일 결과는 실행되지 않는 골격이었다.
+> 화면을 읽을 일도 줄었다. 두 스킬 모두 "구조를 찍어내거나 그리는 일" 대신 "기록과 정의에서 읽어낸 것을 글로 알려주는 일"로 옮겼다.
 
-### Added
+### Breaking
 
-- `scripts/brief_workflows.py`: `agent-context/observability/brief/` 에 `<scope>.brief.md|json`(에이전트), `project-brief.md`(에이전트), `report.md`(사람)를 쓴다.
-  - 에이전트 brief: 흐름 순서, 판단과 분기, 사람 승인 지점, 되돌림 루프(DFS 되돌림 edge), 입력·산출·외부 입력·미소비 산출, workflow 간 인계, 결함.
-  - 사람 보고서: 한눈에 보기 표, 사람이 결정해야 하는 곳, 이어지는 곳, 공유 자료, 주의할 점, 각 workflow 설명.
-  - 4개 이상의 workflow 가 쓰는 artifact 는 인계가 아니라 공유 저장소로 분리(노이즈 제거).
-- 시험 5개(추출, 사람 보고서 문구, 공유 저장소 분리, 읽기 전용·결정성, 입력 없음).
-- korean-tax 의 workflow 7개로 확인: 사람 승인 지점 7곳 중 6곳에 판단 기준이 적혀 있지 않음을 보고서가 짚었다.
+- **`mso-workflow-optimizer` v1.0.0**: `compile_workflow.py`(v0.13.1 에서 도입한 TTL→LangGraph 컴파일), `--bindings`·`--strict-bindings`, `graph.py`/`workflow_ir.json` 생성,
+  `references/langgraph-adapter.md`·`bindings.md`, `examples/` 를 모두 제거했다. 컴파일 시험도 함께 제거했다.
+  - 노드 본문 바인딩(`script`/`agent`/`interrupt`)과 체크포인터 재개는 main 에 병합됐으나 릴리스된 적이 없다(`v0.9.0` 으로 표기된 항목은 이 릴리스에서 없던 일이 된다).
+  - v0.13.2 의 "미결정 decision 은 halt" 는 컴파일러와 함께 의미가 사라진다.
+  - **업그레이드**: `generated/langgraph/` 는 더 쓰지 않으니 지워도 된다. `requirements-langgraph.txt` 는 optimizer 의 모델 요약 단계에서만 필요하다(`langgraph-checkpoint-sqlite` 추가).
 
-### 다음 단계(미구현)
+### Changed
 
-- Mermaid 를 기본 생성에서 빼고 `workflow-check.sh` 훅을 brief 기준으로 바꾼다. `mso-workflow-observation` 별칭 제거. 이후 Mermaid 코드와 optimizer 와 겹치는 런타임 분석 삭제.
+- **`mso-workflow-optimizer` 는 도구다.** `scripts/analyze_work_memory.py` 가 work-memory 를 읽기 전용으로 분석해 `report.md`/`report.json` 을 쓴다.
+  - LangGraph: `load → (promotion | workflow | stale | quality) → collect → [draft] → publish`. langgraph 가 없으면 같은 노드를 선형으로 실행한다.
+  - 결정적 분석(`wm_analyze.py`), 모든 제안에 근거 entry id:
+    - 회고 승격 후보: 회고되지 않은 유사 IN/TS 군집 → EP, 비슷한 EP → PT, 인스턴스 3건 이상 PT → PR
+    - workflow 개선안: 같은 root cause 로 해결된 TS 군(게이트·테스트·hook 후보), 열린 issue 가 몰린 모듈, 해결 뒤 다시 열린 유사 issue
+    - 낡은 결정·교훈: 사라진 경로를 인용한 결정, 최신 릴리스 뒤 재확인(verified-in) 없는 구조·정책 UD, supersede 누락, 확신 낮은 미채택 AD
+    - 기록 누락·품질: 끊긴·중복 id, 필수 필드 누락, resolved↔TS 불일치, 태그·어휘 드리프트
+  - 모델 요약은 선택: `--draft` 는 체크포인터가 있을 때 LangGraph `interrupt` 로 멈추고 `draft_pack.json` 을 남긴다. control plane 이 `{summary, proposals:{id:{rewrite}}}` 를 `--resume` 으로 돌려준다.
+  - work-memory 에는 쓰지 않는다. 실제 work-memory(약 430 entry)에서 제안 28건, 같은 입력이면 같은 제안(시험으로 고정).
+  - 기준과 임계값: `skills/mso-workflow-optimizer/references/analysis.md`.
+- **`mso-graph-observability` v0.11.0 은 brief 중심이다.** `scripts/brief_workflows.py` 가 `agent-context/observability/brief/` 에 쓴다.
+  - 에이전트용: `<scope>.brief.md|json`(흐름 순서, 판단과 분기, 사람 승인 지점, 되돌림 루프, 입출력 artifact, 결함), `project-brief.md`(목록·인계·공유 저장소).
+  - 사람용: `report.md` — 한눈에 보기, 사람이 결정해야 하는 곳, workflow 끼리 이어지는 곳, 여러 workflow 가 함께 쓰는 자료, 주의할 점, 각 workflow 설명(쉬운 한국어).
+  - 4개 이상의 workflow 가 쓰는 artifact 는 인계가 아니라 **공유 저장소**로 분리한다(공용 저장소가 모든 쌍을 잇는 노이즈 제거).
+  - 사람 보고서가 짚는 것: 사람 승인 지점에 판단 기준(`wf:instruction`/`wf:criteria`)이 없음, 모델이 판단하는 단계가 2개 이상인데 사람 승인이 없음, 만들고도 아무도 쓰지 않는 산출물, 어느 workflow 도 만들지 않는 입력, 정의 오류·경고.
+  - TTL 은 수정하지 않고 LLM 도 쓰지 않는다. 제어 흐름 추출은 `mso-workflow-design` 의 `wf_v07.control_graph` 를 그대로 쓴다.
+- **`mso-workflow-design` v0.13.1**: `workflow-check.sh` 훅이 검증 통과 뒤 brief 를 기본으로 생성한다(`MSO_BRIEF_TOOL`, 끄려면 `MSO_WORKFLOW_CHECK_NO_BRIEF=1`). 기존 `observe_graph.py` 단계는 그대로다.
+  `wf_v07.control_graph` 가 v0.6 `wf:Event` 를 진입 트리거 노드(`event`)로 받는다.
+- 라우팅·문서: `mso-orchestration`, `mso-work-memory`, README, `docs/` 를 새 역할에 맞췄다. 시각화·관측은 `mso-graph-observability`, 개선 제안은 `mso-workflow-optimizer` 로 나눈다.
 
-## Unreleased — mso-workflow-optimizer v1.0.0: TTL 컴파일을 그만두고 work-memory를 분석해 제안한다
+### 남겨 둔 것 (후속 릴리스에서 정리 예정)
 
-> TTL에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL에 없다. 컴파일 결과는 실행되지 않는 골격이었고, 노드 본문을 바인딩으로 따로 채워도 TTL 컴파일이 얹는 가치가 작았다.
-> optimizer의 역할을 **work-memory에서 반복·누락·낡음을 찾아 다음 행동을 제안**하는 것으로 바꾼다. (breaking: 컴파일러 제거)
-
-### Added
-
-- `scripts/analyze_work_memory.py`: LangGraph `load → (promotion | workflow | stale | quality) → collect → [draft] → publish`. 결정적 분석이 `report.md`/`report.json`을 쓴다.
-  langgraph가 없으면 같은 노드를 선형으로 실행한다.
-- `scripts/wm_analyze.py`: 결정적 분석기 4종.
-  - 회고 승격 후보: 회고되지 않은 유사 IN/TS 군집 → EP, 비슷한 EP → PT, 인스턴스 3건 이상 PT → PR
-  - workflow 개선안: 같은 root cause 로 해결된 TS 군(재발 방지 게이트·테스트·hook 후보), 열린 issue 가 몰린 모듈, 해결 뒤 다시 열린 유사 issue
-  - 낡은 결정·교훈: 사라진 경로 인용, 최신 릴리스 뒤 미확인 구조·정책 UD, supersede 누락, 확신 낮은 미채택 AD
-  - 기록 누락·품질: 끊긴·중복 id, 필수 필드 누락, resolved↔TS 불일치, 태그·어휘 드리프트
-- 선택적 모델 요약: `--draft`는 체크포인터가 있을 때 LangGraph `interrupt`로 멈추고 `draft_pack.json`을 남긴다. control plane이 `{summary, proposals:{id:{rewrite}}}`를 `--resume`으로 돌려준다.
-- work-memory에는 쓰지 않는다. 실제 데이터(약 430 entry)에서 결과 28건, 같은 입력이면 같은 제안(시험으로 고정).
-- `references/analysis.md`(분석 기준·임계값), 시험 11개.
-
-### Removed
-
-- `compile_workflow.py`, 바인딩(`--bindings`), `references/langgraph-adapter.md`·`bindings.md`, `examples/`, 컴파일 시험. 컴파일 관련 v0.9.0 `Unreleased` 항목과 v0.13.2의 decision halt는 컴파일러와 함께 사라진다.
-- `mso-work-memory`의 `wm_context.py`는 남는다(런타임 질의용). 컴파일 타임 ContextPack 재사용은 없어졌다.
-
-## Unreleased — mso-workflow-optimizer v0.9.0: 구조는 컴파일, 노드 본문은 바인딩
-
-> TTL에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL에 없다. 구조(컴파일 영역)와 본문(에이전트가 작성하는 영역)을 분리하고, 둘의 어긋남을 컴파일 시점에 검증한다.
-
-### Added
-
-- `--bindings <yaml|json>`, `--strict-bindings`: 노드별 `script`·`agent`·`interrupt` 바인딩을 읽어 TTL과 대조한다(없는 노드·잘못된 분기·누락은 오류/경고). `manifest.json`에 `bindings_sha256`, `bound_nodes` 기록.
-- 생성 `graph.py`: script는 `state.execute`일 때만 실행(기본 dry-run), agent는 `delegate_to_agent` 이벤트로 위임하고 멈춤, interrupt는 사람 승인.
-- 체크포인터: `build_graph(checkpointer)`, `sqlite_checkpointer`, `start`/`resume`. 사람·에이전트 대기를 LangGraph `interrupt`로 멈췄다가 같은 지점에서 이어가고, 이미 실행한 script는 다시 돌지 않는다.
-- 되돌림 루프 재진입 시 런타임에 만든 결정·결과를 폐기해 낡은 반려가 자동 재반려되지 않게 한다(초기 입력은 유지).
-- `references/bindings.md`(계약·에이전트 작성 절차), `examples/bindings.example.yaml`(적용되지 않는 예시, 시험이 유효성을 지킨다). 시험 9개 추가.
+- Mermaid 뷰(`observe_graph.py` 의 `graph/`)와 `artifact-stream-report`·`workflow-ssot-report`·`runtime-analysis` 는 호환을 위해 그대로다. `mso-workflow-observation` 별칭도 남아 있다.
+- observability 의 work-memory/auditlog 런타임 분석은 optimizer 와 겹친다. 이관 후 제거한다.
+- `mso-work-memory` 의 `wm_context.py` 는 런타임 질의용으로 남는다. 컴파일 타임 ContextPack 재사용은 없어졌다.
 
 ## v0.13.2 (2026-10-06) — mso-workflow-optimizer: 미결정 decision은 halt
+
+> v0.14.0 에서 컴파일러와 함께 제거됐다. 아래는 당시 기록이다.
 
 > 생성된 LangGraph에서 `decisions[node]`가 없거나 분기에 없는 값이면 `branches[0]`으로 조용히 진행하던 문제를 고친다. 검증이 실행되지 않았는데 `gates_ok`가 `pass`로 처리되는 식이다.
 > korean-tax 법령 개정 반영 workflow 점검에서 발견했다.
@@ -64,6 +57,8 @@
 - 이미 컴파일된 `graph.py`는 재컴파일해야 반영된다. decision을 비워 두고 기본 분기에 기대던 실행 코드는 이제 멈춘다.
 
 ## v0.13.1 (2026-10-06) — mso-workflow-optimizer: v0.7 네이티브 컴파일, 사람 승인 halt, 로컬 서빙 엔진
+
+> v0.14.0 에서 컴파일 기능이 제거됐다(`mso-workflow-design` 의 `control_graph` 는 유지). 아래는 당시 기록이다.
 
 > v0.7 Rail/Stream workflow를 `compile_workflow.py`에 넣으면 에러 없이 일부 노드(Decision만)와 엣지 0개로 컴파일되고, 사람 결정 노드가 로컬 LLM에 배정되는 문제를 고친다.
 
