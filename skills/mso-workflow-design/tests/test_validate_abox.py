@@ -108,3 +108,62 @@ def test_no_abox_found_is_error(tmp_path):
     res = validate_abox.validate_abox([tmp_path])
     assert not res["ok"]
     assert res.get("error")
+
+
+# ---- artifact 층 registry (v0.13.0): 별도 파일에 선언된 artifact 를 Stream 검증에 합친다 ----
+
+_STREAM_WORKFLOW = """\
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix art: <https://example.org/art#> .
+@prefix x: <https://example.org/x#> .
+x:workflow a wf:Workflow ; wf:label "X" ; wf:workflowType "base" ; wf:has x:start, x:end, x:run .
+x:start a wf:Node, wf:Start .
+x:end a wf:Node, wf:End .
+x:run a wf:Node, wf:Execution, wf:Task ; wf:label "run" ; wf:inWorkflow x:workflow ; wf:hasSubject "system" ; wf:instruction "do" .
+x:r0 a wf:Edge, wf:Rail ; wf:railType "default" ; wf:from x:start ; wf:to x:run .
+x:r1 a wf:Edge, wf:Rail ; wf:railType "default" ; wf:from x:run ; wf:to x:end .
+x:s1 a wf:Edge, wf:Stream ; wf:streamType "consumed_by" ; wf:from art:src ; wf:to x:run .
+x:s2 a wf:Edge, wf:Stream ; wf:streamType "produces_to" ; wf:from x:run ; wf:to art:out .
+"""
+
+_REGISTRY = """\
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix art: <https://example.org/art#> .
+art:src a wf:RegisteredArtifact ; wf:hasArtifactType wf:KnowledgeStore ; wf:hasConvention art:src_c .
+art:src_c a wf:ArtifactConvention .
+art:out a wf:RegisteredArtifact ; wf:hasArtifactType wf:KnowledgeStore ; wf:hasConvention art:out_c .
+art:out_c a wf:ArtifactConvention .
+"""
+
+
+def _project(tmp_path, with_registry):
+    wf = tmp_path / "agent-context" / "workflow"
+    wf.mkdir(parents=True)
+    (wf / "x.abox.ttl").write_text(_STREAM_WORKFLOW, encoding="utf-8")
+    if with_registry:
+        index = tmp_path / "agent-context" / "index"
+        index.mkdir(parents=True)
+        (index / "artifacts.abox.ttl").write_text(_REGISTRY, encoding="utf-8")
+    return wf, tmp_path / "agent-context" / "index" / "artifacts.abox.ttl"
+
+
+def test_stream_to_undeclared_artifact_still_fails(tmp_path):
+    pytest.importorskip("pyshacl")
+    wf, _ = _project(tmp_path, with_registry=False)
+    res = validate_abox.validate_abox([wf])
+    assert not res["ok"] and "Artifact여야 함" in res["v07"]["shacl_report"]
+
+
+def test_registry_next_to_workflow_dir_is_discovered_automatically(tmp_path):
+    pytest.importorskip("pyshacl")
+    wf, registry = _project(tmp_path, with_registry=True)
+    res = validate_abox.validate_abox([wf])  # 훅처럼 workflow 디렉토리만 넘긴다
+    assert res["ok"], res["v07"]["shacl_report"]
+    assert res["artifact_registry_files"] == [str(registry)] and res["v06_files"] == []
+
+
+def test_registry_given_explicitly_is_merged_not_validated_as_v06(tmp_path):
+    pytest.importorskip("pyshacl")
+    wf, registry = _project(tmp_path, with_registry=True)
+    res = validate_abox.validate_abox([wf, registry])
+    assert res["ok"] and res["v06_files"] == [] and res["artifact_registry_files"] == [str(registry)]
