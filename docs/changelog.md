@@ -1,5 +1,17 @@
 # 변경 이력
 
+## Unreleased — mso-workflow-optimizer v0.9.0: 구조는 컴파일, 노드 본문은 바인딩
+
+> TTL에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL에 없다. 구조(컴파일 영역)와 본문(에이전트가 작성하는 영역)을 분리하고, 둘의 어긋남을 컴파일 시점에 검증한다.
+
+### Added
+
+- `--bindings <yaml|json>`, `--strict-bindings`: 노드별 `script`·`agent`·`interrupt` 바인딩을 읽어 TTL과 대조한다(없는 노드·잘못된 분기·누락은 오류/경고). `manifest.json`에 `bindings_sha256`, `bound_nodes` 기록.
+- 생성 `graph.py`: script는 `state.execute`일 때만 실행(기본 dry-run), agent는 `delegate_to_agent` 이벤트로 위임하고 멈춤, interrupt는 사람 승인.
+- 체크포인터: `build_graph(checkpointer)`, `sqlite_checkpointer`, `start`/`resume`. 사람·에이전트 대기를 LangGraph `interrupt`로 멈췄다가 같은 지점에서 이어가고, 이미 실행한 script는 다시 돌지 않는다.
+- 되돌림 루프 재진입 시 런타임에 만든 결정·결과를 폐기해 낡은 반려가 자동 재반려되지 않게 한다(초기 입력은 유지).
+- `references/bindings.md`(계약·에이전트 작성 절차), `examples/bindings.example.yaml`(적용되지 않는 예시, 시험이 유효성을 지킨다). 시험 9개 추가.
+
 ## v0.13.2 (2026-10-06) — mso-workflow-optimizer: 미결정 decision은 halt
 
 > 생성된 LangGraph에서 `decisions[node]`가 없거나 분기에 없는 값이면 `branches[0]`으로 조용히 진행하던 문제를 고친다. 검증이 실행되지 않았는데 `gates_ok`가 `pass`로 처리되는 식이다.

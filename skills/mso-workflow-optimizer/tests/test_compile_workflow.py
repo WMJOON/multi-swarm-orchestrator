@@ -368,3 +368,139 @@ def test_undecided_branch_halts_instead_of_taking_first_branch(tmp_path):
     state = generated.invoke({})
     assert state["halted"] is True
     assert state["halt_reason"].startswith("awaiting_decision:")
+
+
+# ---- bindings: 구조는 컴파일, 노드 본문은 바인딩(에이전트 작성) -------------------------------------
+
+def _compile_v07_bound(tmp_path, bindings, strict=False):
+    ttl = tmp_path / "workflow.abox.ttl"
+    ttl.write_text(V07_TTL, encoding="utf-8")
+    bpath = tmp_path / "bindings.json"
+    bpath.write_text(json.dumps(bindings), encoding="utf-8")
+    return compile_workflow.compile_workflow(
+        ttl, tmp_path / "generated", None, None, bindings_path=bpath, strict_bindings=strict,
+    )
+
+
+def _script(tmp_path, name, body):
+    path = tmp_path / name
+    path.write_text(body, encoding="utf-8")
+    return f"{sys.executable} {path}"
+
+
+def test_bindings_unknown_node_and_bad_decision_target_fail_compile(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit, match="unknown node 'ghost'"):
+        _compile_v07_bound(tmp_path, {"ghost": {"kind": "script", "run": "true"}})
+    with pytest.raises(SystemExit, match="not branches"):
+        _compile_v07_bound(tmp_path, {"check": {"kind": "script", "run": "true", "decision": {"map": {"0": "maybe"}}}})
+    with pytest.raises(SystemExit, match="needs `decision`"):
+        _compile_v07_bound(tmp_path, {"check": {"kind": "script", "run": "true"}})
+
+
+def test_strict_bindings_requires_every_node(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit, match="no binding"):
+        _compile_v07_bound(tmp_path, {"collect": {"kind": "script", "run": "true"}}, strict=True)
+
+
+def test_script_binding_is_dry_run_unless_execute(tmp_path):
+    marker = tmp_path / "ran.txt"
+    cmd = _script(tmp_path, "collect.py", f"open({str(marker)!r}, 'w').write('x')\n")
+    out = _compile_v07_bound(tmp_path, {"collect": {"kind": "script", "run": cmd}})
+    graph = _load_generated_graph(out / "graph.py")
+    state = graph.invoke({"decisions": {"check": "no"}})
+    assert not marker.exists()
+    assert state["node_outputs"]["collect"]["status"] == "bound-dry-run"
+    state = graph.invoke({"execute": True, "decisions": {"check": "no"}})
+    assert marker.exists() and state["node_outputs"]["collect"]["status"] == "executed"
+
+
+def test_script_decision_binding_routes_by_exit_code_and_json(tmp_path):
+    import pytest
+    pytest.importorskip("langgraph")
+    ok = _script(tmp_path, "check_ok.py", "import sys; sys.exit(0)\n")
+    out = _compile_v07_bound(tmp_path, {
+        "check": {"kind": "script", "run": ok, "decision": {"source": "exit_code", "map": {"0": "yes", "default": "no"}}},
+    })
+    graph = _load_generated_graph(out / "graph.py")
+    state = graph.invoke({"execute": True})
+    assert state["decisions"]["check"] == "yes"
+    assert state["halt_reason"] == "awaiting_human:approve"  # 결정이 script 에서 오고, 사람 게이트는 그대로 남는다
+
+    js = _script(tmp_path, "check_json.py", "import json; print(json.dumps({'changed': 'no'}))\n")
+    out = _compile_v07_bound(tmp_path, {
+        "check": {"kind": "script", "run": js, "decision": {"source": "stdout_json", "key": "changed", "map": {"yes": "yes", "no": "no"}}},
+    })
+    graph = _load_generated_graph(out / "graph.py")
+    state = graph.invoke({"execute": True})
+    assert state["decisions"]["check"] == "no" and state["trace"][-1]["node_id"] == "end"
+
+
+def test_script_failure_and_undecided_exit_code_halt(tmp_path):
+    boom = _script(tmp_path, "boom.py", "import sys; sys.exit(3)\n")
+    out = _compile_v07_bound(tmp_path, {"collect": {"kind": "script", "run": boom}})
+    state = _load_generated_graph(out / "graph.py").invoke({"execute": True})
+    assert state["halted"] and state["halt_reason"] == "script_failed:collect"
+    out = _compile_v07_bound(tmp_path, {"check": {"kind": "script", "run": boom, "decision": {"map": {"0": "yes"}}}})
+    state = _load_generated_graph(out / "graph.py").invoke({"execute": True})
+    assert state["halted"] and state["halt_reason"] == "script_undecided:check"
+
+
+def test_agent_binding_pauses_until_result_then_continues(tmp_path):
+    out = _compile_v07_bound(tmp_path, {"apply": {"kind": "agent", "session": "fresh", "expects": "patch summary"}})
+    graph = _load_generated_graph(out / "graph.py")
+    base = {"decisions": {"check": "yes", "approve": "approved"}}
+    state = graph.invoke(base)
+    assert state["halt_reason"] == "awaiting_agent:apply"
+    event = state["control_plane_events"][-1]
+    assert event["action"] == "delegate_to_agent" and event["session"] == "fresh" and event["expects"] == "patch summary"
+    state = graph.invoke({**base, "node_results": {"apply": {"summary": "done"}}})
+    assert not state.get("halted") and state["trace"][-1]["node_id"] == "end"
+
+
+def test_checkpointer_interrupts_and_resumes_same_run(tmp_path):
+    import pytest
+    pytest.importorskip("langgraph.checkpoint.sqlite")
+    marker = tmp_path / "count.txt"
+    marker.write_text("0")
+    cmd = _script(tmp_path, "collect.py", f"p={str(marker)!r}\nn=int(open(p).read())+1\nopen(p,'w').write(str(n))\n")
+    out = _compile_v07_bound(tmp_path, {"collect": {"kind": "script", "run": cmd}, "apply": {"kind": "agent"}})
+    graph = _load_generated_graph(out / "graph.py")
+    saver = graph.sqlite_checkpointer(str(tmp_path / "ckpt.sqlite"))
+    first = graph.start("t1", {"execute": True, "decisions": {"check": "yes"}}, saver)
+    assert first["__interrupt__"][0].value["reason"] == "awaiting_human:approve"
+    second = graph.resume("t1", "approved", saver)  # 사람 승인 -> apply 에서 에이전트 대기
+    assert second["__interrupt__"][0].value["reason"] == "awaiting_agent:apply"
+    done = graph.resume("t1", {"summary": "patched"}, saver)
+    assert done["trace"][-1]["node_id"] == "end" and not done.get("halted")
+    assert marker.read_text() == "1"  # 재개해도 앞 단계 script 를 다시 돌리지 않는다
+
+
+def test_bindings_example_stays_valid_against_demo_ttl(tmp_path):
+    import pytest
+    yaml = pytest.importorskip("yaml")
+    example = Path(__file__).resolve().parents[1] / "examples" / "bindings.example.yaml"
+    ttl = tmp_path / "workflow.abox.ttl"
+    ttl.write_text(V07_TTL, encoding="utf-8")
+    out = compile_workflow.compile_workflow(ttl, tmp_path / "generated", None, None, bindings_path=example, strict_bindings=True)
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["bound_nodes"] == ["apply", "approve", "check", "collect"]
+
+
+def test_loop_back_discards_runtime_decisions_but_keeps_initial_inputs(tmp_path):
+    import pytest
+    pytest.importorskip("langgraph.checkpoint.sqlite")
+    out = _compile_v07_bound(tmp_path, {"apply": {"kind": "agent"}})
+    graph = _load_generated_graph(out / "graph.py")
+    saver = graph.sqlite_checkpointer(str(tmp_path / "ckpt.sqlite"))
+    r = graph.start("t", {"decisions": {"check": "yes"}}, saver)
+    assert r["__interrupt__"][0].value["reason"] == "awaiting_human:approve"
+    r = graph.resume("t", "rejected", saver)  # approve -> collect 로 되돌림
+    # 반려가 남아 자동 재반려되지 않고, 사람에게 다시 묻는다(초기 입력 check=yes 는 유지)
+    assert r["__interrupt__"][0].value["reason"] == "awaiting_human:approve"
+    assert r["visits"]["collect"] == 2 and r["visits"]["approve"] == 1  # 대기 중 노드는 재개 전까지 커밋되지 않는다
+    r = graph.resume("t", "approved", saver)
+    assert r["__interrupt__"][0].value["reason"] == "awaiting_agent:apply"
+    r = graph.resume("t", {"summary": "ok"}, saver)
+    assert r["trace"][-1]["node_id"] == "end"
