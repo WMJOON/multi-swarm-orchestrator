@@ -13,10 +13,11 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.13.2 (2026-10-06) — 결정이 비어 있으면 첫 분기로 가지 않고 멈춘다
+### Unreleased — optimizer는 workflow를 컴파일하지 않고 work-memory를 분석해 제안한다
 
-`mso-workflow-optimizer`가 컴파일한 LangGraph에서 decision 노드에 유효한 `decisions[node]`가 없으면 첫 번째 분기로 보내지 않고 `awaiting_decision:<node>`로 멈춘다.
-이전에는 검증 결과가 비어 있어도 `gates_ok`가 `pass`로 처리됐고, 변경 감지가 비어 있으면 조용히 종료됐다. 상세는 changelog.
+`mso-workflow-optimizer`(v1.0.0)가 TTL→LangGraph 컴파일을 그만두고 **work-memory를 읽기 전용으로 분석하는 LangGraph**가 됐다.
+결정적 분석이 회고 승격 후보(IN/TS→EP→PT→PR), workflow 개선안(재발 root cause·모듈 핫스팟), 낡은 결정·교훈, 기록 누락·품질을 근거 entry id와 함께 제안하고,
+모델은 선택적 요약 단계에만 쓴다(멈췄다가 이어가기). work-memory에는 쓰지 않고 리포트(`report.md`/`report.json`)만 남긴다. 상세는 changelog.
 
 ### v0.13.0 (2026-10-05) — 여러 저장소를 횡단하며 작업하고, 맥락을 TTL 지식 그래프로 찾는다
 
@@ -172,7 +173,7 @@ v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
 | `mso-work-memory-link` | 연관 저장소 work-memory 등록·점검(status/add/autocommit/sync-hooks/verify). |
 | `mso-graph-observability` | workflow, artifact stream, eval edge, runtime graph를 관측하고 개선 리포트를 만든다. |
 | `mso-workflow-observation` | workflow observation alias. `mso-graph-observability`의 workflow scope를 호출해 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다. |
-| `mso-workflow-optimizer` | TTL workflow를 실행 가능한 graph artifact로 컴파일하는 방향을 담당한다. |
+| `mso-workflow-optimizer` | work-memory를 읽기 전용으로 분석해 회고 승격·workflow 개선·낡은 결정·기록 품질 제안 리포트를 만든다(LangGraph). |
 | `mso-intent-analytics` | UUG가 제공한 intent를 MSO action으로 dispatch하고 분석한다. |
 | `mso-conversation-analytics` | de-routed 레거시 기능이다. 사용자/turn 패턴 분석은 UUG `uug-pattern-analytics` 흡수 대상이고, MSO runtime tier 신호는 `mso-intent-analytics`가 받는다. |
 

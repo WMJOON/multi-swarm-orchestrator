@@ -504,7 +504,7 @@ workflows:
 - **EvolvesStratificationShape** — `C evolves W` 인데 C·W 가 `has_subWorkflow*` 로 연결(조상/자손)되면 위반. oracle-workflow 와 대상은 **disjoint(C∩W=∅)** 여야 한다.
 - **SubWorkflowPartitionShape** — 한 workflow 의 부모는 최대 1개(형제·oracle disjoint).
 
-run-time 에서는 `mso-workflow-optimizer` 가 `evolves` 를 control plane 으로 gate 한다(agent 는 제안만, 확정은 oracle 권위). 관측은 `mso-graph-observability` 의 `oracle-graph.md`(edge-필터 view). 상세: `planning/mso-v0.6.0-SPEC-oracle-graph.md`.
+run-time 에서는 `evolves` 를 control plane 이 gate 한다(agent 는 제안만, 확정은 oracle 권위). 관측은 `mso-graph-observability` 의 `oracle-graph.md`(edge-필터 view). 상세: `planning/mso-v0.6.0-SPEC-oracle-graph.md`.
 
 ## Legacy YAML Migration 주의사항
 

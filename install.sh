@@ -87,7 +87,7 @@ if [[ "$MAKE_VENV" -eq 1 ]]; then
   fi
   "$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip
   "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_DIR/requirements.txt" -r "$REPO_DIR/requirements-langgraph.txt"
-  echo "  READY   $VENV_DIR/bin/python  (use it to run compile_workflow.py and generated graph.py)"
+  echo "  READY   $VENV_DIR/bin/python  (use it to run analyze_work_memory.py --draft)"
   echo ""
 fi
 

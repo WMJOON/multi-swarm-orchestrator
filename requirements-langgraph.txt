@@ -1,3 +1,4 @@
-# 선택: mso-workflow-optimizer 가 생성한 graph.py 를 LangGraph 로 실행하는 환경에서만 필요하다.
-# 컴파일(compile_workflow.py)은 rdflib 만으로 동작하며, langgraph 가 없으면 생성물은 선형 fallback invoke() 로 동작한다.
+# 선택: mso-workflow-optimizer 의 모델 요약 단계(analyze_work_memory.py --draft, 멈췄다가 이어가기)에서만 필요하다.
+# 결정적 분석은 langgraph 없이 선형으로 동작한다. 체크포인터는 langgraph-checkpoint-sqlite 도 필요하다.
 langgraph>=0.6
+langgraph-checkpoint-sqlite>=2

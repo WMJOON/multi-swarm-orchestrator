@@ -1,5 +1,28 @@
 # 변경 이력
 
+## Unreleased — mso-workflow-optimizer v1.0.0: TTL 컴파일을 그만두고 work-memory를 분석해 제안한다
+
+> TTL에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL에 없다. 컴파일 결과는 실행되지 않는 골격이었고, 노드 본문을 바인딩으로 따로 채워도 TTL 컴파일이 얹는 가치가 작았다.
+> optimizer의 역할을 **work-memory에서 반복·누락·낡음을 찾아 다음 행동을 제안**하는 것으로 바꾼다. (breaking: 컴파일러 제거)
+
+### Added
+
+- `scripts/analyze_work_memory.py`: LangGraph `load → (promotion | workflow | stale | quality) → collect → [draft] → publish`. 결정적 분석이 `report.md`/`report.json`을 쓴다.
+  langgraph가 없으면 같은 노드를 선형으로 실행한다.
+- `scripts/wm_analyze.py`: 결정적 분석기 4종.
+  - 회고 승격 후보: 회고되지 않은 유사 IN/TS 군집 → EP, 비슷한 EP → PT, 인스턴스 3건 이상 PT → PR
+  - workflow 개선안: 같은 root cause 로 해결된 TS 군(재발 방지 게이트·테스트·hook 후보), 열린 issue 가 몰린 모듈, 해결 뒤 다시 열린 유사 issue
+  - 낡은 결정·교훈: 사라진 경로 인용, 최신 릴리스 뒤 미확인 구조·정책 UD, supersede 누락, 확신 낮은 미채택 AD
+  - 기록 누락·품질: 끊긴·중복 id, 필수 필드 누락, resolved↔TS 불일치, 태그·어휘 드리프트
+- 선택적 모델 요약: `--draft`는 체크포인터가 있을 때 LangGraph `interrupt`로 멈추고 `draft_pack.json`을 남긴다. control plane이 `{summary, proposals:{id:{rewrite}}}`를 `--resume`으로 돌려준다.
+- work-memory에는 쓰지 않는다. 실제 데이터(약 430 entry)에서 결과 28건, 같은 입력이면 같은 제안(시험으로 고정).
+- `references/analysis.md`(분석 기준·임계값), 시험 11개.
+
+### Removed
+
+- `compile_workflow.py`, 바인딩(`--bindings`), `references/langgraph-adapter.md`·`bindings.md`, `examples/`, 컴파일 시험. 컴파일 관련 v0.9.0 `Unreleased` 항목과 v0.13.2의 decision halt는 컴파일러와 함께 사라진다.
+- `mso-work-memory`의 `wm_context.py`는 남는다(런타임 질의용). 컴파일 타임 ContextPack 재사용은 없어졌다.
+
 ## Unreleased — mso-workflow-optimizer v0.9.0: 구조는 컴파일, 노드 본문은 바인딩
 
 > TTL에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL에 없다. 구조(컴파일 영역)와 본문(에이전트가 작성하는 영역)을 분리하고, 둘의 어긋남을 컴파일 시점에 검증한다.

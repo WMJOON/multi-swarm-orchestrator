@@ -390,7 +390,7 @@ Antigravity가 기대하는 출력 스키마로 되감는다(PostToolUse → `{}
 | **mso-scaffold-design** | work-memory 디렉토리가 scaffold(index.yaml) 에 등록되어 있어야 함. |
 | **mso-workflow-design** | workflow 의 decision/validation/eval 노드 변경 시 UD/AD entry 자동 생성 권장. 반복 IN/TS/EP/PT는 workflow TTL ABox 업데이트 후보 evidence로 사용한다. |
 | **mso-graph-observability** | work-memory JSONL runtime analysis와 별도로 TTL projection을 graph 관측 입력으로 확장 가능. artifact-stream graph 누락은 Markdown 직접 수정이 아니라 workflow TTL edge 보강으로 환류한다. |
-| **mso-workflow-optimizer** | 컴파일 타임 ContextPack 이 `wm_context.py` 를 로드해 스코어링/선택을 위임한다 (정본은 이 스킬). stale snapshot 의 런타임 갱신도 `wm_context.py` 직접 호출로 해결. |
+| **mso-workflow-optimizer** | work-memory 를 읽기 전용으로 분석해 승격 후보·개선안·낡은 결정·품질 제안 리포트를 만든다. 제안을 채택해 entry 를 만드는 일은 이 스킬의 절차(`wm_node.py`)로 사용자 승인 뒤 한다. |
 | **simple-knowledge-zvec** | 본 스킬의 zvec 인덱싱 기반 라이브러리. |
 
 ## 의존성

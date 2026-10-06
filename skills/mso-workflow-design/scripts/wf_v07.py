@@ -9,7 +9,7 @@ SPEC: planning/mso-v0.7.0-SPEC-rail-stream-ontology.md (§6-B r2, D-13~D-16)
      존재로 판별한다 (wf:Task/Decision/Eval 은 v0.6과 이름을 공유, Q-4(a))
   3) v0.6 호환 projection (`project_v06_compat`) — deprecated, 외부 v0.6 소비자
      전환 지원용
-  4) 제어 흐름 추출 (`control_graph`) — 실행 엔진(mso-workflow-optimizer 등)이 읽는
+  4) 제어 흐름 추출 (`control_graph`) — 실행 엔진·분석 도구가 읽는
      정본 추출기. 어떤 Rail 이 제어 흐름이고 무엇이 아닌지의 판단을 이 모듈이 소유한다.
 
 호환 projection 대응표 (v0.7-r2 → v0.6):
