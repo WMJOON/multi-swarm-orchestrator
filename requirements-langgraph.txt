@@ -1,0 +1,3 @@
+# 선택: mso-workflow-optimizer 가 생성한 graph.py 를 LangGraph 로 실행하는 환경에서만 필요하다.
+# 컴파일(compile_workflow.py)은 rdflib 만으로 동작하며, langgraph 가 없으면 생성물은 선형 fallback invoke() 로 동작한다.
+langgraph>=0.6

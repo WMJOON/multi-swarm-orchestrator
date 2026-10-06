@@ -9,6 +9,8 @@ SPEC: planning/mso-v0.7.0-SPEC-rail-stream-ontology.md (§6-B r2, D-13~D-16)
      존재로 판별한다 (wf:Task/Decision/Eval 은 v0.6과 이름을 공유, Q-4(a))
   3) v0.6 호환 projection (`project_v06_compat`) — deprecated, 외부 v0.6 소비자
      전환 지원용
+  4) 제어 흐름 추출 (`control_graph`) — 실행 엔진(mso-workflow-optimizer 등)이 읽는
+     정본 추출기. 어떤 Rail 이 제어 흐름이고 무엇이 아닌지의 판단을 이 모듈이 소유한다.
 
 호환 projection 대응표 (v0.7-r2 → v0.6):
   Task(Execution)              → wf:Step + wf:Task + wf:Node
@@ -217,3 +219,101 @@ def project_v06_compat(g: Graph) -> Graph:
                 out.add((artifact, RDFS.label, locator))
 
     return out
+
+
+# ── 제어 흐름 추출 (실행 엔진용 정본) ────────────────────────────────────────
+
+CONTROL_RAILS = {"default", "escalates_to"}  # 흐름을 옮기는 Rail. reads/delegates_to/oracle 은 제어 흐름이 아니다.
+
+
+def _node_id(node) -> str:
+    """IRI 의 마지막 조각(# 우선, 없으면 /). 실행 엔진이 노드 키로 쓴다."""
+    text = str(node)
+    if "#" in text:
+        text = text.rsplit("#", 1)[1]
+    return text.rsplit("/", 1)[-1] if "/" in text else text
+
+
+def _literal(g: Graph, node, pred) -> str | None:
+    value = g.value(node, pred)
+    return str(value) if isinstance(value, Literal) else None
+
+
+def control_graph(g: Graph) -> dict:
+    """v0.7 workflow 의 제어 흐름을 실행 엔진이 쓰기 좋은 구조로 추출한다 (원본 불변, 결정론).
+
+    반환:
+      nodes: [{id, uri, kind(task|decision|eval|end), label, subject, status, instruction, criteria, method, harness}]
+      edges: [{source, target, type(default|escalates_to), on}]  — 제어 Rail 만
+      entrypoints: Start 에서 default Rail 로 이어지는 노드 id
+      ignored: [{rail, railType, reason}] — 제어 흐름이 아니어서 건너뛴 Rail (reads/delegates_to/oracle 등)
+      errors: [str] — 실행 그래프로 만들 수 없는 결함(끝점이 Execution/Start/End 가 아님, from/to 없음, 출구 없는 Decision 등)
+      warnings: [str] — 실행은 가능하나 의미가 손실되는 경우(subject 누락·미지, hasSubject=workflow 는 하위 workflow 로 펼치지 않음 등)
+    errors 가 비어 있지 않으면 소비자는 컴파일을 중단해야 한다(조용히 일부만 쓰지 않는다).
+    """
+    nodes: list[dict] = []
+    errors: list[str] = []
+    warnings: list[str] = []
+    ids: dict = {}
+
+    def add(node, kind: str) -> None:
+        subject = execution_subject(g, node) if kind != "end" else None
+        declared = g.value(node, WF.hasSubject)
+        if kind != "end":
+            if declared is None:
+                warnings.append(f"{_node_id(node)}: wf:hasSubject missing, treated as self")
+            elif str(declared) not in SUBJECTS:
+                warnings.append(f"{_node_id(node)}: unknown wf:hasSubject {str(declared)!r}, treated as self")
+            if subject == "workflow":
+                warnings.append(f"{_node_id(node)}: hasSubject=workflow (sub-workflow) is not expanded; treated as a single node")
+        ids[node] = _node_id(node)
+        nodes.append({
+            "id": _node_id(node), "uri": str(node), "kind": kind, "label": _label(g, node), "subject": subject,
+            "status": _literal(g, node, WF.status), "instruction": _literal(g, node, WF.instruction),
+            "criteria": [str(v) for v in g.objects(node, WF.criteria)],
+            "method": _literal(g, node, WF.method), "harness": _literal(g, node, WF.harness),
+        })
+
+    for node in sorted(g.subjects(RDF.type, WF.Execution), key=str):
+        kind = "decision" if _is_a(g, node, WF.Decision) else "eval" if _is_a(g, node, WF.Eval) else "task"
+        add(node, kind)
+    for node in sorted(g.subjects(RDF.type, WF.End), key=str):
+        add(node, "end")
+    starts = set(g.subjects(RDF.type, WF.Start))
+
+    edges: list[dict] = []
+    ignored: list[dict] = []
+    entrypoints: set[str] = set()
+    for rail in sorted(g.subjects(RDF.type, WF.Rail), key=str):
+        rail_type = _rail_type(g, rail) or "default"
+        if not _rail_type(g, rail):
+            warnings.append(f"{_node_id(rail)}: wf:railType missing, treated as default")
+        if rail_type not in CONTROL_RAILS:
+            ignored.append({"rail": _node_id(rail), "railType": rail_type,
+                            "reason": "data/oracle/tool rail, not control flow" if rail_type in RAIL_TYPES else "unknown railType"})
+            continue
+        source, target = g.value(rail, WF["from"]), g.value(rail, WF.to)
+        if source is None or target is None:
+            errors.append(f"{_node_id(rail)}: wf:from/wf:to missing")
+            continue
+        if target not in ids or (source not in ids and source not in starts):
+            errors.append(f"{_node_id(rail)}: endpoint is not an Execution/Start/End: {_node_id(source)} -> {_node_id(target)}")
+            continue
+        if source in starts:
+            entrypoints.add(ids[target])
+            continue
+        edges.append({"source": ids[source], "target": ids[target], "type": rail_type, "on": _literal(g, rail, WF.on)})
+
+    for n in nodes:
+        if n["kind"] != "decision":
+            continue
+        outs = [e for e in edges if e["source"] == n["id"]]
+        if not outs:
+            errors.append(f"{n['id']}: Decision has no outgoing control rail")
+        for e in outs:
+            if not e["on"]:
+                warnings.append(f"{n['id']}: decision rail to {e['target']} has no wf:on")
+    if not entrypoints:
+        warnings.append("no Start rail found")
+    return {"nodes": nodes, "edges": edges, "entrypoints": sorted(entrypoints),
+            "ignored": ignored, "errors": errors, "warnings": warnings}
