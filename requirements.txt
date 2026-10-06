@@ -2,3 +2,4 @@ PyYAML>=6.0
 rdflib>=7.0
 jsonschema>=4.24.0
 duckdb>=1.1
+pyshacl>=0.31  # mso-workflow-design 검증(validate_abox, validate_artifact_layer)

@@ -447,3 +447,55 @@ def test_execution_method_enum_shacl(tmp_path):
     g.add((task, WF.method, Literal("script")))
     _, report2 = validate_abox.run_shacl_v07(g)
     assert "method" not in report2  # 유효 enum이면 method 위반 소멸 (다른 shape와 무관)
+
+
+# ─── control_graph: 실행 엔진용 제어 흐름 추출 ────────────────────────────────
+
+CG_TTL = """\
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix ex: <https://example.org/cg#> .
+ex:start a wf:Node, wf:Start .
+ex:end a wf:Node, wf:End .
+ex:a a wf:Node, wf:Execution, wf:Task ; wf:label "A" ; wf:hasSubject "system" ; wf:instruction "do a" .
+ex:d a wf:Node, wf:Execution, wf:Decision ; wf:label "D" ; wf:hasSubject "human" .
+ex:sub a wf:Node, wf:Execution, wf:Task ; wf:hasSubject "workflow" .
+ex:art a wf:Node, wf:Artifact .
+ex:r0 a wf:Rail ; wf:railType "default" ; wf:from ex:start ; wf:to ex:a .
+ex:r1 a wf:Rail ; wf:railType "default" ; wf:from ex:a ; wf:to ex:d .
+ex:r2 a wf:Rail ; wf:railType "default" ; wf:from ex:d ; wf:to ex:sub ; wf:on "yes" .
+ex:r3 a wf:Rail ; wf:railType "default" ; wf:from ex:d ; wf:to ex:end ; wf:on "no" .
+ex:r4 a wf:Rail ; wf:railType "default" ; wf:from ex:sub ; wf:to ex:end .
+ex:r5 a wf:Rail ; wf:railType "reads" ; wf:from ex:art ; wf:to ex:a .
+"""
+
+
+def _cg(text: str) -> dict:
+    from wf_v07 import control_graph
+    g = Graph()
+    g.parse(data=text, format="turtle")
+    return control_graph(g)
+
+
+def test_control_graph_extracts_control_flow_only():
+    cg = _cg(CG_TTL)
+    assert {n["id"] for n in cg["nodes"]} == {"a", "d", "sub", "end"}  # Artifact·Start 는 노드 아님
+    assert cg["entrypoints"] == ["a"]
+    assert {(e["source"], e["target"], e["on"]) for e in cg["edges"]} == {
+        ("a", "d", None), ("d", "sub", "yes"), ("d", "end", "no"), ("sub", "end", None)}
+    assert [i["railType"] for i in cg["ignored"]] == ["reads"]  # reads 는 제어 흐름이 아니다
+    assert cg["errors"] == []
+    assert any("sub-workflow" in w for w in cg["warnings"])  # hasSubject=workflow 는 펼치지 않음을 알린다
+
+
+def test_control_graph_reports_defects_instead_of_dropping_them():
+    cg = _cg(CG_TTL + "ex:r9 a wf:Rail ; wf:railType \"default\" ; wf:from ex:a ; wf:to ex:ghost .\n")
+    assert any("ghost" in e for e in cg["errors"])
+    cg = _cg(CG_TTL.replace('ex:r2 a wf:Rail ; wf:railType "default" ; wf:from ex:d ; wf:to ex:sub ; wf:on "yes" .\n', "")
+             .replace('ex:r3 a wf:Rail ; wf:railType "default" ; wf:from ex:d ; wf:to ex:end ; wf:on "no" .\n', ""))
+    assert any("no outgoing control rail" in e for e in cg["errors"])
+
+
+def test_control_graph_on_migrated_example_has_no_errors():
+    from wf_v07 import control_graph
+    cg = control_graph(migrated_graph())
+    assert cg["errors"] == []

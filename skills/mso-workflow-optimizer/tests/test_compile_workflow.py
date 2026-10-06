@@ -230,3 +230,127 @@ def test_execution_plane_escalates_decisions_to_control_plane(tmp_path):
     assert state["control_plane_events"][0]["control_plane_agents"] == ["claude-code", "codex"]
     assert state["memory_writeback_queue"][0]["status"] == "rejected"
     assert "cannot record user-decision" in state["memory_writeback_queue"][0]["reason"]
+
+
+V07_TTL = """\
+@prefix wf: <https://mso.dev/ontology/workflow#> .
+@prefix ex: <https://example.org/demo#> .
+
+ex:workflow a wf:Workflow ; wf:label "Demo v07" .
+ex:start a wf:Node, wf:Start .
+ex:end a wf:Node, wf:End .
+
+ex:collect a wf:Node, wf:Execution, wf:Task ;
+    wf:label "Collect" ; wf:hasSubject "system" ; wf:instruction "collect" .
+ex:check a wf:Node, wf:Execution, wf:Decision ;
+    wf:label "Check" ; wf:hasSubject "system" ; wf:criteria "ok?" .
+ex:approve a wf:Node, wf:Execution, wf:Decision ;
+    wf:label "Approve" ; wf:hasSubject "human" ; wf:criteria "approve?" .
+ex:apply a wf:Node, wf:Execution, wf:Task ;
+    wf:label "Apply" ; wf:hasSubject "model" ; wf:instruction "apply" .
+
+ex:r0 a wf:Edge, wf:Rail ; wf:from ex:start ; wf:to ex:collect .
+ex:r1 a wf:Edge, wf:Rail ; wf:from ex:collect ; wf:to ex:check .
+ex:r2 a wf:Edge, wf:Rail ; wf:from ex:check ; wf:to ex:approve ; wf:on "yes" .
+ex:r3 a wf:Edge, wf:Rail ; wf:from ex:check ; wf:to ex:end ; wf:on "no" .
+ex:r4 a wf:Edge, wf:Rail ; wf:from ex:approve ; wf:to ex:apply ; wf:on "approved" .
+ex:r5 a wf:Edge, wf:Rail ; wf:from ex:approve ; wf:to ex:collect ; wf:on "rejected" .
+ex:r6 a wf:Edge, wf:Rail ; wf:from ex:apply ; wf:to ex:end .
+"""
+
+
+def _compile_v07(tmp_path, policy=None, mode=None):
+    ttl = tmp_path / "demo.abox.ttl"
+    ttl.write_text(V07_TTL, encoding="utf-8")
+    out = compile_workflow.compile_workflow(ttl, tmp_path / "generated", policy, mode)
+    return out, json.loads((out / "workflow_ir.json").read_text(encoding="utf-8"))
+
+
+def test_v07_rail_workflow_compiles_all_nodes_and_edges(tmp_path):
+    _, ir = _compile_v07(tmp_path)
+    nodes = {n["id"]: n for n in ir["nodes"]}
+    assert set(nodes) == {"collect", "check", "approve", "apply", "end"}
+    assert ir["entrypoints"] == ["collect"]
+    assert nodes["approve"]["judge"] == "HITL" and nodes["approve"]["provider"] == "human"
+    assert nodes["approve"]["requires_human"] is True
+    assert nodes["check"]["judge"] == "HOOTL"
+    assert nodes["apply"]["judge"] == "HOTL"
+    branches = {(e["source"], e["on"], e["target"]) for e in ir["edges"] if e["kind"] == "branch"}
+    assert ("approve", "rejected", "collect") in branches and ("check", "no", "end") in branches
+    assert any(e["kind"] == "rail" and e["source"] == "apply" and e["target"] == "end" for e in ir["edges"])
+
+
+def test_v07_rail_to_unknown_node_fails_loudly(tmp_path):
+    import pytest
+    ttl = tmp_path / "bad.abox.ttl"
+    ttl.write_text(V07_TTL + "\nex:r9 a wf:Edge, wf:Rail ; wf:from ex:apply ; wf:to ex:ghost .\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        compile_workflow.compile_workflow(ttl, tmp_path / "generated", None, None)
+
+
+def test_v07_human_node_halts_without_decision_and_loop_is_bounded(tmp_path):
+    import pytest
+    pytest.importorskip("langgraph")  # 분기 라우팅은 LangGraph 경로에서만 검증(fallback 은 선형)
+    out, _ = _compile_v07(tmp_path)
+    graph = _load_generated_graph(out / "graph.py")
+    base = {"check": "yes"}
+    # 사람 결정이 없으면 approve 에서 멈추고 자동 승인되지 않는다
+    state = graph.invoke({"decisions": base})
+    assert state["halted"] is True and state["halt_reason"] == "awaiting_human:approve"
+    assert "apply" not in [t["node_id"] for t in state["trace"]]
+    # 승인되면 end 까지 진행
+    state = graph.invoke({"decisions": {**base, "approve": "approved"}})
+    assert not state.get("halted") and state["trace"][-1]["node_id"] == "end"
+
+
+def test_loop_limit_halts_rejection_loop(tmp_path):
+    import pytest
+    pytest.importorskip("langgraph")  # 분기 라우팅은 LangGraph 경로에서만 검증(fallback 은 선형)
+    out, _ = _compile_v07(tmp_path)
+    graph = _load_generated_graph(out / "graph.py")
+    state = graph.build_graph().invoke(
+        {"decisions": {"check": "yes", "approve": "rejected"}}, config={"recursion_limit": 200}
+    )
+    assert state["halted"] is True and state["halt_reason"].startswith("loop_limit:")
+
+
+def test_local_engine_selection(tmp_path):
+    import pytest
+    for engine in ("ollama", "vllm", "sglang", "lmstudio", "omlx"):
+        policy = tmp_path / f"{engine}.json"
+        policy.write_text(json.dumps({"local_engine": engine}), encoding="utf-8")
+        out, ir = _compile_v07(tmp_path, policy=policy)
+        nodes = {n["id"]: n for n in ir["nodes"]}
+        assert nodes["collect"]["provider"] == f"local-{engine}"
+        graph = _load_generated_graph(out / "graph.py")
+        cfg = graph.engine_for("collect")
+        assert cfg["name"] == engine and cfg["base_url"].endswith("/v1")
+        assert graph.engine_for("approve") is None  # human 은 엔진이 아님
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"local_engine": "nope"}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        compile_workflow.compile_workflow(tmp_path / "demo.abox.ttl", tmp_path / "g", bad, None)
+
+
+def test_engine_base_url_override(tmp_path):
+    policy = tmp_path / "p.json"
+    policy.write_text(json.dumps({"local_engine": "omlx", "engines": {"omlx": {"base_url": "http://127.0.0.1:1234/v1"}}}), encoding="utf-8")
+    out, _ = _compile_v07(tmp_path, policy=policy)
+    graph = _load_generated_graph(out / "graph.py")
+    assert graph.engine_for("collect")["base_url"] == "http://127.0.0.1:1234/v1"
+
+
+def test_v07_non_control_rails_are_skipped_and_workflow_subject_warned(tmp_path):
+    ttl = tmp_path / "demo.abox.ttl"
+    ttl.write_text(V07_TTL + """
+ex:art a wf:Node, wf:Artifact .
+ex:rr a wf:Edge, wf:Rail ; wf:railType "reads" ; wf:from ex:art ; wf:to ex:collect .
+ex:sub a wf:Node, wf:Execution, wf:Task ; wf:label "Sub" ; wf:hasSubject "workflow" .
+ex:rs a wf:Edge, wf:Rail ; wf:railType "default" ; wf:from ex:sub ; wf:to ex:end .
+""".replace("V07_TTL", ""), encoding="utf-8")
+    out = compile_workflow.compile_workflow(ttl, tmp_path / "generated", None, None)
+    ir = json.loads((out / "workflow_ir.json").read_text(encoding="utf-8"))
+    assert not any(e["source"] == "art" or e["target"] == "art" for e in ir["edges"])  # reads rail 은 제어 흐름이 아니다
+    assert any("reads rail is not control flow" in w for w in ir["warnings"])
+    assert any("sub-workflow" in w for w in ir["warnings"])
+    assert {n["id"]: n["judge"] for n in ir["nodes"]}["sub"] == "HOTL"

@@ -21,7 +21,10 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any
 
-from rdflib import Graph, Namespace, RDF, URIRef
+try:
+    from rdflib import Graph, Namespace, RDF, URIRef
+except ImportError as exc:  # pragma: no cover - env dependent
+    raise SystemExit("[ERROR] rdflib is required: pip install -r requirements.txt (see requirements.txt at the MSO repo root)") from exc
 
 WF = Namespace("https://mso.dev/ontology/workflow#")
 
@@ -53,8 +56,51 @@ def _load_wm_context() -> Any:
             )
     return _wm_context_module
 
+
+# v0.7 어휘·제어 흐름 추출의 정본은 mso-workflow-design 의 wf_v07.py (control_graph). sibling 우선, ~/.claude/skills fallback.
+_WF_V07_CANDIDATES = [
+    Path(__file__).resolve().parent.parent.parent / "mso-workflow-design" / "scripts" / "wf_v07.py",
+    Path.home() / ".claude" / "skills" / "mso-workflow-design" / "scripts" / "wf_v07.py",
+]
+_wf_v07_module: Any = None
+
+
+def _load_wf_v07() -> Any:
+    global _wf_v07_module
+    if _wf_v07_module is None:
+        for cand in _WF_V07_CANDIDATES:
+            if cand.exists():
+                spec = importlib.util.spec_from_file_location("wf_v07", cand)
+                assert spec and spec.loader
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                if not hasattr(module, "control_graph"):
+                    raise SystemExit(f"[ERROR] {cand} has no control_graph — update the mso-workflow-design skill (>=0.13.0).")
+                _wf_v07_module = module
+                break
+        else:
+            raise SystemExit(
+                "[ERROR] wf_v07.py not found — install the mso-workflow-design skill "
+                "(sibling skills/ dir or ~/.claude/skills/)."
+            )
+    return _wf_v07_module
+
+# 로컬 AI 서빙 엔진 레지스트리. 모두 OpenAI 호환 API(/v1)를 노출한다. base_url 은 policy 의 engines 로 덮어쓴다.
+DEFAULT_ENGINES: dict[str, dict[str, str]] = {
+    "ollama": {"base_url": "http://127.0.0.1:11434/v1", "api": "openai-compatible"},
+    "vllm": {"base_url": "http://127.0.0.1:8000/v1", "api": "openai-compatible"},
+    "sglang": {"base_url": "http://127.0.0.1:30000/v1", "api": "openai-compatible"},
+    "lmstudio": {"base_url": "http://127.0.0.1:1234/v1", "api": "openai-compatible"},
+    "omlx": {"base_url": "http://127.0.0.1:8000/v1", "api": "openai-compatible"},
+}
+
 DEFAULT_POLICY: dict[str, Any] = {
     "mode": "cost",
+    # 루프(되돌림 rail) 무한 반복 방지: 한 노드가 이 횟수보다 많이 실행되면 halt
+    "loop_limit": 5,
+    # 일반 'local' 슬롯(기본 provider local-ollama)이 가리킬 서빙 엔진: ollama|vllm|sglang|lmstudio|omlx
+    "local_engine": "ollama",
+    "engines": DEFAULT_ENGINES,
     "providers": {
         "default": "local-ollama",
         "phase": "python",
@@ -179,6 +225,8 @@ class Node:
     phase_id: str | None = None
     branches: list[dict[str, str]] = field(default_factory=list)
     context_selector: dict[str, Any] = field(default_factory=dict)
+    subject: str | None = None  # v0.7 wf:hasSubject (human|system|model|self)
+    requires_human: bool = False  # True 면 사람 결정/결과 없이는 execution plane 이 halt
 
 
 def _read_text(path: Path) -> str:
@@ -226,7 +274,11 @@ def _load_policy(path: Path | None, mode_override: str | None) -> dict[str, Any]
             loaded = json.loads(text)
         if not isinstance(loaded, dict):
             raise SystemExit("policy must be a mapping")
-        policy.update({k: v for k, v in loaded.items() if k not in {"providers", "context", "writeback", "planes", "governance"}})
+        policy.update({k: v for k, v in loaded.items() if k not in {"providers", "context", "writeback", "planes", "governance", "engines"}})
+        engines = json.loads(json.dumps(DEFAULT_ENGINES))
+        for name, cfg in (loaded.get("engines") or {}).items():
+            engines.setdefault(name, {}).update(cfg or {})
+        policy["engines"] = engines
         providers = json.loads(json.dumps(MODE_PROVIDER_DEFAULTS.get(policy.get("mode", "cost"), DEFAULT_POLICY["providers"])))
         providers.update(loaded.get("providers") or {})
         if isinstance(providers.get("decision"), dict) and isinstance((loaded.get("providers") or {}).get("decision"), dict):
@@ -245,18 +297,29 @@ def _load_policy(path: Path | None, mode_override: str | None) -> dict[str, Any]
             else:
                 governance[key] = value
         policy["governance"] = governance
+    engine = str(policy.get("local_engine") or "ollama")
+    if engine not in (policy.get("engines") or {}):
+        raise SystemExit(f"unknown local_engine {engine!r}; choose one of {sorted(policy.get('engines') or {})}")
     if mode_override:
         policy["mode"] = mode_override
         policy["providers"] = json.loads(json.dumps(MODE_PROVIDER_DEFAULTS.get(mode_override, DEFAULT_POLICY["providers"])))
     return policy
 
 
+def _localize(provider: str, policy: dict[str, Any]) -> str:
+    """일반 local 슬롯(local-ollama)을 policy.local_engine 이 지정한 서빙 엔진으로 바꾼다."""
+    engine = str(policy.get("local_engine") or "ollama")
+    if provider == "local-ollama" and engine != "ollama":
+        return f"local-{engine}"
+    return provider
+
+
 def _provider_for(node_type: str, judge: str | None, policy: dict[str, Any]) -> str:
     providers = policy.get("providers") or {}
     if node_type == "decision":
         decision = providers.get("decision") or {}
-        return str(decision.get(judge or "", providers.get("default", "local-ollama")))
-    return str(providers.get(node_type, providers.get("default", "local-ollama")))
+        return _localize(str(decision.get(judge or "", providers.get("default", "local-ollama"))), policy)
+    return _localize(str(providers.get(node_type, providers.get("default", "local-ollama"))), policy)
 
 
 def _subjects_by_type(g: Graph, cls: URIRef) -> list[URIRef]:
@@ -303,6 +366,59 @@ def _context_index_hash(entries: list[dict[str, Any]]) -> str:
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
+# hasSubject → judge. workflow(하위 workflow 위임)는 펼치지 않고 단일 노드로 두므로 HOTL 로 취급한다.
+V07_JUDGE = {"human": "HITL", "model": "HOTL", "system": "HOOTL", "self": "HOTL", "workflow": "HOTL"}
+V07_NODE_TYPE = {"task": "step", "decision": "decision", "eval": "validation", "end": "end"}
+
+
+def _parse_v07(g: Graph, policy: dict[str, Any], warnings: list[str]) -> tuple[dict[str, Node], list[dict[str, str]], list[str]]:
+    """mso-workflow-design 의 `wf_v07.control_graph` 결과를 IR 노드·엣지로 옮긴다.
+
+    제어 Rail 판별·끝점 검증·subject 해석은 design 이 소유한다. 여기서는 실행 정책(judge→provider)만 입힌다.
+    control_graph 가 errors 를 돌려주면 일부만 컴파일하지 않고 중단한다(사람 승인 지점이 누락된 채 통과하는 것을 막는다).
+    """
+    cg = _load_wf_v07().control_graph(g)
+    if not cg["nodes"]:
+        raise ValueError("v0.7 workflow cannot be compiled: no Execution/End nodes found")
+    if cg["errors"]:
+        raise ValueError("v0.7 workflow cannot be compiled: " + "; ".join(cg["errors"]))
+    warnings.extend(cg["warnings"])
+    nodes: dict[str, Node] = {}
+    for item in cg["nodes"]:
+        node_type = V07_NODE_TYPE[item["kind"]]
+        subject = item["subject"]
+        judge = V07_JUDGE[subject] if subject else None
+        criteria = item["criteria"]
+        node = Node(
+            id=item["id"],
+            uri=item["uri"],
+            type=node_type,
+            label=item["label"],
+            status=item["status"],
+            instruction=item["instruction"] or (criteria[0] if criteria and node_type != "validation" else None),
+            judge=judge,
+            harness=item["harness"] or item["method"],
+            pass_criteria=criteria if node_type == "validation" else [],
+            provider=_provider_for(node_type, judge, policy),
+            subject=subject,
+            requires_human=subject == "human",
+        )
+        if subject == "human" and node_type != "decision":
+            node.provider = str(((policy.get("providers") or {}).get("decision") or {}).get("HITL", "human"))
+        nodes[node.id] = node
+    edges: list[dict[str, str]] = []
+    for e in cg["edges"]:
+        if nodes[e["source"]].type == "decision":
+            on_value = e["on"] or "default"
+            nodes[e["source"]].branches.append({"on": on_value, "goto": e["target"], "label": on_value})
+            edges.append({"source": e["source"], "target": e["target"], "kind": "branch", "on": on_value, "label": on_value})
+        else:
+            edges.append({"source": e["source"], "target": e["target"], "kind": "rail"})
+    for item in cg["ignored"]:
+        warnings.append(f"{item['rail']}: {item['railType']} rail is not control flow ({item['reason']}), skipped")
+    return nodes, edges, cg["entrypoints"]
+
+
 def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None = None) -> dict[str, Any]:
     g = Graph()
     g.parse(ttl_path, format="turtle")
@@ -315,8 +431,14 @@ def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None =
     nodes: dict[str, Node] = {}
     phase_nodes: dict[str, list[str]] = defaultdict(list)
     warnings: list[str] = []
+    v07_edges: list[dict[str, str]] | None = None
+    v07_entrypoints: list[str] = []
 
-    for phase in _subjects_by_type(g, WF.Phase):
+    if _load_wf_v07().is_v07_graph(g):
+        nodes, v07_edges, v07_entrypoints = _parse_v07(g, policy, warnings)
+        workflow_id = _safe_id(ttl_path.stem.replace(".abox", ""))
+
+    for phase in ([] if v07_edges is not None else _subjects_by_type(g, WF.Phase)):
         node_id = _local_id(phase)
         nodes[node_id] = Node(
             id=node_id,
@@ -336,7 +458,7 @@ def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None =
         WF.Validation: "validation",
         WF.Group: "group",
     }
-    for cls, node_type in type_map.items():
+    for cls, node_type in ({} if v07_edges is not None else type_map).items():
         for subj in _subjects_by_type(g, cls):
             node_id = _local_id(subj)
             judge = _literal(g, subj, WF.judge)
@@ -373,8 +495,8 @@ def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None =
     for node in nodes.values():
         node.context_selector = _context_selector(node, policy)
 
-    edges: list[dict[str, str]] = []
-    for subj, _, obj in g.triples((None, WF.dependsOn, None)):
+    edges: list[dict[str, str]] = list(v07_edges or [])
+    for subj, _, obj in ([] if v07_edges is not None else g.triples((None, WF.dependsOn, None))):
         if isinstance(subj, URIRef) and isinstance(obj, URIRef):
             source = _local_id(obj)
             target = _local_id(subj)
@@ -392,7 +514,7 @@ def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None =
                 continue
             edges.append({"source": source, "target": target, "kind": "lexical_next"})
 
-    for node in nodes.values():
+    for node in ([] if v07_edges is not None else list(nodes.values())):
         for branch in node.branches:
             target = branch.get("goto")
             if target and target in nodes:
@@ -407,7 +529,7 @@ def parse_ttl(ttl_path: Path, policy: dict[str, Any], workmem_dir: Path | None =
                 warnings.append(f"{node.id}: branch target not found: {target}")
 
     incoming = {edge["target"] for edge in edges}
-    entrypoints = sorted(node_id for node_id, node in nodes.items() if node_id not in incoming and node.type == "phase")
+    entrypoints = list(v07_entrypoints) or sorted(node_id for node_id, node in nodes.items() if node_id not in incoming and node.type == "phase")
     if not entrypoints:
         entrypoints = sorted(node_id for node_id in nodes if node_id not in incoming)
 
@@ -483,6 +605,8 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         "terminal_nodes": terminal_nodes,
         "writeback_policy": ir.get("writeback_policy", {}),
         "governance": policy.get("governance", {}),
+        "engines": policy.get("engines", {}),
+        "local_engine": policy.get("local_engine", "ollama"),
         "planes": policy.get("planes", {}),
         "policy": policy,
     }
@@ -522,6 +646,13 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         if state.get("halted"):
             return state
         spec = PAYLOAD["node_specs"][node_id]
+        visits = dict(state.get("visits", {{}}))
+        visits[node_id] = visits.get(node_id, 0) + 1
+        state["visits"] = visits
+        if visits[node_id] > int(PAYLOAD.get("policy", {{}}).get("loop_limit", 5)):
+            state["halted"] = True
+            state["halt_reason"] = f"loop_limit:{{node_id}}"
+            return state
         context_pack = (
             (state.get("context_overrides", {{}}) or {{}}).get(node_id)
             or PAYLOAD.get("context_packs", {{}}).get(node_id)
@@ -547,6 +678,9 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
             "context_entry_ids": [entry.get("id") for entry in context_pack.get("entries", [])],
         }}
         node_result = (state.get("node_results", {{}}) or {{}}).get(node_id) or {{}}
+        if spec.get("requires_human") and not (node_result or (state.get("decisions", {{}}) or {{}}).get(node_id)):
+            state["halted"] = True
+            state["halt_reason"] = f"awaiting_human:{{node_id}}"
         control_event = node_result.get("control_plane_event")
         if control_event:
             event = dict(control_event)
@@ -584,7 +718,19 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
         return state
 
 
+    def engine_for(node_id: str) -> dict[str, Any] | None:
+        """노드 provider 가 local-<engine> 이면 그 서빙 엔진(base_url 등)을 돌려준다."""
+        provider = PAYLOAD["node_specs"][node_id]["provider"]
+        if not provider.startswith("local-"):
+            return None
+        name = provider[len("local-"):]
+        cfg = PAYLOAD.get("engines", {{}}).get(name)
+        return dict(cfg, name=name) if cfg else None
+
+
     def _route_decision(state: dict[str, Any], node_id: str) -> str:
+        if (state or {{}}).get("halted"):
+            return "__halt__"
         decisions = (state or {{}}).get("decisions", {{}})
         selected = decisions.get(node_id)
         branches = [edge for edge in PAYLOAD["branch_edges"] if edge["source"] == node_id]
@@ -628,6 +774,7 @@ def render_graph_py(ir: dict[str, Any], policy: dict[str, Any]) -> str:
                 for edge in PAYLOAD["branch_edges"]
                 if edge["source"] == node_id
             }}
+            mapping["__halt__"] = END
             if mapping:
                 graph.add_conditional_edges(
                     node_id,
@@ -652,8 +799,13 @@ def compile_workflow(
     policy_path: Path | None,
     mode: str | None,
     workmem_dir: Path | None = None,
+    local_engine: str | None = None,
 ) -> Path:
     policy = _load_policy(policy_path, mode)
+    if local_engine:
+        if local_engine not in policy["engines"]:
+            raise SystemExit(f"unknown local engine {local_engine!r}; choose one of {sorted(policy['engines'])}")
+        policy["local_engine"] = local_engine
     ir = parse_ttl(ttl_path, policy, workmem_dir=workmem_dir)
     artifact_dir = out_root / _safe_id(ir["workflow_id"])
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -681,11 +833,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=Path("generated/langgraph"), help="output root directory")
     parser.add_argument("--policy", type=Path, help="optimizer policy YAML/JSON")
     parser.add_argument("--mode", choices=sorted(MODE_PROVIDER_DEFAULTS), help="override policy mode")
+    parser.add_argument("--local-engine", choices=sorted(DEFAULT_ENGINES), help="local AI serving engine for the generic local slot (default: policy local_engine, else ollama)")
     parser.add_argument("--workmem", type=Path, help="agent-context/work-memory directory for ContextPack snapshot")
     parser.add_argument("--print-ir", action="store_true", help="print workflow_ir.json after compiling")
     args = parser.parse_args(argv)
 
-    artifact_dir = compile_workflow(args.ttl, args.out, args.policy, args.mode, workmem_dir=args.workmem)
+    artifact_dir = compile_workflow(args.ttl, args.out, args.policy, args.mode, workmem_dir=args.workmem, local_engine=args.local_engine)
+    if importlib.util.find_spec("langgraph") is None:
+        print(
+            "[note] langgraph is not installed: generated graph.py will use the linear fallback invoke() "
+            "(branches and loops are ignored). To execute it as a graph: pip install -r requirements-langgraph.txt",
+            file=sys.stderr,
+        )
     if args.print_ir:
         print((artifact_dir / "workflow_ir.json").read_text(encoding="utf-8"))
     else:

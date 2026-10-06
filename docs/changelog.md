@@ -1,5 +1,34 @@
 # 변경 이력
 
+## v0.13.1 (2026-10-06) — mso-workflow-optimizer: v0.7 네이티브 컴파일, 사람 승인 halt, 로컬 서빙 엔진
+
+> v0.7 Rail/Stream workflow를 `compile_workflow.py`에 넣으면 에러 없이 일부 노드(Decision만)와 엣지 0개로 컴파일되고, 사람 결정 노드가 로컬 LLM에 배정되는 문제를 고친다.
+
+### Added
+
+- `mso-workflow-optimizer` v0.8.0: v0.7 어휘를 직접 읽는다. Task→step, Decision→decision, Eval→validation, End→end, Rail→branch(`wf:on`)·순차 엣지, Start→진입점.
+  `wf:hasSubject`를 judge로 옮긴다(human=HITL, model=HOTL, system=HOOTL, self=HOTL). v0.6(Project/Phase/Step) 어휘는 그대로 지원한다.
+- `hasSubject=human` 노드는 `requires_human`: `decisions`/`node_results` 없이는 `awaiting_human:<node>`로 halt한다(자동 승인 없음). halt 상태의 조건부 edge는 END로 간다.
+- 정책 `loop_limit`(기본 5): 되돌림 루프가 넘으면 `loop_limit:<node>`로 halt한다(이전에는 `GraphRecursionError`).
+- 로컬 AI 서빙 엔진 `ollama | vllm | sglang | lmstudio | omlx`(OpenAI 호환 `/v1`): 정책 `local_engine`·`--local-engine`, `engines.<name>.base_url` 덮어쓰기,
+  생성 `graph.py`의 `engine_for(node_id)`. 알 수 없는 엔진은 오류로 중단한다.
+- `mso-workflow-design` v0.13.0: `wf_v07.control_graph(g)` 추가 — v0.7 workflow의 제어 흐름 추출 정본. 제어 Rail(`default`·`escalates_to`)만 edge로 돌려주고
+  `reads`·`delegates_to`·oracle Rail은 `ignored`로 분리한다. 끝점이 Execution/Start/End가 아니거나 출구 없는 Decision은 `errors`, subject 누락·미지·`workflow`는 `warnings`.
+  원본 불변·결정론. 실행 엔진이 어휘를 각자 해석하지 않도록 design이 소유한다(`mso-workflow-optimizer`가 소비). 시험 3개 추가.
+- `mso-workflow-optimizer`는 자체 v0.7 파서를 두지 않고 `control_graph`를 소비한다(design >=0.13.0 필요, 없으면 컴파일 중단).
+- 시험 7개 추가(v0.7 컴파일, 잘못된 rail 오류, human halt, 루프 상한, 엔진 선택·base_url 덮어쓰기, 비제어 rail 건너뛰기).
+
+### Changed
+
+- v0.7인데 읽을 수 없는 rail(없는 노드 참조)이나 출구 없는 decision은 조용히 넘기지 않고 `ValueError`로 중단한다.
+- 패키지 동기 버전은 v0.13.1로 올렸다. 스킬 독립 semver: `mso-workflow-design` 0.13.0, `mso-workflow-optimizer` 0.8.0(design >=0.13.0 의존). 변경 없는 스킬은 유지한다.
+- 의존성 정리: `requirements.txt`에 `pyshacl>=0.31` 추가, 선택 파일 `requirements-langgraph.txt`(langgraph) 분리, `install.sh --venv`(저장소 밖 `~/.mso/venv`, `MSO_VENV`로 변경).
+  venv·패키지는 퍼블릭 저장소에 내장하지 않는다. 컴파일러는 rdflib 누락 시 설치 안내 오류를, langgraph 누락 시 fallback 안내(stderr)를 낸다.
+
+### Known limits
+
+- 생성 `graph.py`의 `_run_node`는 여전히 `planned`만 기록한다. 서빙 엔진 호출 러너는 후속 작업이다.
+
 ## v0.13.0 (2026-10-05) — 연관 저장소 work-memory, TTL artifact 층, PROV-O 정렬 주석
 
 > 핵심은 **여러 저장소를 횡단하면서 작업할 수 있게 하고, 작업 맥락을 TTL 지식 그래프로 구조화해 찾을 수 있게 한 것**이다. 세 갈래로 낸다. (1) 엄브렐러 repo 루트 세션이 하위·별도 경로 MSO 저장소의 work-memory에 기록·커밋하지 못하던 공백을 메운다.
