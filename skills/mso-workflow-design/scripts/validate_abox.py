@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 try:
-    from rdflib import Graph, Literal, RDF, URIRef
+    from rdflib import Graph, Literal, RDF, RDFS, URIRef
 except ImportError as exc:  # pragma: no cover - user environment guard
     raise SystemExit("rdflib is required: pip install rdflib") from exc
 
@@ -70,6 +70,32 @@ def collect_abox_paths(targets: list[Path]) -> list[Path]:
             seen.add(rp)
             unique.append(p)
     return unique
+
+
+def is_artifact_registry(g: Graph) -> bool:
+    """workflow(Rail/Stream)는 없고 artifact 층 개념(RegisteredArtifact/ArtifactConvention)만 선언한 파일."""
+    return (not is_v07_graph(g)) and (
+        next(g.subjects(RDF.type, WF.RegisteredArtifact), None) is not None
+        or next(g.subjects(RDF.type, WF.ArtifactConvention), None) is not None
+    )
+
+
+def find_artifact_registries(targets: list[Path]) -> list[Path]:
+    """디렉토리 target 의 `agent-context/index/artifacts.abox.ttl` 을 자동으로 찾는다(v0.13.0 artifact 층).
+
+    workflow Stream 이 가리키는 artifact 는 이 registry 에 선언돼 있다. 훅은 workflow 디렉토리만 넘기므로
+    registry 를 같이 읽지 않으면 선언된 artifact 도 'Artifact 가 아님' 으로 보고된다.
+    """
+    found: list[Path] = []
+    for target in targets:
+        if not target.is_dir():
+            continue
+        for base in (target, *target.parents[:3]):
+            candidate = base / "index" / "artifacts.abox.ttl"
+            if candidate.is_file() and candidate not in found:
+                found.append(candidate)
+                break
+    return found
 
 
 def parse_graph(paths: list[Path]) -> Graph:
@@ -409,10 +435,18 @@ def validate_abox(targets: list[Path]) -> dict:
 
     v06_paths: list[Path] = []
     v07_paths: list[Path] = []
+    registry_paths: list[Path] = []
     for path in paths:
         single = Graph()
         single.parse(str(path), format="turtle")
-        (v07_paths if is_v07_graph(single) else v06_paths).append(path)
+        if is_artifact_registry(single):
+            registry_paths.append(path)  # v0.6 스택으로 보내지 않고 v0.7 SHACL 그래프에 합친다
+        else:
+            (v07_paths if is_v07_graph(single) else v06_paths).append(path)
+    known = {p.resolve() for p in paths}
+    for extra in find_artifact_registries(targets):
+        if extra.resolve() not in known:
+            registry_paths.append(extra)
 
     all_graph = parse_graph(paths)
     iri_lint_issues = find_iri_lint_issues(all_graph)
@@ -421,6 +455,7 @@ def validate_abox(targets: list[Path]) -> dict:
         "files": [str(p) for p in paths],
         "v06_files": [str(p) for p in v06_paths],
         "v07_files": [str(p) for p in v07_paths],
+        "artifact_registry_files": [str(p) for p in registry_paths],
         "legacy_yaml_warnings": find_legacy_yaml_residue(paths),
         "iri_lint_issues": iri_lint_issues,
     }
@@ -463,6 +498,11 @@ def validate_abox(targets: list[Path]) -> dict:
     # ── v0.7 스택 ────────────────────────────────────────────────────────
     if v07_paths:
         g7 = parse_graph(v07_paths)
+        if registry_paths:
+            # RegisteredArtifact ⊑ Artifact (workflow-artifact-layer-tbox.ttl). SHACL 의 sh:class 가 이 계층을 따라가도록 data graph 에 둔다.
+            for registry in registry_paths:
+                g7.parse(str(registry), format="turtle")
+            g7.add((WF.RegisteredArtifact, RDFS.subClassOf, WF.Artifact))
         conforms7, shacl_text7 = run_shacl_v07(g7)
         oracle_issues, oracle_warnings = find_oracle_disjoint_violations_v07(g7)
         partition_issues = find_task_sharing_v07(g7)
