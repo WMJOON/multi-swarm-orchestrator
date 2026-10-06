@@ -35,6 +35,10 @@
   - TTL 은 수정하지 않고 LLM 도 쓰지 않는다. 제어 흐름 추출은 `mso-workflow-design` 의 `wf_v07.control_graph` 를 그대로 쓴다.
 - **`mso-workflow-design` v0.13.1**: `workflow-check.sh` 훅이 검증 통과 뒤 brief 를 기본으로 생성한다(`MSO_BRIEF_TOOL`, 끄려면 `MSO_WORKFLOW_CHECK_NO_BRIEF=1`). 기존 `observe_graph.py` 단계는 그대로다.
   `wf_v07.control_graph` 가 v0.6 `wf:Event` 를 진입 트리거 노드(`event`)로 받는다.
+  `validate_abox.py` 가 artifact 층 registry(`agent-context/index/artifacts.abox.ttl`, v0.13.0)를 workflow 검증에 합친다. 이전에는 registry 를 v0.6 스택으로 따로 검증하고
+  v0.7 SHACL 은 workflow 파일만 합친 그래프에서 돌려서, registry 에 `wf:RegisteredArtifact` 로 선언된 artifact 도 Stream 의 `sh:class wf:Artifact` 를 만족하지 못했다
+  (korean-tax: 선언된 12개 artifact 에 대해 138건 오탐, 훅이 검증 단계에서 멈춰 brief 까지 가지 못함). 디렉토리 target 의 인접 `index/artifacts.abox.ttl` 을 자동으로 찾고,
+  명시적으로 넘긴 registry 파일은 v0.6 이 아니라 registry 로 분류한다. 결과 JSON 에 `artifact_registry_files` 가 추가된다. 시험 3개 추가.
 - 라우팅·문서: `mso-orchestration`, `mso-work-memory`, README, `docs/` 를 새 역할에 맞췄다. 시각화·관측은 `mso-graph-observability`, 개선 제안은 `mso-workflow-optimizer` 로 나눈다.
 
 ### 남겨 둔 것 (후속 릴리스에서 정리 예정)
