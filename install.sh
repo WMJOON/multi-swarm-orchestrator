@@ -1,5 +1,5 @@
 #!/bin/bash
-# MSO v0.13.2 — install skill symlinks for Claude, Codex, and Gemini.
+# MSO v0.14.0 — install skill symlinks for Claude, Codex, and Gemini.
 # Usage: bash install.sh [--codex] [--codex-legacy] [--gemini] [--all] [--venv]
 #   --venv : create a Python venv OUTSIDE the repo ($MSO_VENV, default ~/.mso/venv) and install requirements*.txt into it.
 set -euo pipefail
@@ -35,7 +35,7 @@ for arg in "$@"; do
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(claude)
 
-echo "MSO v0.13.2 Install"
+echo "MSO v0.14.0 Install"
 echo "  Skills  : ${SKILLS[*]}"
 echo "  Targets : ${TARGETS[*]}"
 echo ""
@@ -87,7 +87,7 @@ if [[ "$MAKE_VENV" -eq 1 ]]; then
   fi
   "$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip
   "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_DIR/requirements.txt" -r "$REPO_DIR/requirements-langgraph.txt"
-  echo "  READY   $VENV_DIR/bin/python  (use it to run compile_workflow.py and generated graph.py)"
+  echo "  READY   $VENV_DIR/bin/python  (use it to run analyze_work_memory.py --draft)"
   echo ""
 fi
 

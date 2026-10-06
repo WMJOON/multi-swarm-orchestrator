@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """wm_context.py — 런타임 context-pack 검색 (lexical ranking, stdlib-only core).
 
-ContextPack 스코어링/선택 로직의 정본(canonical home). mso-workflow-optimizer 의
-compile_workflow.py 가 컴파일 타임에 이 모듈을 로드해 동일 로직을 재사용한다
+ContextPack 스코어링/선택 로직의 정본(canonical home). (과거 mso-workflow-optimizer 의 compile_workflow.py 가
+컴파일 타임에 재사용했으나 optimizer 는 v1.0.0 에서 컴파일을 그만뒀다)
 (단일 정본). zvec 의존 없음 — 랭킹은 lexical 전용:
 타입 우선순위 + 18×태그 교집합 + 토큰 매치 + 12 module 보너스.
 

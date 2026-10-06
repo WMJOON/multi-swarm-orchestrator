@@ -35,9 +35,9 @@ metadata:
     - "실패 흐름 분석"
     - "Mermaid view"
     - "TTL graph"
-    - "LangGraph"
-    - "langgraph 변환"
-    - "workflow TTL 실행"
+    - "work-memory 개선 제안"
+    - "회고 후보"
+    - "낡은 결정 점검"
     - "utterance grounding"
     - "운영 명령"
     - "ticket 재실행"
@@ -67,7 +67,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
   mso-scaffold-design         ←── index.yaml SSOT (모듈·subdir·sub_index) 
   mso-workflow-design         ←── workflow/artifact/eval TTL ABox node-edge shape
   mso-graph-observability     ←── TTL view + artifact stream 개선 리포트 + runtime graph 관측
-  mso-workflow-optimizer      ←── workflow TTL → LangGraph generated artifact
+  mso-workflow-optimizer      ←── work-memory 분석 → 개선 제안 리포트(LangGraph, 읽기 전용)
         ↕ 협업 (multi-turn discussion, v1.0.0+ 예정)                       
   mso-discussion-coworker     ←── 옵션 비교·결정 근거 추적·UD/AD 자동 작성
         │                                                                
@@ -114,7 +114,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
         └── principles     (PR-NNNN)  ←── PT 응축 원칙                   
         │                                                                
         ▼                                                                
-[실행 최적화 — generated graph]
+[개선 제안 — work-memory 분석]
   mso-workflow-optimizer
     ├── workflow TTL ABox → LangGraph artifact
     └── provider policy(cost/speed/quality/privacy) → node routing
@@ -129,9 +129,9 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 | **mso-repository-setup** | agent-context/ 부트스트랩 (init/check/migrate). v0.8.1 적용 시 폐기된 Hermes Bridge 설정 정리. artifact stream TTL이 있으면 scaffold/observability 후속 점검으로 연결 | "mso init", "agent-context 부트스트랩", "워크플로우 디렉토리 생성", "v0.8.1 적용", "Hermes 설정 정리" |
 | **mso-scaffold-design** | index.yaml SSOT, 계층 sub_index, data_registry. artifact stream TTL 경로를 index/sub-module에 연결 | "스캐폴드 설계", "index.yaml", "모듈 추가", "디렉토리 등록", "artifact registry" |
 | **mso-workflow-design** | workflow/artifact/eval TTL ABox node-edge 생성 및 shape 점검. legacy YAML은 import input | "워크플로우 설계", "workflow TTL", "artifact stream", "eval 노드", "decision 노드", "validation 노드" |
-| **mso-graph-observability** | TTL 가시화와 개선 리포트 생성. workflow view, artifact-stream view, eval edge, runtime analysis를 읽기 전용 산출물로 생성 | "그래프 관측", "워크플로우 관측", "artifact stream report", "work-memory 분석", "auditlog 분석", "이상행동 관측", "실패 흐름 분석" |
+| **mso-graph-observability** | workflow **brief**(에이전트용 한 장 요약)와 사람 보고서 생성이 기본. TTL 가시화·개선 리포트(workflow view, artifact-stream view, runtime analysis)는 선택 | "workflow brief", "workflow 요약", "workflow 보고서", "그래프 관측", "워크플로우 관측", "artifact stream report", "work-memory 분석", "auditlog 분석", "이상행동 관측", "실패 흐름 분석" |
 | **mso-workflow-observation** *(alias)* | workflow graph 노출 전용 공개 레일. `mso-graph-observability`의 workflow scope를 감싸 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성 | "mso-workflow-observation", "workflow graph 노출", "workflow observation" |
-| **mso-workflow-optimizer** | workflow TTL ABox를 LangGraph generated artifact로 컴파일. TTL은 SSOT로 유지하고 provider routing은 정책 파일로 분리 | "workflow optimizer", "LangGraph", "langgraph 변환", "workflow TTL 실행", "Ollama 비용 최적화" |
+| **mso-workflow-optimizer** | work-memory를 읽기 전용으로 분석해 회고 승격 후보·workflow 개선안·낡은 결정·기록 품질 제안 리포트를 만든다. 결정적 분석 + 선택적 모델 요약 | "workflow optimizer", "work-memory 개선 제안", "회고 후보", "패턴으로 올릴 것", "낡은 결정 점검", "기록 품질 점검" |
 | **mso-work-memory** | jsonl entry CRUD, zvec 검색, relations 그래프 | "decision 기록", "trouble-shooting 작성", "episode 회고", "비슷한 사고 검색" |
 | **mso-intent-analytics** *(§11 재편)* | registry SoT (Intent/SlotSpec/IntentMatrix, RDF+LinkML, Lookup API) **+ 뒷단 dispatch** (`pipeline.ground(utterance, intent_id)`: slot_filler→resolver→SHACL validator→turn_writer→GroundedCommand). 앞단(utterance→intent)은 UUG. MSO runtime tier-escalation 신호의 귀속지 | "ticket-NNN 재실행", "run-NNN 상태", "audit 조회", "dispatch", "intent 목록", "슬롯 스키마" |
 | ~~구 utterance-grounding~~ | **해체(§11)**: 앞단(utterance→intent)→UUG(uug-grounding), 뒷단→mso-intent-analytics 흡수. 스킬 제거됨 | — |
@@ -148,7 +148,7 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 3. **흐름 정의 의도** (예: "워크플로우 만들어", "결정 게이트", "검증 단계") → `mso-workflow-design`
 4. **workflow graph 노출 의도** (예: "workflow graph 노출", "mso-workflow-observation", "workflow graph 보여줘") → `mso-workflow-observation` alias → `mso-graph-observability`
 5. **graph 관측·분석 의도** (예: "워크플로우 관측", "workflow topology 보여줘", "어떤 흐름에서 실패가 많아?", "agent 이상행동 관측", "work-memory/auditlog 분석") → `mso-graph-observability`
-6. **workflow 실행 최적화 의도** (예: "workflow TTL을 LangGraph로 변환", "Ollama 비용 최적화 실행 그래프", "Codex/API provider routing") → `mso-workflow-optimizer`
+6. **개선 제안 의도** (예: "work-memory 보고 뭘 고칠지 제안해줘", "회고로 올릴 후보", "같은 문제 반복되나", "낡은 결정 점검") → `mso-workflow-optimizer` (시각화·관측은 5번 `mso-graph-observability`)
 7. **discussion 의도** (예: "같이 결정하자", "옵션 비교", "이렇게 vs 저렇게") → `mso-discussion-coworker` *(v1.0.0+)*
 8. **기록·검색·회고 의도** (예: "이 결정 기록해", "비슷한 사고 검색", "패턴 추출") → `mso-work-memory`
 9. **발화·turn 패턴 분석 의도** (예: "전환 행렬 보여줘", "reprompt율 분석", "unresolved 발화") → UUG `uug-pattern-analytics` 우선. MSO `conversation-analytics`는 de-routed 잔존 스킬이므로 자동 라우팅하지 않고 직접 호출만 허용
@@ -192,10 +192,9 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 
 ### Workflow Optimizer
 ```
-사용자: "이 workflow ttl을 LangGraph로 변환해줘"
+사용자: "work-memory 분석해서 회고로 올릴 만한 것 제안해줘"
   → mso-orchestration: mso-workflow-optimizer 안내
-  → python scripts/compile_workflow.py agent-context/workflow/workflow-00.abox.ttl \
-       --out generated/langgraph --mode cost
+  → python scripts/analyze_work_memory.py agent-context/work-memory
 ```
 사용자: "기존 평탄 구조를 agent-context/ 로 옮겨줘"
   → mso-orchestration: mso-repository-setup --migrate 안내

@@ -1,118 +1,73 @@
 ---
 name: mso-workflow-optimizer
 metadata:
-  version: "0.9.0"
+  version: "1.0.0"
 description: >
-  MSO workflow TTL ABox를 실행 가능한 LangGraph artifact로 컴파일하는 optimizer 스킬.
-  TTL을 SSOT로 유지하면서 Vertex별 instruction, work-memory ContextPack,
-  control_plane_events, memory_writeback_queue, provider routing을 포함한 generated/langgraph/workflow-id/graph.py,
-  workflow_ir.json, optimizer_policy.json을 생성한다. 다음 상황에서 사용한다:
-  (1) workflow/*.abox.ttl을 LangGraph 로컬 실행 그래프로 변환,
-  (2) 비용/속도/품질/프라이버시 정책에 따라 node별 provider routing 계획 생성,
-  (3) Ollama/local LLM, OpenAI API, Codex ChatGPT sign-in/access-token 같은 provider adapter
-      선택을 TTL 밖 정책 파일로 분리,
-  (4) Claude Code/Codex 같은 client agent를 control plane, LangGraph를 execution plane으로 분리,
-  (5) HITL/HITLFE/HOTL/HOOTL judge semantics를 conditional edge/gate로 보존,
-  (6) coding agent reasoning 비용을 줄이기 위해 반복 workflow를 local graph runtime으로 내리는 작업.
+  work-memory 를 읽기 전용으로 분석해 개선 제안 리포트를 만드는 optimizer 스킬(LangGraph).
+  TTL 을 컴파일하지 않는다. agent-context/work-memory 의 IN/AD/UD/TS/EP/PT/PR 를 결정적 코드로 분석해
+  (1) 회고 승격 후보(IN/TS → EP, EP → PT, PT → PR), (2) workflow 개선안(재발 root cause·모듈 핫스팟),
+  (3) 낡은 결정·교훈 점검, (4) 기록 누락·품질을 근거 entry id 와 함께 제안한다.
+  모델은 선택적 요약 단계에만 쓰고(control plane 위임), work-memory 에는 절대 쓰지 않는다.
+  다음 상황에서 사용한다: (1) "work-memory 분석", "회고 후보", "패턴으로 올릴 만한 게 있나",
+  (2) "같은 문제가 반복되나", "workflow 개선점", (3) "낡은 결정 점검", "기록 품질 점검",
+  (4) 릴리스·정기 회고 전에 승격·정리 대상을 뽑을 때.
 ---
 
-# MSO Workflow Optimizer
+# MSO Workflow Optimizer — work-memory 분석
 
-MSO workflow optimizer는 **TTL ABox를 읽는 compiler/runtime adapter**다. TTL은 계속 SSOT이고, LangGraph 코드는 `generated/` 아래 재생성 가능한 산출물이다.
+작업 기록(work-memory)에서 **무엇을 바꾸면 좋을지**를 제안한다. 제안만 하고 고치지 않는다. 확정과 기록은 사람과 control plane(Claude Code/Codex)이 한다.
 
-```text
-workflow/*.abox.ttl  ->  optimizer IR  ->  generated/langgraph/workflow-id/graph.py
-        SSOT                 transient                 generated artifact
+## 왜 컴파일이 아닌가
+
+v0.9 까지는 workflow TTL 을 LangGraph 로 컴파일했다. TTL 에서 나오는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL 에 없어서, 컴파일 결과는 실행되지 않는 골격이었다. 실제 가치는 구조를 코드로 찍어내는 데 있지 않고 **기록에서 반복·누락·낡음을 찾아 다음 행동을 제안**하는 데 있다고 보고 방향을 바꿨다(v1.0.0).
+
+## 구조
+
+```
+load ─┬─ promotion ─┐
+      ├─ workflow  ─┤
+      ├─ stale     ─┼─ collect ─┬─ draft(모델 요약, 선택) ─┐
+      └─ quality   ─┘           └──────────────────────────┴─ publish → report.md / report.json
 ```
 
-## 원칙
+- **분석은 결정적이다.** LLM 없이도 같은 입력이면 같은 제안이 나온다. 각 제안은 근거 entry id 를 가진다. 분석기는 `scripts/wm_analyze.py`.
+- **모델은 선택이다.** `draft` 노드는 체크포인터가 있고 `--draft` 일 때만 LangGraph `interrupt` 로 멈춘다. control plane 이 `draft_pack.json` 을 읽어 요약·문안을 쓰고 `resume` 으로 돌려준다.
+- **work-memory 에는 쓰지 않는다.** 결과는 리포트 파일(`generated/work-memory-analysis/<date>/`)로만 남는다. 제안을 채택해 entry 를 만드는 일은 `mso-work-memory` 의 절차(`wm_node.py`)로 사람이 승인한 뒤 한다.
 
-- TTL ABox를 직접 실행 정본으로 둔다. 생성된 LangGraph 코드는 수동 편집하지 않는다.
-- workflow node의 `wf:instruction`은 Vertex instruction이고, work-memory는 Vertex별 ContextPack으로 주입한다.
-- ContextPack 스코어링/선택 로직의 정본은 **mso-work-memory 의 `wm_context.py`** 다 (v0.7.0). `compile_workflow.py` 는 이를 로드해 위임한다 — sibling `skills/` 디렉토리 우선, `~/.claude/skills/` fallback. 따라서 이 스킬은 mso-work-memory 가 해석 가능한 환경을 전제한다.
-- secret/API key/OAuth token은 TTL에 넣지 않는다. provider 선택은 정책 파일에 이름으로만 남긴다.
-- `cost | speed | quality | privacy` 실행 모드를 정책으로 받아 node별 provider를 고른다.
-- LangGraph 미설치 환경에서도 생성물 import와 fallback `invoke()`가 동작해야 한다.
-- `HITL`, `HITLFE`, `HOTL`, `HOOTL` decision은 graph 조건부 edge/gate로 보존한다.
-- **v0.7 Rail/Stream workflow를 그대로 컴파일한다.** 제어 흐름 추출은 **`mso-workflow-design`의 `wf_v07.control_graph`(>=0.13.0)가 정본**이고, 이 스킬은 그 결과에 실행 정책(judge→provider)만 입힌다. sibling `skills/` 우선, `~/.claude/skills/` fallback이며 design 스킬이 없으면 컴파일이 중단된다. 제어 Rail은 `default`·`escalates_to`뿐이고 `reads`·`delegates_to`·oracle Rail은 건너뛰며 경고로 남긴다. `wf:hasSubject`를 judge로 옮긴다(human=HITL, model·self·workflow=HOTL, system=HOOTL). `hasSubject=workflow`(하위 workflow)는 펼치지 않고 단일 노드로 둔다. v0.6(Project/Phase/Step) 어휘도 계속 지원한다. v0.7인데 읽을 수 없는 rail(없는 노드 참조)·출구 없는 decision은 조용히 넘기지 않고 오류로 중단한다.
-- `hasSubject=human` 노드는 `requires_human`이다. `decisions[node]` 또는 `node_results[node]` 없이는 execution plane이 `awaiting_human:<node>`로 halt하며 자동 승인하지 않는다. halt 상태에서는 조건부 edge가 END로 간다.
-- decision 노드에 유효한 `decisions[node]`가 없으면 첫 분기로 보내지 않고 `awaiting_decision:<node>`로 halt한다(LangGraph 모드. 선형 fallback은 분기를 무시하므로 적용 안 됨).
-- **구조는 컴파일, 본문은 바인딩.** TTL에서 컴파일되는 것은 제어 구조뿐이다. 노드가 실제로 실행할 것(script/agent/interrupt)은 대상 프로젝트에서 **AI 에이전트가 `bindings.yaml`로 작성**하고 `--bindings`(+`--strict-bindings`)로 컴파일하면 TTL과 어긋남을 컴파일 시점에 검증한다. 스킬은 `examples/bindings.example.yaml` 예시와 `references/bindings.md` 계약만 제공하고 바인딩을 대신 만들지 않는다. script는 `state.execute`가 참일 때만 실행된다(기본 dry-run). 체크포인터(`graph.start/resume`, `sqlite_checkpointer`)를 쓰면 사람·에이전트 대기를 LangGraph `interrupt`로 멈췄다가 같은 지점에서 이어간다.
-- 되돌림 루프는 정책 `loop_limit`(기본 5)를 넘으면 `loop_limit:<node>`로 halt한다.
-- **로컬 AI 서빙 엔진**: `ollama | vllm | sglang | lmstudio | omlx`(모두 OpenAI 호환 `/v1`). 일반 local 슬롯의 엔진은 정책 `local_engine` 또는 `--local-engine`으로 고르고, 엔드포인트는 정책 `engines.<name>.base_url`로 덮어쓴다(기본 포트: ollama 11434, vllm 8000, sglang 30000, lmstudio 1234, omlx 8000). 생성된 `graph.py`의 `engine_for(node_id)`가 노드의 엔진 설정을 돌려준다. API key는 TTL·정책에 넣지 않는다.
-- Claude Code/Codex 같은 client agent는 **control plane**, LangGraph는 **execution plane**이다.
-- execution plane은 기본적으로 `user-decision`을 직접 기록하지 않는다. human/metric oracle 확정은 control plane 책임이다.
-- execution plane은 `alternatives-record` 후보나 `control_plane_event`를 만들어 workflow를 중단하고 control plane에 결정을 요청할 수 있다.
-- work-memory 기록은 직접 쓰지 않는다. Vertex 실행 결과가 제출한 후보만 `memory_writeback_queue`에 `proposed` 상태로 쌓는다.
+## 분석 4종
 
-## Quick Start
+| 종류 | 제안하는 것 | 근거 |
+|---|---|---|
+| promotion | 회고되지 않은 유사 IN/TS 군집 → EP, 비슷한 EP 군 → PT, 인스턴스 3건 이상인 PT → PR | 어휘 유사도 군집(TF-IDF), 기존 EP/PT/PR 의 참조 |
+| workflow | 같은 root cause 로 해결된 TS 군 → 게이트·테스트·hook 후보, 열린 issue 가 몰린 모듈, 해결 뒤 다시 열린 유사 issue | root_cause 군집, 모듈별 status/severity |
+| stale | 사라진 경로를 인용하는 결정, 최신 릴리스 뒤 재확인(verified-in) 없는 구조·정책 UD, supersede 누락 후보, 확신 낮은 미채택 AD | 프로젝트 파일 존재, release-note 관계 |
+| quality | 끊긴·중복 id, 필수 필드 누락, resolved↔TS 불일치, 방치된 open issue, 태그·어휘 드리프트 | schema 와 관계 무결성 |
+
+자세한 기준과 임계값은 [references/analysis.md](references/analysis.md).
+
+## 사용
 
 ```bash
-python scripts/compile_workflow.py workflow/my-flow.abox.ttl \
-  --out generated/langgraph \
-  --workmem agent-context/work-memory \
-  --policy optimizer-policy.yaml
+# 결정적 분석만 (모델 없음). langgraph 가 없어도 동작한다.
+python scripts/analyze_work_memory.py agent-context/work-memory [--out DIR] [--max-per-kind 10]
+
+# 모델 요약을 얹을 때 (체크포인터 필요: pip install -r requirements-langgraph.txt)
+python scripts/analyze_work_memory.py agent-context/work-memory --draft --checkpoint run.sqlite --thread t1
+#   → draft_pack.json 을 읽고 {"summary": "...", "proposals": {"<id>": {"rewrite": "..."}}} 를 쓴다
+python scripts/analyze_work_memory.py --resume t1 --checkpoint run.sqlite --draft-file narrative.json
 ```
 
-생성물:
+- 출력: `report.md`(읽기용), `report.json`(전체 제안·근거·통계).
+- 프로젝트 파일 존재 검사는 `agent-context/work-memory` 의 두 단계 위를 프로젝트 루트로 본다(`--project-root` 로 덮어쓴다).
 
-- `graph.py`: LangGraph가 있으면 `StateGraph`를 compile하고, 없으면 deterministic fallback graph를 제공한다.
-- `workflow_ir.json`: TTL에서 추출한 phase/node/edge/provider routing IR.
-- `context_packs`: node별 work-memory snapshot. 없거나 오래된 경우 런타임에서 `context_overrides`로 교체 가능 — 교체용 pack 은 `wm_context.py node --node <id> --ttl <abox> --json` 으로 동일 스코어링에서 재생성한다 (`context_overrides` 와 상보).
-- `optimizer_policy.json`: 적용된 provider 선택 정책.
-- `manifest.json`: 입력 TTL 해시, 생성 시각, artifact 경로.
+## 작업 절차 (에이전트)
 
-정책 파일이 없으면 `cost` 모드 기본값을 쓴다.
+1. 분석을 돌려 `report.md` 를 읽는다. high 우선순위와 근거 entry 를 먼저 본다.
+2. 근거 entry 를 직접 열어 제안이 타당한지 판단한다. 휴리스틱이라 오탐이 있다(특히 군집이 큰 승격 후보).
+3. 타당한 것만 사용자에게 제안한다. entry 생성·수정은 사용자 승인 뒤 `mso-work-memory` 절차로 한다.
+4. 기각한 제안은 반복해서 나오므로 이유를 사용자에게 알리고, 필요하면 임계값을 조정한다.
 
-```yaml
-mode: cost
-providers:
-  default: local-ollama
-  phase: python
-  step: local-ollama
-  validation: python
-  decision:
-    HITL: human
-    HITLFE: codex-chatgpt
-    HOTL: local-ollama
-    HOOTL: local-ollama
-context:
-  enabled: true
-  mode: snapshot
-  top_k: 5
-  relation_depth: 1
-  include_types: [principle, pattern, episode, user-decision, agent-decision, alternatives-record, issue-note, trouble-shooting]
-writeback:
-  enabled: true
-  mode: queue-only
-  allowed_types: [issue-note, agent-decision, alternatives-record, trouble-shooting]
-  requires_review: true
-planes:
-  control_plane_agents: [claude-code, codex]
-  execution_plane: langgraph
-governance:
-  user_decision:
-    execution_plane: forbidden
-    control_plane: record-after-human-or-metric-oracle
-  alternatives_record:
-    execution_plane: queue-or-interrupt
-    control_plane: present-to-user-or-metric-oracle
-  control_plane_events:
-    enabled: true
-    halt_on: [request_user_decision, propose_alternatives]
-```
+## 경계
 
-## 작업 절차
-
-1. `mso-workflow-design`으로 workflow TTL ABox가 최신인지 먼저 확인한다.
-2. `scripts/compile_workflow.py`로 LangGraph artifact를 생성한다.
-3. `workflow_ir.json`에서 node order, edge, provider routing, `context_packs`를 검토한다.
-4. 실제 실행 runner가 필요한 경우 generated `graph.py`의 `_run_node` adapter 경계에서 provider별 실행 함수를 감싼다.
-5. 실행 중 `control_plane_events`가 생기면 workflow를 멈추고 Claude Code/Codex 같은 control plane에서 사용자 또는 metric oracle 결정을 처리한다.
-6. 실행 후 `memory_writeback_queue`를 검토해 AD/AR/IN/TS 후보만 work-memory에 승격한다. UD는 human/metric oracle 이후 별도 기록한다.
-
-## References
-
-- [references/langgraph-adapter.md](references/langgraph-adapter.md): IR, provider policy, generated graph 계약.
-- [references/bindings.md](references/bindings.md): 노드 본문 바인딩 계약, 에이전트 작성 절차, 멈춤·재개.
-- [examples/bindings.example.yaml](examples/bindings.example.yaml): 바인딩 형식 예시(적용되지 않음).
+- 이 스킬은 분석·제안만 한다. 기록은 `mso-work-memory`, workflow 구조는 `mso-workflow-design`, 시각화는 `mso-graph-observability` 가 맡는다.
+- 사람이 받아들일 판단(UD)을 대신 내리지 않는다. 제안은 에이전트의 의견이다.
