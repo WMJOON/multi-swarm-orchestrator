@@ -2,7 +2,7 @@
 name: mso-graph-observability
 description: "MSO의 여러 운영 그래프를 관측한다. workflow/artifact/eval TTL/ABox는 Mermaid Markdown topology/class/property view로 시각화하고, artifact stream 개선 리포트와 work-memory/auditlog/worklog/intent turn graph 분석을 생성한다."
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # MSO Graph Observability
@@ -105,6 +105,25 @@ agent-context/observability/          # 분석 리포트
 - `class-layer-map.md` — workflow ontology class hierarchy
 - `property-map.md` — workflow ontology property domain/range map
 - `runtime-analysis.md` — work-memory/auditlog/worklog/intent turn JSONL 기반 실패 hotspot, 실행 빈도, 반복 신호
+
+## Brief — 그림 대신 글로 (v0.11.0)
+
+화면(Mermaid)을 읽는 일이 줄어서, 같은 TTL 에서 **글로 된 요약**을 결정적으로 만든다. 원본 TTL 은 수정하지 않고 LLM 도 쓰지 않는다. 제어 흐름 추출은 `mso-workflow-design` 의 `wf_v07.control_graph` 가 정본이다.
+
+```bash
+python scripts/brief_workflows.py --root . [--out agent-context/observability/brief] [--project NAME]
+```
+
+| 산출물 | 독자 | 내용 |
+|---|---|---|
+| `<scope>.brief.md` / `.brief.json` | 에이전트 | workflow 한 장 요약: 흐름 순서, 판단과 분기, 사람 승인 지점, 되돌림 루프, 입력·산출 artifact, 결함 |
+| `project-brief.md` | 에이전트 | workflow 목록, workflow 간 인계, 공유 저장소 |
+| `report.md` | **사람** | 쉬운 한국어 보고서: 한눈에 보기, 사람이 결정해야 하는 곳, workflow 끼리 이어지는 곳, 여럿이 함께 쓰는 자료, 주의할 점, 각 workflow 설명 |
+
+- **인계와 공유 저장소를 나눈다.** 4개 이상의 workflow 가 만들거나 쓰는 artifact(`SHARED_MIN`)는 한 workflow 가 다른 workflow 에 넘기는 것이 아니라 공용 저장소로 보고, 인계 목록에서 뺀다.
+- **사람 보고서가 짚는 것**: 사람 승인 지점에 판단 기준(`wf:instruction`/`wf:criteria`)이 없음, 모델이 판단하는 단계가 2개 이상인데 사람 승인이 없음, 만들고도 아무도 쓰지 않는 산출물, 어느 workflow 도 만들지 않는 입력, 정의 오류·경고.
+- 에이전트는 workflow 를 고치거나 실행하기 전에 해당 `.brief.md` 를 먼저 읽는다.
+- Mermaid 뷰(`graph/`)는 당분간 그대로 남는다. 기본 생성에서 빼는 일은 별도 단계로 진행한다.
 
 ## CLI
 

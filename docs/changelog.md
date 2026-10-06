@@ -1,5 +1,22 @@
 # 변경 이력
 
+## Unreleased — mso-graph-observability v0.11.0: 그림 대신 글로 요약(brief)과 사람 보고서
+
+> 화면(Mermaid)을 읽을 일이 줄었다. 같은 TTL 에서 에이전트용 한 장 요약과 사람이 읽는 한국어 보고서를 결정적으로 만든다. 기존 Mermaid 뷰는 그대로 두는 추가 단계(1단계)다.
+
+### Added
+
+- `scripts/brief_workflows.py`: `agent-context/observability/brief/` 에 `<scope>.brief.md|json`(에이전트), `project-brief.md`(에이전트), `report.md`(사람)를 쓴다.
+  - 에이전트 brief: 흐름 순서, 판단과 분기, 사람 승인 지점, 되돌림 루프(DFS 되돌림 edge), 입력·산출·외부 입력·미소비 산출, workflow 간 인계, 결함.
+  - 사람 보고서: 한눈에 보기 표, 사람이 결정해야 하는 곳, 이어지는 곳, 공유 자료, 주의할 점, 각 workflow 설명.
+  - 4개 이상의 workflow 가 쓰는 artifact 는 인계가 아니라 공유 저장소로 분리(노이즈 제거).
+- 시험 5개(추출, 사람 보고서 문구, 공유 저장소 분리, 읽기 전용·결정성, 입력 없음).
+- korean-tax 의 workflow 7개로 확인: 사람 승인 지점 7곳 중 6곳에 판단 기준이 적혀 있지 않음을 보고서가 짚었다.
+
+### 다음 단계(미구현)
+
+- Mermaid 를 기본 생성에서 빼고 `workflow-check.sh` 훅을 brief 기준으로 바꾼다. `mso-workflow-observation` 별칭 제거. 이후 Mermaid 코드와 optimizer 와 겹치는 런타임 분석 삭제.
+
 ## Unreleased — mso-workflow-optimizer v1.0.0: TTL 컴파일을 그만두고 work-memory를 분석해 제안한다
 
 > TTL에서 컴파일되는 것은 제어 구조뿐이고 노드가 실제로 하는 일은 TTL에 없다. 컴파일 결과는 실행되지 않는 골격이었고, 노드 본문을 바인딩으로 따로 채워도 TTL 컴파일이 얹는 가치가 작았다.
