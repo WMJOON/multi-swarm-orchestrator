@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.14.0
+# Multi-Swarm Orchestrator (MSO) v0.14.1
 
 MSO는 **Repository Execution System**이다.
 
@@ -12,6 +12,11 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 ## Current Version Update
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
+
+### v0.14.1 (2026-10-12) — 패치: optimizer 오탐 수정
+
+기능 변경은 없다. `mso-workflow-optimizer` v1.0.1은 끊긴 관계·경로 정규식·trouble-shooting 필드명 오탐을 고치고, 원본이 없다고 확인한 옛 경로 표시(`path_missing_acknowledged`)를 인정한다.
+`mso-workflow-design` v0.13.2는 Oracle workflow가 registry artifact를 evolve할 때 SPARQL shape 검사가 실패하던 문제를 고친다. 자세한 내용은 [changelog](docs/changelog.md)를 본다.
 
 ### v0.14.0 (2026-10-07) — TTL 컴파일을 없애고 optimizer를 분석 도구로, 관측은 그림보다 brief로
 

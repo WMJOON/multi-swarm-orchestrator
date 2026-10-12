@@ -1,4 +1,4 @@
-# 시작하기 (v0.14.0)
+# 시작하기 (v0.14.1)
 
 > **Python 환경**: 스킬 스크립트는 `requirements.txt`(PyYAML, rdflib, jsonschema, duckdb, pyshacl)만 있으면 돈다. `mso-workflow-optimizer`의 모델 요약 단계(멈췄다가 이어가기)를
 > 쓰려면 `requirements-langgraph.txt`(langgraph, 체크포인터)가 추가로 필요하다(결정적 분석은 없어도 선형으로 동작). venv는 저장소에 내장하지 않는다 — `bash install.sh --venv`가 저장소 밖
