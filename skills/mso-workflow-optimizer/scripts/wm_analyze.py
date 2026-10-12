@@ -32,7 +32,7 @@ PREFIX_TYPE = {
 }
 RECORD_DIRS = ("track-record", "insight-record", "release-record")
 ID_RE = re.compile(r"\b(IN|AD|UD|AR|TS|RN|EP|PT|PR)-\d{4,}\b")
-PATH_RE = re.compile(r"(?<![\w./-])((?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?![\w/])")
+PATH_RE = re.compile(r"(?<![\w./-])((?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?![\w/]|\.[A-Za-z0-9])")
 GENERIC_TAGS = {"auditlog", "bash", "agent", "ontology", "law", "gap", "modeling"}
 SEVERITY_VOCAB = {"low", "medium", "high"}
 STATUS_VOCAB = {"open", "fixing", "partially-resolved", "resolved"}
@@ -59,7 +59,24 @@ def load_entries(workmem: Path) -> dict[str, Any]:
                     row["metadata"] = row["metadata"] or {}
                     row["relations"] = [r for r in (row.get("relations") or []) if isinstance(r, dict)]
                     entries.append(row)
-    return {"entries": entries, "broken_lines": broken}
+    all_ids = _all_ids(workmem)
+    return {"entries": entries, "broken_lines": broken, "known_ids": sorted(all_ids)}
+
+
+def _all_ids(workmem: Path) -> set[str]:
+    """work-memory 의 모든 jsonl(worklog·auditlog 포함)에서 entry id 를 모은다. 관계 대상의 존재 판정용."""
+    ids: set[str] = set()
+    for path in workmem.rglob("*.jsonl"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and row.get("id"):
+                ids.add(str(row["id"]))
+    return ids
 
 
 def _days(value: str | None, now: dt.datetime) -> float | None:
@@ -303,6 +320,8 @@ def analyze_stale(entries: list[dict[str, Any]], *, now: dt.datetime, project_ro
     if project_root is not None:
         gone: dict[str, list[str]] = defaultdict(list)
         for e in decisions + by.get("principle", []) + by.get("pattern", []):
+            if e.get("metadata", {}).get("path_missing_acknowledged"):
+                continue  # 원본 부재를 사용자가 확인하고 옛 경로를 그대로 둔 entry 는 다시 묻지 않는다
             for raw in PATH_RE.findall(_text_of(e)):
                 if raw.startswith(("http", "www.")) or "://" in raw or raw.startswith("agent-context/work-memory"):
                     continue
@@ -386,10 +405,23 @@ def analyze_stale(entries: list[dict[str, Any]], *, now: dt.datetime, project_ro
 
 # ── 4. 기록 누락·품질 ───────────────────────────────────────────────────
 
-def analyze_quality(entries: list[dict[str, Any]], *, now: dt.datetime, stale_days: int = 30) -> list[dict[str, Any]]:
+_ID_RE = re.compile(r"^[A-Z]{2,4}-")
+
+
+def _is_dangling(target: str, known: set[str], project_root: Path | None) -> bool:
+    """id 형태(AD-0005, WL-…)는 known 에 있어야 하고, 경로 형태는 프로젝트 루트에 있어야 한다. 판정 불가면 끊긴 것으로 보지 않는다."""
+    if _ID_RE.match(target):
+        return target not in known
+    if "/" in target and project_root is not None:
+        return not (project_root / target).exists()
+    return False
+
+
+def analyze_quality(entries: list[dict[str, Any]], *, now: dt.datetime, stale_days: int = 30,
+                    known_ids: set[str] | None = None, project_root: Path | None = None) -> list[dict[str, Any]]:
     by = _by_type(entries)
     ids = Counter(str(e["id"]) for e in entries)
-    known = set(ids)
+    known = set(ids) | set(known_ids or ())
     out: list[dict[str, Any]] = []
 
     dup = sorted(i for i, c in ids.items() if c > 1)
@@ -397,7 +429,7 @@ def analyze_quality(entries: list[dict[str, Any]], *, now: dt.datetime, stale_da
         out.append(_proposal("quality", "duplicate-ids", "high", f"중복 id {len(dup)}개", "같은 id 가 둘 이상이면 relations 가 어느 entry 를 가리키는지 모호하다.",
                              "한쪽의 id 를 새 번호로 바꾸고 이를 가리키는 relations 를 갱신한다.", dup))
 
-    dangling = [(e["id"], r["target"]) for e in entries for r in e["relations"] if r.get("target") and r["target"] not in known]
+    dangling = [(e["id"], r["target"]) for e in entries for r in e["relations"] if r.get("target") and _is_dangling(r["target"], known, project_root)]
     if dangling:
         out.append(_proposal("quality", "dangling-relations", "high", f"존재하지 않는 entry 를 가리키는 관계 {len(dangling)}건", "끊긴 edge 는 그래프 traversal 에서 조용히 사라진다.",
                              "대상 id 의 오타를 고치거나 entry 를 만든다. 삭제된 entry 라면 관계를 제거한다.", [a for a, _ in dangling], pairs=[{"from": a, "to": b} for a, b in dangling[:15]]))
@@ -438,7 +470,7 @@ def analyze_quality(entries: list[dict[str, Any]], *, now: dt.datetime, stale_da
         out.append(_proposal("quality", "aged-open", "low", f"{stale_days * 2}일 넘게 열려 있고 진행 기록이 없는 issue {len(aged)}건", "방치된 issue 는 신뢰를 떨어뜨린다.",
                              "여전히 유효하면 우선순위를 정하고, 아니면 닫는다.", aged))
 
-    ts_missing = [e["id"] for e in by.get("trouble-shooting", []) if not e["metadata"].get("root_cause") or not e["metadata"].get("fix_summary")]
+    ts_missing = [e["id"] for e in by.get("trouble-shooting", []) if not e["metadata"].get("root_cause") or not (e["metadata"].get("fix_summary") or e["metadata"].get("resolution"))]
     if ts_missing:
         out.append(_proposal("quality", "ts-missing-fields", "medium", f"root_cause 또는 fix_summary 가 없는 trouble-shooting {len(ts_missing)}건", "원인이 빠진 TS 는 재발 분석과 승격(EP/PT)의 근거가 되지 못한다.",
                              "root_cause 와 fix_summary 를 채운다.", ts_missing))
