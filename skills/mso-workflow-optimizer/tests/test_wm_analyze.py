@@ -165,3 +165,51 @@ def test_linear_fallback_without_langgraph_still_writes_report(tmp_path, monkeyp
     wm = write(tmp_path, _rows_for_graph())
     result = awm.run(wm, tmp_path / "out", now=NOW_ISO)
     assert Path(result["report_paths"]["json"]).exists() and result["ranked"]
+
+
+def test_dangling_ignores_ids_in_worklog_and_existing_paths(tmp_path):
+    # 회귀: worklog id 와 존재하는 파일 경로 대상은 끊긴 관계가 아니다.
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "plan.md").write_text("x", encoding="utf-8")
+    rows = [
+        entry("UD-0001", "user-decision", rel=[{"type": "references", "target": "WL-20261006-000001"},
+                                               {"type": "references", "target": "docs/plan.md"},
+                                               {"type": "references", "target": "docs/missing.md"},
+                                               {"type": "references", "target": "IN-9999"}]),
+    ]
+    wm = write(tmp_path, rows)
+    (wm / "worklog").mkdir()
+    (wm / "worklog" / "WL-20261006-000001.jsonl").write_text(json.dumps({"id": "WL-20261006-000001"}) + "\n", encoding="utf-8")
+    loaded = wa.load_entries(wm)
+    pairs = wa.analyze_quality(loaded["entries"], now=NOW, known_ids=set(loaded["known_ids"]), project_root=tmp_path)
+    dangling = next(p for p in pairs if p["id"] == "quality:dangling-relations")
+    assert {(p["from"], p["to"]) for p in dangling["data"]["pairs"]} == {("UD-0001", "docs/missing.md"), ("UD-0001", "IN-9999")}
+
+
+def test_path_regex_keeps_full_extension_chain():
+    # 회귀: artifacts.abox.ttl 을 artifacts.abox 로 자르지 않는다.
+    assert wa.PATH_RE.findall("see agent-context/index/artifacts.abox.ttl, done.") == ["agent-context/index/artifacts.abox.ttl"]
+
+
+def test_ts_resolution_field_counts_as_fix_summary(tmp_path):
+    # 스키마의 trouble-shooting 필드는 resolution 이다. fix_summary 와 같은 뜻으로 본다.
+    rows = [entry("TS-0001", "trouble-shooting", meta={"root_cause": "r", "resolution": "fixed"}),
+            entry("TS-0002", "trouble-shooting", meta={"root_cause": "r"})]
+    found = ids(wa.analyze_quality(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW))
+    assert "quality:ts-missing-fields" in found
+    loaded = wa.load_entries(write(tmp_path, rows))
+    props = wa.analyze_quality(loaded["entries"], now=NOW)
+    ts = next(p for p in props if p["id"] == "quality:ts-missing-fields")
+    assert ts["evidence"] == ["TS-0002"]
+
+
+def test_stale_skips_entries_whose_missing_path_was_acknowledged(tmp_path):
+    # 사용자가 원본 부재를 확인하고 옛 경로를 그대로 둔 entry 는 stale 제안에서 빠진다. 확인 표시가 없는 entry 는 계속 잡힌다.
+    (tmp_path / "docs").mkdir()
+    rows = [
+        entry("AD-0001", "agent-decision", text="근거: docs/gone.md 를 따른다", meta={"path_missing_acknowledged": "2026-10-12"}),
+        entry("AD-0002", "agent-decision", text="근거: docs/gone.md 를 따른다"),
+    ]
+    props = wa.analyze_stale(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW, project_root=tmp_path)
+    missing = next(p for p in props if p["id"] == "stale:missing-paths")
+    assert list(missing["data"]["paths"]) == ["AD-0002"]

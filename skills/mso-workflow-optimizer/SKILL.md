@@ -1,7 +1,7 @@
 ---
 name: mso-workflow-optimizer
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 description: >
   work-memory 를 읽기 전용으로 분석해 개선 제안 리포트를 만드는 optimizer 스킬(LangGraph).
   TTL 을 컴파일하지 않는다. agent-context/work-memory 의 IN/AD/UD/TS/EP/PT/PR 를 결정적 코드로 분석해

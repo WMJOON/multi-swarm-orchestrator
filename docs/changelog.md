@@ -1,6 +1,20 @@
 # 변경 이력
 
-## Unreleased — mso-workflow-design: Oracle workflow 가 registry 에 선언된 artifact 를 evolve 할 수 있게
+## v0.14.1 (2026-10-12) — 패치: optimizer 오탐 수정, Oracle workflow 의 registry artifact 검사 수정
+
+> 기능 변경 없음. v0.14.0 이후 main 에 쌓인 수정(`validate_abox`)과 optimizer 의 오탐 세 가지를 고친다.
+> optimizer 는 work-memory 에서 **이미 확인된 항목**을 다시 묻지 않도록 `path_missing_acknowledged` 표시를 인정한다.
+
+### Fixed
+
+- **`mso-workflow-optimizer` v1.0.1**
+  - `dangling-relations` 오탐: 관계 대상 id 를 work-memory 전체(worklog·auditlog 포함)에서 확인하고, 파일 경로 대상은 프로젝트 루트에 있는지로 판정한다. 이전에는 `references` 의 파일 경로와 worklog id 를 끊긴 관계로 잡았다.
+  - `PATH_RE`: `artifacts.abox.ttl` 이 `artifacts.abox` 로 잘리던 문제(확장자 backtracking).
+  - `ts-missing-fields`: 스키마의 trouble-shooting 필드 `resolution` 을 `fix_summary` 와 같은 뜻으로 인정한다.
+  - `stale:missing-paths`: `metadata.path_missing_acknowledged` 가 있는 entry 는 건너뛴다. 확인 표시가 없는 entry 는 계속 잡힌다.
+  - 시험 4개 추가(14개 통과, 1개 skip 은 기존 그대로).
+
+- **`mso-workflow-design` v0.13.2** — Oracle workflow 가 registry 에 선언된 artifact 를 evolve 할 수 있게
 
 > `validate_abox.py` 가 registry 의 artifact 를 `wf:RegisteredArtifact ⊑ wf:Artifact` 로만 합쳐서, `?t a wf:Artifact` 를 SPARQL 로 직접 검사하는 shape(`evolves_to`/`tests_to` 의 대상 검사 등)는
 > 하위 클래스를 따라가지 못했다. artifact 층을 쓰는 repo 에서 Oracle workflow 를 처음 만들면 "evolves_to/tests_to Rail의 to는 Workflow 또는 Artifact여야 함" 이 나온다

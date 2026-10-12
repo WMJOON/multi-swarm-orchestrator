@@ -51,6 +51,7 @@ class State(TypedDict, total=False):
     params: dict[str, Any]
     entries: list[dict[str, Any]]
     broken_lines: list[str]
+    known_ids: list[str]
     proposals: Annotated[list[dict[str, Any]], operator.add]
     ranked: list[dict[str, Any]]
     stats: dict[str, Any]
@@ -67,7 +68,7 @@ def _now(params: dict[str, Any]) -> dt.datetime:
 
 def n_load(state: State) -> dict[str, Any]:
     loaded = wa.load_entries(Path(state["params"]["workmem"]))
-    return {"entries": loaded["entries"], "broken_lines": loaded["broken_lines"]}
+    return {"entries": loaded["entries"], "broken_lines": loaded["broken_lines"], "known_ids": loaded["known_ids"]}
 
 
 def n_promotion(state: State) -> dict[str, Any]:
@@ -86,7 +87,9 @@ def n_stale(state: State) -> dict[str, Any]:
 
 def n_quality(state: State) -> dict[str, Any]:
     p = state["params"]
-    return {"proposals": wa.analyze_quality(state["entries"], now=_now(p), stale_days=p.get("stale_days", 30))}
+    root = Path(p["project_root"]) if p.get("project_root") else None
+    return {"proposals": wa.analyze_quality(state["entries"], now=_now(p), stale_days=p.get("stale_days", 30),
+                                            known_ids=set(state.get("known_ids", [])), project_root=root)}
 
 
 def n_collect(state: State) -> dict[str, Any]:
