@@ -1,5 +1,19 @@
 # 변경 이력
 
+## v0.14.3 (2026-10-12) — `Spec` 을 `Structured` 로 개명
+
+> `Spec` 은 "명세"라는 뜻이라 스키마 원본·설정 같은 정형 단일 파일을 다 담지 못했다. 유형 이름을 역할이 아닌 형태 중심의 `Structured` 로 바꾼다.
+> v0.14.2 에서 추가한 `Spec` 의 기능과 허용 형식은 그대로다. 이름만 바뀐다.
+
+### Changed
+
+- **`mso-workflow-design` v0.13.4**: TBox 의 `wf:Spec`(artifactTypeKey `spec`)을 `wf:Structured`(artifactTypeKey `structured`)로 개명했다. audience `wf:Hybrid`, `allowedFormat` `yaml`, `yml`, `json` 은 그대로다.
+- **`mso-graph-observability` v0.11.2**: 렌더러의 `ARTIFACT_TYPES`·`ARTIFACT_LABELS`(`STRUCTURED`)·`ARTIFACT_PRIMARY_CONSUMERS`·classDef 를 `structured` 로 바꿨다. SKILL.md 목록도 갱신했다.
+
+### Migration
+
+- v0.14.2 에서 `wf:Spec` 으로 등록한 concept 이 있으면 `wf:Structured` 로 바꾼다.
+
 ## v0.14.2 (2026-10-12) — Spec artifact 유형 추가
 
 > yaml·json 명세를 artifact 레지스트리에 등록할 수 있도록 `Spec` 유형을 추가한다. 기존 유형은 바꾸지 않았다.

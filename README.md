@@ -13,6 +13,18 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
+### v0.14.3 (2026-10-12) — `Spec` 을 `Structured` 로 개명: 정형화된 단일 파일 유형
+
+v0.14.2 의 `Spec` 은 "명세"라는 뜻이라 실제 쓰임(스키마 원본, 명세, 설정처럼 구조가 정해진 단일 파일)을 다 담지 못했다.
+유형을 `Structured`(`artifactTypeKey` `structured`)로 바꾼다. audience 는 `Hybrid`, 허용 형식은 `yaml`, `yml`, `json` 으로 같다. 역할은 파일이 아니라 이 파일을 쓰는 규약·workflow 가 정한다.
+
+| 변경 | 내용 |
+|---|---|
+| `mso-workflow-design` v0.13.4 | TBox 의 `wf:Spec` 을 `wf:Structured` 로 개명 |
+| `mso-graph-observability` v0.11.2 | 렌더러 유형 표(라벨 `STRUCTURED`)와 SKILL.md 목록을 `structured` 로 갱신 |
+
+**업그레이드**: v0.14.2 에서 `Spec` 으로 등록한 concept 은 `wf:Structured` 로 바꿔야 한다. `Spec` 은 v0.14.2 에만 있었다.
+
 ### v0.14.2 (2026-10-12) — `Spec` artifact 유형 추가: yaml·json 명세를 레지스트리에 둘 수 있다
 
 yaml·json 으로 쓴 명세(scenario spec 등)는 지금까지 어떤 artifact 유형에도 맞지 않았다. `KnowledgeStore` 는 yaml 을 허용하지 않아 등록할 수 없었다.

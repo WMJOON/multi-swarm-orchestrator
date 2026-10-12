@@ -46,9 +46,9 @@ wf:Document a wf:ArtifactType ; wf:artifactTypeKey "document" ; wf:audience wf:H
     wf:allowedFormat "md", "txt", "rst" ; rdfs:label "Document"@ko .
 wf:Media a wf:ArtifactType ; wf:artifactTypeKey "media" ; wf:audience wf:Human ;
     wf:allowedFormat "html", "pdf", "pptx", "png", "svg", "jpg" ; rdfs:label "Media"@ko .
-wf:Spec a wf:ArtifactType ; wf:artifactTypeKey "spec" ; wf:audience wf:Hybrid ;
-    wf:allowedFormat "yaml", "yml", "json" ; rdfs:label "Spec"@ko ;
-    rdfs:comment "사람이 쓰고 생성기·검증기가 읽는 구조화 명세(yaml·json). 사람과 기계가 함께 다루므로 Hybrid."@ko .
+wf:Structured a wf:ArtifactType ; wf:artifactTypeKey "structured" ; wf:audience wf:Hybrid ;
+    wf:allowedFormat "yaml", "yml", "json" ; rdfs:label "Structured"@ko ;
+    rdfs:comment "정형화된 단일 파일(yaml·json). 스키마·명세·설정처럼 구조가 정해진 원본 파일이며 사람이 고치고 기계가 읽는다(Hybrid). 역할은 파일이 아니라 이 파일을 쓰는 규약·workflow 가 정한다."@ko .
 
 # ─── 변수 형식 개체 (정규식 조각) ─────────────────────────────────────────────────
 wf:DateYmd   a wf:ParamType ; wf:paramRegex "\\d{4}-\\d{2}-\\d{2}" ; rdfs:label "DateYmd"@ko ; rdfs:comment "YYYY-MM-DD"@ko .
