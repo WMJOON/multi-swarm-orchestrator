@@ -1,5 +1,21 @@
 # 변경 이력
 
+## v0.14.2 (2026-10-12) — Spec artifact 유형 추가
+
+> yaml·json 명세를 artifact 레지스트리에 등록할 수 있도록 `Spec` 유형을 추가한다. 기존 유형은 바꾸지 않았다.
+> 배경: `scenario_spec` 의 노드·열거 yaml 은 생성기(`generate.py`)의 입력이고 사람도 고친다. 어느 유형에도 맞지 않아 레지스트리에 둘 수 없었고,
+> `KnowledgeStore` 는 yaml 을 허용하지 않는다.
+
+### Added
+
+- **`mso-workflow-design` v0.13.3**: TBox 에 `wf:Spec` 개체를 추가했다. `artifactTypeKey` `spec`, `audience` `wf:Hybrid`, `allowedFormat` `yaml`, `yml`, `json`.
+- **`mso-graph-observability` v0.11.1**: 관측 렌더러의 `ARTIFACT_TYPES`·`ARTIFACT_LABELS`(`SPEC`)·`ARTIFACT_PRIMARY_CONSUMERS`(`Human + Agent`)·classDef 에 `spec` 을 추가했다. SKILL.md 의 지원 유형 목록도 갱신했다.
+
+### Verified
+
+- `mso-workflow-design` 테스트 32개, `mso-graph-observability` 테스트 40개 통과.
+- yaml 규약을 가진 concept 을 레지스트리에서 검증해 위반 0건을 확인했다.
+
 ## v0.14.1 (2026-10-12) — 패치: optimizer 오탐 수정, Oracle workflow 의 registry artifact 검사 수정
 
 > 기능 변경 없음. v0.14.0 이후 main 에 쌓인 수정(`validate_abox`)과 optimizer 의 오탐 세 가지를 고친다.

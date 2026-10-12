@@ -63,6 +63,7 @@ ARTIFACT_TYPES = {
     "media",
     "tool",
     "table",
+    "spec",
 }
 ARTIFACT_LABELS = {
     "knowledge_store": "KNOWLEDGE STORE",
@@ -72,6 +73,7 @@ ARTIFACT_LABELS = {
     "media": "MEDIA",
     "tool": "TOOL",
     "table": "TABLE",
+    "spec": "SPEC",
 }
 ARTIFACT_PRIMARY_CONSUMERS = {
     "knowledge_store": "Agent",
@@ -81,6 +83,7 @@ ARTIFACT_PRIMARY_CONSUMERS = {
     "media": "Human",
     "tool": "Agent + Eval",
     "table": "Tool + Agent",
+    "spec": "Human + Agent",
 }
 MACHINE_NATIVE_ARTIFACTS = {"knowledge_store", "event_store", "local_database", "table"}
 KNOWLEDGE_STORE_MARKERS = {
@@ -2819,6 +2822,7 @@ def build_workflow_topology(
             "  classDef media fill:#fff7ed,stroke:#ea580c,color:#111827",
             "  classDef tool fill:#eef2ff,stroke:#4f46e5,color:#111827",
             "  classDef table fill:#ecfeff,stroke:#0891b2,stroke-dasharray: 4 3,color:#111827",
+            "  classDef spec fill:#f7fee7,stroke:#4d7c0f,color:#111827",
             "  classDef event fill:#f0fdfa,stroke:#0f766e,color:#111827",
             "  classDef boundary fill:#ffffff,stroke:#111827,color:#111827",
             "```",

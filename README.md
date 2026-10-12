@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.14.1
+# Multi-Swarm Orchestrator (MSO) v0.14.2
 
 MSO는 **Repository Execution System**이다.
 
@@ -12,6 +12,18 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 ## Current Version Update
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
+
+### v0.14.2 (2026-10-12) — `Spec` artifact 유형 추가: yaml·json 명세를 레지스트리에 둘 수 있다
+
+yaml·json 으로 쓴 명세(scenario spec 등)는 지금까지 어떤 artifact 유형에도 맞지 않았다. `KnowledgeStore` 는 yaml 을 허용하지 않아 등록할 수 없었다.
+`Spec` 유형은 사람이 쓰고 기계가 읽는 구조화 명세이므로 `Hybrid` audience 이며 `yaml`, `yml`, `json` 을 허용한다.
+
+| 변경 | 내용 |
+|---|---|
+| `mso-workflow-design` v0.13.3 | TBox 에 `wf:Spec`(artifactTypeKey `spec`) 추가. 검증기 allowedFormat 검사가 그대로 적용된다 |
+| `mso-graph-observability` v0.11.1 | 관측 렌더러의 유형 표(라벨 `SPEC`, 소비자, classDef)와 SKILL.md 목록에 `spec` 추가 |
+
+**업그레이드**: 기존 artifact 규약과 workflow 는 바뀌지 않는다. yaml 명세를 등록하려면 `Spec` 유형으로 concept 을 추가하면 된다.
 
 ### v0.14.1 (2026-10-12) — 패치: optimizer 오탐 수정
 
