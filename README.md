@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.14.2
+# Multi-Swarm Orchestrator (MSO) v0.14.4
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,100 +13,30 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.14.3 (2026-10-12) — `Spec` 을 `Structured` 로 개명: 정형화된 단일 파일 유형
+### v0.14.4 (2026-10-13) — 패치: optimizer 의 이동 경로 오탐 수정
 
-v0.14.2 의 `Spec` 은 "명세"라는 뜻이라 실제 쓰임(스키마 원본, 명세, 설정처럼 구조가 정해진 단일 파일)을 다 담지 못했다.
-유형을 `Structured`(`artifactTypeKey` `structured`)로 바꾼다. audience 는 `Hybrid`, 허용 형식은 `yaml`, `yml`, `json` 으로 같다. 역할은 파일이 아니라 이 파일을 쓰는 규약·workflow 가 정한다.
+기능 변경은 없다. `mso-workflow-optimizer` v1.0.2는 경로 이동을 `metadata.moved_paths`로 이미 기록한 결정을 "사라진 경로를 인용한다"고 다시 잡던 오탐을 고친다.
 
-| 변경 | 내용 |
+| 옛 경로가 `moved_paths`에 있을 때 | 판정 |
 |---|---|
-| `mso-workflow-design` v0.13.4 | TBox 의 `wf:Spec` 을 `wf:Structured` 로 개명 |
-| `mso-graph-observability` v0.11.2 | 렌더러 유형 표(라벨 `STRUCTURED`)와 SKILL.md 목록을 `structured` 로 갱신 |
+| `moved_paths_verified`가 있다 | 통과. 확인 표시를 그대로 신뢰한다 |
+| 확인 표시는 없지만 새 경로가 프로젝트에 실제로 있다 | 통과 |
+| 확인 표시도 없고 새 경로도 없다 | 계속 점검 대상으로 잡는다 |
 
-**업그레이드**: v0.14.2 에서 `Spec` 으로 등록한 concept 은 `wf:Structured` 로 바꿔야 한다. `Spec` 은 v0.14.2 에만 있었다.
+`moved_paths`는 `{옛경로: 새경로}` 형식이다. 실제 work-memory에서 `stale:missing-paths`의 근거 entry 7건 중 5건이 이 오탐이었고, 나머지 2건만 실제 점검 대상이었다.
+promotion·workflow·quality 분석은 바뀌지 않았다. 업그레이드에 필요한 작업은 없다.
 
-### v0.14.2 (2026-10-12) — `Spec` artifact 유형 추가: yaml·json 명세를 레지스트리에 둘 수 있다
+### 최근 버전
 
-yaml·json 으로 쓴 명세(scenario spec 등)는 지금까지 어떤 artifact 유형에도 맞지 않았다. `KnowledgeStore` 는 yaml 을 허용하지 않아 등록할 수 없었다.
-`Spec` 유형은 사람이 쓰고 기계가 읽는 구조화 명세이므로 `Hybrid` audience 이며 `yaml`, `yml`, `json` 을 허용한다.
-
-| 변경 | 내용 |
-|---|---|
-| `mso-workflow-design` v0.13.3 | TBox 에 `wf:Spec`(artifactTypeKey `spec`) 추가. 검증기 allowedFormat 검사가 그대로 적용된다 |
-| `mso-graph-observability` v0.11.1 | 관측 렌더러의 유형 표(라벨 `SPEC`, 소비자, classDef)와 SKILL.md 목록에 `spec` 추가 |
-
-**업그레이드**: 기존 artifact 규약과 workflow 는 바뀌지 않는다. yaml 명세를 등록하려면 `Spec` 유형으로 concept 을 추가하면 된다.
-
-### v0.14.1 (2026-10-12) — 패치: optimizer 오탐 수정
-
-기능 변경은 없다. `mso-workflow-optimizer` v1.0.1은 끊긴 관계·경로 정규식·trouble-shooting 필드명 오탐을 고치고, 원본이 없다고 확인한 옛 경로 표시(`path_missing_acknowledged`)를 인정한다.
-`mso-workflow-design` v0.13.2는 Oracle workflow가 registry artifact를 evolve할 때 SPARQL shape 검사가 실패하던 문제를 고친다. 자세한 내용은 [changelog](docs/changelog.md)를 본다.
-
-### v0.14.0 (2026-10-07) — TTL 컴파일을 없애고 optimizer를 분석 도구로, 관측은 그림보다 brief로
-
-두 가지가 바뀐다.
-
-**1. TTL → LangGraph 컴파일을 과감하게 없앴다. `mso-workflow-optimizer`는 이제 도구(tool)다.**
-workflow TTL에서 컴파일되는 것은 제어 구조뿐이고, 노드가 실제로 하는 일은 TTL에 없다. 그래서 컴파일 결과는 실행되지 않는 골격이었고, 바인딩으로 본문을 따로 채워도
-컴파일이 더해 주는 가치가 작았다. v0.13.1에서 도입한 `compile_workflow.py`와 바인딩을 제거하고, optimizer를 **work-memory를 읽기 전용으로 분석해 개선을 제안하는 도구**로 바꿨다.
-
-| 제안 | 내용 |
-|---|---|
-| 회고 승격 후보 | 회고되지 않은 유사 IN/TS → EP, 비슷한 EP → PT, 안정된 PT → PR |
-| workflow 개선안 | 같은 root cause로 반복 해결된 TS(게이트·테스트·hook 후보), 열린 issue가 몰린 모듈 |
-| 낡은 결정·교훈 | 사라진 경로를 인용한 결정, 최신 릴리스 뒤 재확인 없는 구조·정책 결정 |
-| 기록 누락·품질 | 끊긴·중복 id, 필수 필드 누락, 상태 불일치, 태그·어휘 드리프트 |
-
-분석은 결정적이고 모든 제안에 근거 entry id가 붙는다. 모델은 선택적 요약 단계에만 쓰며(LangGraph `interrupt`로 멈췄다가 이어간다), work-memory에는 쓰지 않고 `report.md`/`report.json`만 남긴다.
-
-**2. `mso-graph-observability`가 시각화보다 brief 중심이 됐다.**
-화면(Mermaid)을 읽을 일이 줄었다. 같은 TTL에서 **글로 된 요약**을 결정적으로 만든다.
-
-| 산출물 | 독자 | 내용 |
+| 버전 | 날짜 | 한 줄 요약 |
 |---|---|---|
-| `<scope>.brief.md/json`, `project-brief.md` | 에이전트 | workflow 한 장 요약: 흐름, 판단·분기, 사람 승인 지점, 되돌림 루프, 입출력 artifact, 결함 |
-| `report.md` | 사람 | 쉬운 한국어 보고서: 사람이 결정해야 하는 곳, workflow 간 인계와 공유 자료, 주의할 점 |
+| v0.14.3 | 2026-10-12 | `Spec` artifact 유형을 `Structured`로 개명. v0.14.2에서 `Spec`으로 등록한 concept은 `wf:Structured`로 바꾼다 |
+| v0.14.2 | 2026-10-12 | yaml·json 구조화 파일을 레지스트리에 등록하는 artifact 유형 추가 |
+| v0.14.1 | 2026-10-12 | optimizer 오탐 수정(끊긴 관계·경로 정규식·TS 필드명), Oracle workflow의 registry artifact 검사 수정 |
+| v0.14.0 | 2026-10-07 | TTL→LangGraph 컴파일 제거, optimizer를 work-memory 분석 도구로, 관측은 그림보다 brief 중심으로 |
+| v0.13.0 | 2026-10-05 | 여러 저장소를 횡단하는 work-memory 기록·커밋, TTL artifact 층, PROV-O 정렬 주석 |
 
-`workflow-check.sh` 훅이 brief를 기본으로 생성한다. Mermaid 뷰와 기존 리포트는 호환을 위해 남아 있고, 정리는 후속 릴리스에서 한다.
-
-**업그레이드**: `generated/langgraph/`와 `--bindings`는 더 이상 쓰지 않는다(삭제 가능). `requirements-langgraph.txt`는 optimizer의 모델 요약 단계에서만 필요하다. 상세는 changelog.
-
-### v0.13.0 (2026-10-05) — 여러 저장소를 횡단하며 작업하고, 맥락을 TTL 지식 그래프로 찾는다
-
-작업은 한 저장소에서 끝나지 않는다. 엄브렐러 repo 아래에 서브모듈과 별도 경로의 저장소가 여럿 있고, 한 세션이 그 사이를 오가며 일한다.
-그런데 결정, 산출물, 실행 흐름이 저장소마다 따로 기록되면 "이 파일은 어떤 규약으로 어떤 작업에서 만들어졌나", "이 결정은 어떤 이슈에서
-나왔나"를 찾을 수 없다. v0.13.0은 **여러 저장소를 횡단하면서 작업할 수 있게** 하고, 이를 위해 작업 맥락을 **TTL 형태의 지식 그래프**로
-구조화해 서로 연결하고 질의로 찾을 수 있게 한다.
-
-**여러 저장소를 횡단하는 방식**
-
-| 무엇을 | 어떻게 횡단하나 | 도구 |
-|---|---|---|
-| 작업 기록(결정, 이슈, 해결, 회고) | 어느 저장소에서 일했든 **그 저장소의** work-memory에 기록하고 커밋한다. 등록부 `linked-repos.yaml`이 서브모듈과 별도 경로를 묶는다 | `wm_node.py --repo/--repo-name`, `commit-work-memory.sh`(autocommit 옵트인) |
-| 산출물 규약(어디에 어떤 이름과 형식으로 만드는가) | 프로젝트의 **하나의 registry**(`artifacts.abox.ttl`)가 여러 저장소의 산출물을 정의한다. 디렉토리 템플릿에 저장소 경로가 들어가고 `wf:inModule`로 모듈에 연결한다 | `validate_artifact_layer.py` |
-| 실행 흐름(누가 무엇을 소비하고 생산하는가) | workflow `*.abox.ttl` 한 곳의 `wf:Stream`이 여러 저장소의 artifact 개념 IRI를 잇는다 | `artifact-lineage.rq` |
-| 기록 누락 점검 | 여러 저장소에 작업 흔적이 있는데 기록이 비어 있는지 한 번에 본다 | `wm_link.py status`, `work-memory-check.sh` |
-
-**TTL 지식 그래프로 맥락을 찾는다.** 작업 기록은 JSONL이 정본이고 관계 그래프(TTL projection)로 투영된다. 산출물 규약과 실행 흐름은 처음부터 TTL이다.
-세 층이 같은 어휘(`wf:`, PROV-O 정렬 주석)로 이어지므로 아래 질문에 답할 수 있다.
-
-| 찾고 싶은 맥락 | 어디서 답하나 | 도구 |
-|---|---|---|
-| 이 결정은 어떤 이슈나 사고에서 나왔나, 어떤 회고로 이어졌나 | work-memory 관계 그래프(`caused-by`, `resolved-by`, `analyzed-in` 등) | `wm_node.py graph <id> --repo-name <이름>` |
-| 지금 하는 작업과 관련된 과거 기록은 | work-memory context pack | `wm_context.py node` / `query` |
-| 이 파일은 어떤 규약을 따르고 그 규약은 언제 바뀌었나 | artifact 규약 버전과 유효 구간, 파일 규약 스캔 | `validate_artifact_layer.py --scan` |
-| 이 artifact는 어떤 실행을 거쳐 만들어졌나 | workflow Stream(소비와 생산) | `references/queries/artifact-lineage.rq` |
-
-**함께 바뀐 것**
-- 신규 스킬 `mso-work-memory-link`가 연관 저장소 등록, 자동 커밋 켜기/끄기, 훅 사본 갱신, 점검을 맡는다.
-- artifact 층은 개념(안정 IRI)과 규약 버전(이름 규약, 형식, 디렉토리 템플릿, 유효 구간)으로 나뉘고, `consumerType`(Machine / Hybrid / Human), 템플릿 변수,
-  메타데이터 스키마, 규약 불변(git HEAD 비교)을 SHACL/SPARQL로 검증한다. YAML 레지스트리는 두지 않는다.
-- PROV-O 정렬은 TBox 주석으로 확장했다(D-23a). 공리로 단언하거나 `prov:`를 import하지 않는다.
-- `sf_node.py` 등 8개 스크립트가 python 3.9에서 `X | None` 문법으로 죽어 scaffold-check 훅이 조용히 실패하던 문제를 고쳤다.
-
-**현재 범위.** 기록, 커밋, 점검, 산출물 규약, 실행 흐름은 여러 저장소를 가로질러 한 세션에서 다룬다. 다만 work-memory 자체의 **그래프 조회와 검색은 저장소 단위**다
-(`--repo-name`으로 저장소를 골라 한 번에 한 저장소씩). 여러 저장소의 work-memory를 하나의 그래프로 합쳐 한 번에 질의하는 기능은 아직 없다.
-디렉토리 층(`index.yaml`)과 artifact 층의 연결(`wf:inModule`)도 임시 문자열이다. 자세한 한계는 [changelog](docs/changelog.md)의 Known Gaps에 있다.
+각 버전의 변경 내용, 업그레이드 방법, 알려진 한계는 [docs/changelog.md](docs/changelog.md)에 있다.
 
 ## Core Philosophy
 
@@ -213,7 +143,7 @@ v0.13.0부터 artifact는 TTL registry에서 **개념(안정 IRI)과 규약 버�
 
 ## Skills
 
-v0.5.0 기준 MSO는 다음 스킬을 중심으로 동작한다.
+MSO는 다음 스킬을 중심으로 동작한다. 스킬별 버전은 각 `SKILL.md`의 `metadata.version`이 정본이다.
 
 | Skill | 역할 |
 |---|---|

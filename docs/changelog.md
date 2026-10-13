@@ -1,5 +1,16 @@
 # 변경 이력
 
+## v0.14.4 (2026-10-13) — 패치: optimizer 의 이동 경로 오탐 수정
+
+> 기능 변경 없음. 경로 이동을 `metadata.moved_paths` 로 이미 기록한 결정을 optimizer 가 "사라진 경로 인용"으로 다시 잡던 오탐을 고친다.
+> 실제 work-memory 실행(2026-10-13)에서 `stale:missing-paths` 근거 7건 중 5건이 이 오탐이었고, 실제 점검 대상은 2건뿐이었다.
+
+### Fixed
+
+- **`mso-workflow-optimizer` v1.0.2**
+  - `stale:missing-paths`: 옛 경로가 entry 의 `metadata.moved_paths`(`{옛경로: 새경로}`)에 있으면 건너뛴다. `moved_paths_verified` 가 있으면 그대로 신뢰하고, 없으면 새 경로가 프로젝트에 실제로 있을 때만 건너뛴다. 새 경로도 없으면 계속 잡는다.
+  - promotion·workflow·quality 분석은 바꾸지 않았다. 시험 1개 추가(15개 통과, 1개 skip 은 기존 그대로).
+
 ## v0.14.3 (2026-10-12) — `Spec` 을 `Structured` 로 개명
 
 > `Spec` 은 "명세"라는 뜻이라 스키마 원본·설정 같은 정형 단일 파일을 다 담지 못했다. 유형 이름을 역할이 아닌 형태 중심의 `Structured` 로 바꾼다.

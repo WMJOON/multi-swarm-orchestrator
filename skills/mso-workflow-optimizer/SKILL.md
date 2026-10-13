@@ -1,7 +1,7 @@
 ---
 name: mso-workflow-optimizer
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 description: >
   work-memory 를 읽기 전용으로 분석해 개선 제안 리포트를 만드는 optimizer 스킬(LangGraph).
   TTL 을 컴파일하지 않는다. agent-context/work-memory 의 IN/AD/UD/TS/EP/PT/PR 를 결정적 코드로 분석해
@@ -40,7 +40,7 @@ load ─┬─ promotion ─┐
 |---|---|---|
 | promotion | 회고되지 않은 유사 IN/TS 군집 → EP, 비슷한 EP 군 → PT, 인스턴스 3건 이상인 PT → PR | 어휘 유사도 군집(TF-IDF), 기존 EP/PT/PR 의 참조 |
 | workflow | 같은 root cause 로 해결된 TS 군 → 게이트·테스트·hook 후보, 열린 issue 가 몰린 모듈, 해결 뒤 다시 열린 유사 issue | root_cause 군집, 모듈별 status/severity |
-| stale | 사라진 경로를 인용하는 결정, 최신 릴리스 뒤 재확인(verified-in) 없는 구조·정책 UD, supersede 누락 후보, 확신 낮은 미채택 AD | 프로젝트 파일 존재, release-note 관계 |
+| stale | 사라진 경로를 인용하는 결정(`moved_paths` 로 이동을 기록한 경로는 제외), 최신 릴리스 뒤 재확인(verified-in) 없는 구조·정책 UD, supersede 누락 후보, 확신 낮은 미채택 AD | 프로젝트 파일 존재, release-note 관계 |
 | quality | 끊긴·중복 id, 필수 필드 누락, resolved↔TS 불일치, 방치된 open issue, 태그·어휘 드리프트 | schema 와 관계 무결성 |
 
 자세한 기준과 임계값은 [references/analysis.md](references/analysis.md).

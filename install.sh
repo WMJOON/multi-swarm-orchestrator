@@ -1,5 +1,5 @@
 #!/bin/bash
-# MSO v0.14.1 — install skill symlinks for Claude, Codex, and Gemini.
+# MSO v0.14.4 — install skill symlinks for Claude, Codex, and Gemini.
 # Usage: bash install.sh [--codex] [--codex-legacy] [--gemini] [--all] [--venv]
 #   --venv : create a Python venv OUTSIDE the repo ($MSO_VENV, default ~/.mso/venv) and install requirements*.txt into it.
 set -euo pipefail
@@ -35,7 +35,7 @@ for arg in "$@"; do
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(claude)
 
-echo "MSO v0.14.1 Install"
+echo "MSO v0.14.4 Install"
 echo "  Skills  : ${SKILLS[*]}"
 echo "  Targets : ${TARGETS[*]}"
 echo ""

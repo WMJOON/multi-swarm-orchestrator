@@ -36,7 +36,7 @@
 
 | 제안 | 조건 |
 |---|---|
-| 사라진 경로 | UD/AD/PT/PR 본문의 경로 중 프로젝트 루트의 **존재하는 최상위 디렉터리** 안에서 파일이 없는 것(외부 경로·모델 ID 오탐을 줄이려는 보수적 기준) |
+| 사라진 경로 | UD/AD/PT/PR 본문의 경로 중 프로젝트 루트의 **존재하는 최상위 디렉터리** 안에서 파일이 없는 것(외부 경로·모델 ID 오탐을 줄이려는 보수적 기준). `metadata.path_missing_acknowledged` 가 있는 entry 와, 옛 경로가 `metadata.moved_paths`(`{옛경로: 새경로}`)에 있고 `moved_paths_verified` 가 있거나 새 경로가 실제로 존재하는 경우는 제외한다 |
 | 릴리스 뒤 미확인 | 최신 RN 보다 오래된 구조·정책 UD 중 그 RN 으로의 `verified-in`/`invalidated-by` 가 없는 것 |
 | supersede 누락 | 같은 모듈의 UD 쌍이 유사도 0.55 이상인데 어떤 관계로도 연결되지 않음 |
 | 낮은 확신 AD | 30일 이상, confidence 낮음, `followed-by` 없음 |
