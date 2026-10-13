@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.14.4
+# Multi-Swarm Orchestrator (MSO) v0.14
 
 MSO는 **Repository Execution System**이다.
 
@@ -11,30 +11,44 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 ## Current Version Update
 
-> README에는 **현재 버전의 운영 의미**만 남긴다. 이전 버전의 상세 변경은 changelog로 이동한다.
+> README에는 **현재 마이너 버전의 운영 의미**만 남긴다. 패치와 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.14.4 (2026-10-13) — 패치: optimizer 의 이동 경로 오탐 수정
+### v0.14 (2026-10-07) — TTL 컴파일을 없애고 optimizer를 분석 도구로, 관측은 그림보다 brief로
 
-기능 변경은 없다. `mso-workflow-optimizer` v1.0.2는 경로 이동을 `metadata.moved_paths`로 이미 기록한 결정을 "사라진 경로를 인용한다"고 다시 잡던 오탐을 고친다.
+두 가지가 바뀐다.
 
-| 옛 경로가 `moved_paths`에 있을 때 | 판정 |
+**1. TTL → LangGraph 컴파일을 과감하게 없앴다. `mso-workflow-optimizer`는 이제 도구(tool)다.**
+workflow TTL에서 컴파일되는 것은 제어 구조뿐이고, 노드가 실제로 하는 일은 TTL에 없다. 그래서 컴파일 결과는 실행되지 않는 골격이었고, 바인딩으로 본문을 따로 채워도
+컴파일이 더해 주는 가치가 작았다. v0.13.1에서 도입한 `compile_workflow.py`와 바인딩을 제거하고, optimizer를 **work-memory를 읽기 전용으로 분석해 개선을 제안하는 도구**로 바꿨다.
+
+| 제안 | 내용 |
 |---|---|
-| `moved_paths_verified`가 있다 | 통과. 확인 표시를 그대로 신뢰한다 |
-| 확인 표시는 없지만 새 경로가 프로젝트에 실제로 있다 | 통과 |
-| 확인 표시도 없고 새 경로도 없다 | 계속 점검 대상으로 잡는다 |
+| 회고 승격 후보 | 회고되지 않은 유사 IN/TS → EP, 비슷한 EP → PT, 안정된 PT → PR |
+| workflow 개선안 | 같은 root cause로 반복 해결된 TS(게이트·테스트·hook 후보), 열린 issue가 몰린 모듈 |
+| 낡은 결정·교훈 | 사라진 경로를 인용한 결정, 최신 릴리스 뒤 재확인 없는 구조·정책 결정 |
+| 기록 누락·품질 | 끊긴·중복 id, 필수 필드 누락, 상태 불일치, 태그·어휘 드리프트 |
 
-`moved_paths`는 `{옛경로: 새경로}` 형식이다. 실제 work-memory에서 `stale:missing-paths`의 근거 entry 7건 중 5건이 이 오탐이었고, 나머지 2건만 실제 점검 대상이었다.
-promotion·workflow·quality 분석은 바뀌지 않았다. 업그레이드에 필요한 작업은 없다.
+분석은 결정적이고 모든 제안에 근거 entry id가 붙는다. 모델은 선택적 요약 단계에만 쓰며(LangGraph `interrupt`로 멈췄다가 이어간다), work-memory에는 쓰지 않고 `report.md`/`report.json`만 남긴다.
 
-### 최근 버전
+**2. `mso-graph-observability`가 시각화보다 brief 중심이 됐다.**
+화면(Mermaid)을 읽을 일이 줄었다. 같은 TTL에서 **글로 된 요약**을 결정적으로 만든다.
+
+| 산출물 | 독자 | 내용 |
+|---|---|---|
+| `<scope>.brief.md/json`, `project-brief.md` | 에이전트 | workflow 한 장 요약: 흐름, 판단·분기, 사람 승인 지점, 되돌림 루프, 입출력 artifact, 결함 |
+| `report.md` | 사람 | 쉬운 한국어 보고서: 사람이 결정해야 하는 곳, workflow 간 인계와 공유 자료, 주의할 점 |
+
+`workflow-check.sh` 훅이 brief를 기본으로 생성한다. Mermaid 뷰와 기존 리포트는 호환을 위해 남아 있고, 정리는 후속 릴리스에서 한다.
+
+**업그레이드**: `generated/langgraph/`와 `--bindings`는 더 이상 쓰지 않는다(삭제 가능). `requirements-langgraph.txt`는 optimizer의 모델 요약 단계에서만 필요하다. 상세는 changelog.
+
+패치 릴리스(v0.14.x)의 변경은 README에 싣지 않고 [docs/changelog.md](docs/changelog.md)에만 기록한다.
+
+### 이전 마이너 버전
 
 | 버전 | 날짜 | 한 줄 요약 |
 |---|---|---|
-| v0.14.3 | 2026-10-12 | `Spec` artifact 유형을 `Structured`로 개명. v0.14.2에서 `Spec`으로 등록한 concept은 `wf:Structured`로 바꾼다 |
-| v0.14.2 | 2026-10-12 | yaml·json 구조화 파일을 레지스트리에 등록하는 artifact 유형 추가 |
-| v0.14.1 | 2026-10-12 | optimizer 오탐 수정(끊긴 관계·경로 정규식·TS 필드명), Oracle workflow의 registry artifact 검사 수정 |
-| v0.14.0 | 2026-10-07 | TTL→LangGraph 컴파일 제거, optimizer를 work-memory 분석 도구로, 관측은 그림보다 brief 중심으로 |
-| v0.13.0 | 2026-10-05 | 여러 저장소를 횡단하는 work-memory 기록·커밋, TTL artifact 층, PROV-O 정렬 주석 |
+| v0.13 | 2026-10-05 | 여러 저장소를 횡단하는 work-memory 기록·커밋, TTL artifact 층, PROV-O 정렬 주석 |
 
 각 버전의 변경 내용, 업그레이드 방법, 알려진 한계는 [docs/changelog.md](docs/changelog.md)에 있다.
 
