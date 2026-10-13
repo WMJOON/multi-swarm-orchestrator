@@ -322,6 +322,9 @@ def analyze_stale(entries: list[dict[str, Any]], *, now: dt.datetime, project_ro
         for e in decisions + by.get("principle", []) + by.get("pattern", []):
             if e.get("metadata", {}).get("path_missing_acknowledged"):
                 continue  # 원본 부재를 사용자가 확인하고 옛 경로를 그대로 둔 entry 는 다시 묻지 않는다
+            moved = e.get("metadata", {}).get("moved_paths")
+            moved = moved if isinstance(moved, dict) else {}
+            verified = bool(e.get("metadata", {}).get("moved_paths_verified"))
             for raw in PATH_RE.findall(_text_of(e)):
                 if raw.startswith(("http", "www.")) or "://" in raw or raw.startswith("agent-context/work-memory"):
                     continue
@@ -330,6 +333,8 @@ def analyze_stale(entries: list[dict[str, Any]], *, now: dt.datetime, project_ro
                 if not (project_root / raw.split("/", 1)[0]).is_dir():
                     continue  # 최상위 디렉터리가 없으면 외부 경로(다른 스킬·모델 ID 등)일 가능성이 커서 제외한다
                 if not (project_root / raw).exists():
+                    if raw in moved and (verified or (project_root / str(moved[raw])).exists()):
+                        continue  # 이동이 기록됨: 검증 표시를 믿거나, 새 경로가 실제로 있으면 통과
                     gone[e["id"]].append(raw)
         if gone:
             out.append(_proposal(

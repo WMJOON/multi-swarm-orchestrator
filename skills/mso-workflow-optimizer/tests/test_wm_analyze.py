@@ -213,3 +213,20 @@ def test_stale_skips_entries_whose_missing_path_was_acknowledged(tmp_path):
     props = wa.analyze_stale(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW, project_root=tmp_path)
     missing = next(p for p in props if p["id"] == "stale:missing-paths")
     assert list(missing["data"]["paths"]) == ["AD-0002"]
+
+
+def test_stale_honors_moved_paths(tmp_path):
+    # moved_paths 로 이동이 기록된 옛 경로는 검증 표시가 있거나 새 경로가 실제로 있으면 통과, 둘 다 아니면 계속 잡는다.
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "new.md").write_text("x", encoding="utf-8")
+    old = "근거: docs/old.md 를 따른다"
+    rows = [
+        entry("AD-0001", "agent-decision", text=old, meta={"moved_paths": {"docs/old.md": "docs/gone-too.md"}, "moved_paths_verified": "2026-10-08"}),
+        entry("AD-0002", "agent-decision", text=old, meta={"moved_paths": {"docs/old.md": "docs/new.md"}}),
+        entry("AD-0003", "agent-decision", text=old, meta={"moved_paths": {"docs/old.md": "docs/gone-too.md"}}),
+        entry("AD-0004", "agent-decision", text="근거: docs/other.md", meta={"moved_paths": {"docs/old.md": "docs/new.md"}, "moved_paths_verified": "2026-10-08"}),
+        entry("AD-0005", "agent-decision", text=old),
+    ]
+    props = wa.analyze_stale(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW, project_root=tmp_path)
+    missing = next(p for p in props if p["id"] == "stale:missing-paths")
+    assert sorted(missing["data"]["paths"]) == ["AD-0003", "AD-0004", "AD-0005"]
