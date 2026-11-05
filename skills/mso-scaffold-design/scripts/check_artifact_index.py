@@ -26,6 +26,15 @@ from pathlib import Path
 
 import yaml
 
+import sys as _sys  # index 로더(정본 index.abox.ttl / 전환기 index.yaml). 형제 스킬 경로를 찾는다.
+_IDX_SCRIPTS = Path(__file__).resolve().parents[2] / "mso-workflow-design" / "scripts"
+if _IDX_SCRIPTS.is_dir() and str(_IDX_SCRIPTS) not in _sys.path:
+    _sys.path.insert(0, str(_IDX_SCRIPTS))
+try:
+    from index_ttl import load_index_any as _load_index_any  # noqa: E402
+except ImportError:  # 형제 스킬이 없으면 yaml 만 읽는다
+    _load_index_any = None
+
 WF = "https://mso.dev/ontology/workflow#"
 PROPS = ["locator", "directory", "dirPath", "deliverables", "targetArtifact", "orderArtifact"]
 EXTERNAL = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*://|[A-Za-z][A-Za-z0-9_-]*:(?!/))")
@@ -38,7 +47,7 @@ def load_index(path: Path, seen: set | None = None) -> dict:
     if path in seen or not path.is_file():
         return {"modules": [], "registry": {}}
     seen.add(path)
-    d = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    d = _load_index_any(path) if (path.suffix == ".ttl" and _load_index_any) else (yaml.safe_load(path.read_text(encoding="utf-8")) or {})
     out = {"modules": [], "registry": {}}
     for m in d.get("modules") or []:
         p = str(m.get("path", "")).strip("/")
@@ -133,15 +142,21 @@ def guess_type(value: str) -> str:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=".")
-    ap.add_argument("--index", default="agent-context/index/index.yaml")
+    ap.add_argument("--index", default="agent-context/index/index.abox.ttl", help="정본 TTL(없으면 index.yaml 로 대체)")
     ap.add_argument("--workflow-dir", default="agent-context/workflow")
-    ap.add_argument("--registry", default="agent-context/index/artifacts.abox.ttl", help="artifact 층 TTL registry(없으면 건너뜀)")
+    ap.add_argument("--registry", default="agent-context/index/index.abox.ttl", help="artifact 층 TTL 정본(없으면 옛 artifacts.abox.ttl, 그래도 없으면 건너뜀)")
     ap.add_argument("--suggest", action="store_true")
     ap.add_argument("--strict", action="store_true")
     a = ap.parse_args(argv)
     root = Path(a.root).resolve()
-    idx = load_index(root / a.index)
-    idx["registry"].update(load_registry_file(root / a.registry))
+    ipath = root / a.index
+    if not ipath.is_file() and a.index.endswith("index.abox.ttl"):  # 전환기: TTL 이 없으면 yaml
+        ipath = root / "agent-context/index/index.yaml"
+    idx = load_index(ipath)
+    rpath = root / a.registry
+    if not rpath.is_file() and a.registry.endswith("index.abox.ttl"):  # 전환기: 옛 artifacts.abox.ttl
+        rpath = root / "agent-context/index/artifacts.abox.ttl"
+    idx["registry"].update(load_registry_file(rpath))
     wdir = root / a.workflow_dir
     if not wdir.is_dir():
         print(f"workflow 디렉토리가 없습니다: {wdir}")
@@ -156,7 +171,7 @@ def main(argv=None) -> int:
             status, where = classify(r["value"], idx)
         counts[status] = counts.get(status, 0) + 1
         rows.append({**r, "status": status, "where": where})
-    print(f"index: {root / a.index} (module 경로 {len(idx['modules'])}개, data_registry {len(idx['registry'])}개)")
+    print(f"index: {ipath} (module 경로 {len(idx['modules'])}개, data_registry {len(idx['registry'])}개)")
     print(f"workflow 참조 {len(rows)}건: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + "\n")
     if rows:
         print(f"{'상태':17}{'노드':16}{'속성':14}값")

@@ -233,3 +233,75 @@ wf:ConsumerTypeConsistencyShape a sh:NodeShape ; sh:severity sh:Warning ; sh:tar
               ?c a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this .
               FILTER NOT EXISTS { ?c3 a wf:Stream ; wf:streamType "consumed_by" ; wf:from $this ; wf:to ?e3 . ?e3 wf:hasSubject "human" }
             } """ ] .
+
+# ─── 디렉터리 층 SHACL (2026-11-05, 계획 승인) ───────────────────────────────────────────────
+
+# 디렉터리: path 는 정확히 하나, 상대 경로이며 '/' 로 끝난다.
+wf:DirectoryShape a sh:NodeShape ; sh:targetClass wf:Directory ;
+    sh:property [ sh:path wf:path ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+        sh:pattern "^[^/].*/$" ; sh:message "path 는 정확히 하나, 상대 경로이며 '/' 로 끝나야 한다" ] ;
+    sh:property [ sh:path wf:moduleId ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path wf:parentDirectory ; sh:maxCount 1 ; sh:class wf:Directory ] .
+
+# 디렉터리 path 는 전체에서 유일하다.
+wf:DirectoryUniquePathShape a sh:NodeShape ; sh:targetClass wf:Directory ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "같은 path 를 가진 디렉터리가 둘 이상" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/workflow#path> ?p .
+              ?other <https://mso.dev/ontology/workflow#path> ?p . FILTER(?other != $this)
+            } """ ] .
+
+# 상위 디렉터리의 path 는 자기 path 의 접두어여야 한다.
+wf:DirectoryParentPrefixShape a sh:NodeShape ; sh:targetClass wf:Directory ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "parentDirectory 의 path 가 자기 path 의 접두어가 아님" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/workflow#parentDirectory> ?p .
+              $this <https://mso.dev/ontology/workflow#path> ?c .
+              ?p <https://mso.dev/ontology/workflow#path> ?pp .
+              FILTER(!STRSTARTS(STR(?c), STR(?pp)))
+            } """ ] .
+
+# 최상위 모듈 디렉터리(부모가 없는 것)는 moduleId 를 가진다.
+wf:DirectoryModuleShape a sh:NodeShape ; sh:targetClass wf:Directory ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "부모가 없는 디렉터리는 moduleId 가 필요" ;
+        sh:select """
+            SELECT $this WHERE {
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/workflow#parentDirectory> ?p }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/workflow#moduleId> ?m }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/workflow#dirKind> ?k . FILTER(STR(?k) = "root") }
+            } """ ] .
+
+# 아티팩트: 저장 디렉터리는 정확히 하나이고 Directory 여야 한다.
+wf:RegisteredArtifactStoredInShape a sh:NodeShape ; sh:targetClass wf:RegisteredArtifact ;
+    sh:property [ sh:path wf:storedIn ; sh:minCount 1 ; sh:maxCount 1 ; sh:class wf:Directory ;
+        sh:message "정확히 하나의 저장 디렉터리(wf:storedIn, wf:Directory)가 필요" ] .
+
+# 아티팩트의 규약 directoryTemplate 은 저장 디렉터리 경로로 시작해야 한다.
+wf:StoredInMatchesConventionShape a sh:NodeShape ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "규약 directoryTemplate 이 저장 디렉터리 경로로 시작하지 않음" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/workflow#storedIn> ?d .
+              ?d <https://mso.dev/ontology/workflow#path> ?dp .
+              $this <https://mso.dev/ontology/workflow#hasConvention> ?c .
+              ?c <https://mso.dev/ontology/workflow#directoryTemplate> ?t .
+              FILTER(!STRSTARTS(STR(?t), STR(?dp)))
+            } """ ] .
+
+# 아티팩트의 inModule 은 저장 디렉터리의 moduleId 와 같아야 한다(inModule 은 유지, 일치만 확인).
+wf:InModuleMatchesStoredInShape a sh:NodeShape ; sh:targetClass wf:RegisteredArtifact ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "inModule 이 저장 디렉터리의 moduleId 와 다름" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/workflow#storedIn> ?d .
+              ?d <https://mso.dev/ontology/workflow#moduleId> ?m .
+              $this <https://mso.dev/ontology/workflow#inModule> ?im .
+              FILTER(STR(?m) != STR(?im))
+            } """ ] .

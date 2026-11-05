@@ -119,3 +119,46 @@ wf:changeKind a owl:DatatypeProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:
     rdfs:comment "이전 규약에서 무엇이 바뀌었나: rename | move | reformat | metadataChange | paramChange (콤마로 여러 개 가능)."@ko .
 wf:migrationNote a owl:DatatypeProperty ; rdfs:domain wf:ArtifactConvention ; rdfs:range xsd:string ;
     rdfs:comment "이전 규약의 파일을 어떻게 다룰지(정정 대상인지, 그대로 두는지)에 대한 메모."@ko .
+
+# ─── 디렉터리 층 (2026-11-05, 계획 승인): 디렉터리와 아티팩트는 별도 객체 ─────────────────────
+# 디렉터리(wf:Directory)는 경로 한 개를 나타낸다. 아티팩트(wf:RegisteredArtifact)는 wf:storedIn 으로 디렉터리를 가리키고,
+# 규약(wf:ArtifactConvention)은 파일명·형식만 가진다. directoryTemplate 은 이번 단계에서 남겨 둔다(커밋된 규약의 세 요소 불변).
+wf:Directory a owl:Class ; rdfs:label "Directory"@ko ;
+    rdfs:comment "디렉터리 객체. 상대 경로 wf:path(끝 '/') 하나를 나타내며, 부모와 모듈을 가진다."@ko .
+
+wf:path a owl:DatatypeProperty ; rdfs:label "path"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string ;
+    rdfs:comment "프로젝트 루트 기준 상대 경로. 끝은 '/'."@ko .
+
+wf:moduleId a owl:DatatypeProperty ; rdfs:label "moduleId"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string ;
+    rdfs:comment "이 디렉터리가 속한 모듈 id(index 의 최상위 모듈)."@ko .
+
+wf:parentDirectory a owl:ObjectProperty ; rdfs:label "parentDirectory"@ko ;
+    rdfs:domain wf:Directory ; rdfs:range wf:Directory ;
+    rdfs:comment "가장 가까운 상위 디렉터리(경로 접두어가 가장 긴 것)."@ko .
+
+wf:storedIn a owl:ObjectProperty ; rdfs:label "storedIn"@ko ;
+    rdfs:domain wf:RegisteredArtifact ; rdfs:range wf:Directory ;
+    rdfs:comment "아티팩트가 저장되는 디렉터리. 규약의 directoryTemplate 리터럴 접두어와 일치해야 한다(SHACL)."@ko .
+
+# ─── 디렉터리 층 속성 (Phase B, 2026-11-05): index.yaml 과 같은 정보를 TTL 로 담는다 ─────────────
+wf:dirKind a owl:DatatypeProperty ; rdfs:label "dirKind"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string ;
+    rdfs:comment "root | module | subdir | convention"@ko .
+wf:role a owl:DatatypeProperty ; rdfs:label "role"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:description a owl:DatatypeProperty ; rdfs:label "description"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:status a owl:DatatypeProperty ; rdfs:label "status"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:dataType a owl:DatatypeProperty ; rdfs:label "dataType"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:artifactType a owl:DatatypeProperty ; rdfs:label "artifactType"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:subdirPath a owl:DatatypeProperty ; rdfs:label "subdirPath"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string ;
+    rdfs:comment "모듈 안의 하위 폴더 경로(subdirs[].path, 원 표기 그대로)"@ko .
+wf:projectId a owl:DatatypeProperty ; rdfs:label "projectId"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:projectName a owl:DatatypeProperty ; rdfs:label "projectName"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:owner a owl:DatatypeProperty ; rdfs:label "owner"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:updated a owl:DatatypeProperty ; rdfs:label "updated"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:version a owl:DatatypeProperty ; rdfs:label "version"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:rootOffset a owl:DatatypeProperty ; rdfs:label "rootOffset"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:remote a owl:DatatypeProperty ; rdfs:label "remote"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:sourcePolicy a owl:DatatypeProperty ; rdfs:label "sourcePolicy"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string .
+wf:rootFile a owl:DatatypeProperty ; rdfs:label "rootFile"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string ;
+    rdfs:comment "루트에 있는 필수 파일(root_files)"@ko .
+wf:exclusion a owl:DatatypeProperty ; rdfs:label "exclusion"@ko ; rdfs:domain wf:Directory ; rdfs:range xsd:string ;
+    rdfs:comment "제외 범주(exclusions)"@ko .

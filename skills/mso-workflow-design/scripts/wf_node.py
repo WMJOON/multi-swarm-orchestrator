@@ -30,6 +30,15 @@ from pathlib import Path
 
 import yaml
 
+import sys as _sys  # index 로더(정본 index.abox.ttl / 전환기 index.yaml). 형제 스킬 경로를 찾는다.
+_IDX_SCRIPTS = Path(__file__).resolve().parents[2] / "mso-workflow-design" / "scripts"
+if _IDX_SCRIPTS.is_dir() and str(_IDX_SCRIPTS) not in _sys.path:
+    _sys.path.insert(0, str(_IDX_SCRIPTS))
+try:
+    from index_ttl import load_index_any as _load_index_any  # noqa: E402
+except ImportError:  # 형제 스킬이 없으면 yaml 만 읽는다
+    _load_index_any = None
+
 SCHEMAS_DIR = Path(__file__).parent.parent / "references" / "schemas"
 MAX_DEPTH = 3
 
@@ -191,6 +200,8 @@ class ValidationError:
 # ─── YAML 로드 ────────────────────────────────────────────────────────────────
 
 def _load_yaml(path: Path) -> dict | None:
+    if path.suffix == ".ttl" and _load_index_any is not None:  # 정본 index.abox.ttl
+        return _load_index_any(path) if path.is_file() else None
     try:
         with open(path) as f:
             return yaml.safe_load(f)

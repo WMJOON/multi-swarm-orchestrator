@@ -16,7 +16,7 @@ description: >
   (5) workflow TTL 의 `wf:dirPath` 가 참조하는 경로 등록,
   (6) artifact stream TTL을 확인한 뒤 index/sub_index/data_registry 연결 점검.
 metadata:
-  version: "0.11.0"
+  version: "0.12.0"
 ---
 
 # MSO Scaffold Design v2

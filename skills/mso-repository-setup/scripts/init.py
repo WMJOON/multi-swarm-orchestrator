@@ -83,13 +83,13 @@ def cmd_init(target: Path, name: str, project_id: str):
     else:
         print(f"  · agent-context/ 트리 (이미 존재)")
 
-    # index.yaml
-    index_path = target / "agent-context" / "index" / "index.yaml"
+    # index.abox.ttl (정본, TTL Only). 템플릿 yaml 은 임시로 만들어 변환한 뒤 버린다.
+    index_path = target / "agent-context" / "index" / "index.abox.ttl"
     if not index_path.exists():
-        _write_index_template(index_path, name, project_id)
-        print(f"  + agent-context/index/index.yaml 생성")
+        _write_index_ttl(index_path, name, project_id)
+        print(f"  + agent-context/index/index.abox.ttl 생성 (TTL Only)")
     else:
-        print(f"  · agent-context/index/index.yaml (이미 존재)")
+        print(f"  · agent-context/index/index.abox.ttl (이미 존재)")
 
     # work-memory/schema.yaml
     schema_path = target / "agent-context" / "work-memory" / "schema.yaml"
@@ -127,6 +127,23 @@ def _find_wm_schema() -> Path | None:
         Path(__file__).parent.parent.parent / "mso-work-memory" / "references" / "schema.yaml",
     ]
     return next((p for p in candidates if p.exists()), None)
+
+
+def _write_index_ttl(path: Path, name: str, project_id: str):
+    """템플릿을 임시 yaml 로 만들고 mso-workflow-design 의 변환기로 index.abox.ttl 을 쓴다(빈 레지스트리)."""
+    import tempfile
+    sib = Path(__file__).resolve().parents[2] / "mso-workflow-design" / "scripts"
+    if str(sib) not in sys.path:
+        sys.path.insert(0, str(sib))
+    from index_yaml_to_ttl import build  # noqa: E402
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        _write_index_template(tmp / "index.yaml", name, project_id)
+        (tmp / "registry.ttl").write_text("", encoding="utf-8")
+        rc = build(root=tmp, yaml_path=tmp / "index.yaml", registry=tmp / "registry.ttl", out=path, check=False)
+    if rc != 0:
+        raise SystemExit("index.abox.ttl 생성 실패(변환기 오류)")
 
 
 def _write_index_template(path: Path, name: str, project_id: str):

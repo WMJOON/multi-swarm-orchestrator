@@ -147,6 +147,16 @@ TABLE_MARKERS = {
 }
 
 
+
+import sys as _sys  # index 로더(정본 index.abox.ttl / 전환기 index.yaml)
+_IDX_SCRIPTS = Path(__file__).resolve().parents[2] / "mso-workflow-design" / "scripts"
+if _IDX_SCRIPTS.is_dir() and str(_IDX_SCRIPTS) not in _sys.path:
+    _sys.path.insert(0, str(_IDX_SCRIPTS))
+try:
+    from index_ttl import load_index_any as _load_index_any  # noqa: E402
+except ImportError:
+    _load_index_any = None
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate graph observability views for MSO repositories."
@@ -447,6 +457,8 @@ def infer_resource_kind(
 
 
 def load_yaml_file(path: Path) -> dict[str, Any]:
+    if path.suffix == ".ttl" and _load_index_any is not None:
+        return _load_index_any(path) if path.exists() else {}
     if yaml is None or not path.exists():
         return {}
     try:
@@ -459,7 +471,8 @@ def load_yaml_file(path: Path) -> dict[str, Any]:
 
 def index_candidates(root: Path) -> list[Path]:
     return [
-        root / "agent-context" / "index" / "index.yaml",
+        root / "agent-context" / "index" / "index.abox.ttl",  # 정본
+        root / "agent-context" / "index" / "index.yaml",  # 전환기 폴백
         root / "index.yaml",
     ]
 

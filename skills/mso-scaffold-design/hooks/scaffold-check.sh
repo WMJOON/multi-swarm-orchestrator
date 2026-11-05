@@ -38,6 +38,8 @@ if [ -n "${SCAFFOLD_INDEX:-}" ]; then
     /*) INDEX="$SCAFFOLD_INDEX" ;;
     *) INDEX="$ROOT/$SCAFFOLD_INDEX" ;;
   esac
+elif [ -f "$ROOT/agent-context/index/index.abox.ttl" ]; then
+  INDEX="$ROOT/agent-context/index/index.abox.ttl"
 elif [ -f "$ROOT/agent-context/index/index.yaml" ]; then
   INDEX="$ROOT/agent-context/index/index.yaml"
 elif [ -f "$ROOT/index.yaml" ]; then

@@ -1,5 +1,30 @@
 # 변경 이력
 
+## v0.15.0 (2026-11-05) — 정본 index 를 TTL 로 일원화 (디렉터리 층)
+
+> 디렉터리와 아티팩트를 별도 객체로 나눈다. 정본은 `agent-context/index/index.abox.ttl` 하나이고 `index.yaml` 은 폐기한다. 옛 `artifacts.abox.ttl` 은 전환기 폴백(경고와 함께 읽음)으로만 남긴다.
+
+### Added
+
+- **`mso-workflow-design` v0.14.0**
+  - TBox: `wf:Directory`(path·moduleId·parentDirectory·storedIn 과 루트·모듈·하위 폴더 속성). 아티팩트는 `wf:storedIn` 으로 디렉터리를 가리킨다.
+  - SHACL: 디렉터리 경로 규칙(끝 `/`, 유일, 상위 접두어, 모듈 id)과 아티팩트 저장 디렉터리 규칙(정확히 하나, 규약 경로 일치, inModule 일치). 옛 레지스트리에서는 이 층의 shape 를 끈다.
+  - `scripts/index_ttl.py`: TTL 을 index.yaml 과 같은 dict 모양으로 읽는 로더. `scripts/index_yaml_to_ttl.py`: 변환기(멱등).
+  - 시험: `tests/test_directory_layer.py`(반례 4건, `MSO_INDEX_TTL` 지정 시 실행).
+- 검증기: 기본 레지스트리가 `index.abox.ttl` 이고, 없으면 옛 이름을 deprecation 경고와 함께 읽는다. 모듈 교차 검사도 TTL 을 읽는다.
+
+### Changed
+
+- **`mso-scaffold-design` v0.12.0**: `sf_node.py`, `check_artifact_index.py`, `hooks/scaffold-check.sh` 가 `index.abox.ttl` 을 우선 읽는다(yaml 폴백).
+- **`mso-repository-setup` v0.13.0**: `init.py` 는 새 프로젝트에 `index.abox.ttl` 만 만든다(TTL Only).
+- **`mso-graph-observability` v0.12.0**: `observe_graph.py` 가 `index.abox.ttl` 을 우선 읽는다.
+
+### Migration
+
+- 이 저장소: `artifacts.abox.ttl` → `index.abox.ttl`(이름만), `index.yaml` 삭제. 정본은 TTL 하나.
+- 다른 MSO 프로젝트: `index.yaml` 을 쓰는 동안은 자동으로 폴백한다. 옮기려면 `scripts/index_yaml_to_ttl.py --root <프로젝트>` 를 실행하고 `index.yaml` 을 지운다.
+- 남은 과제(범위 밖): `wf:recursive` 중첩 경로 규약, `directoryTemplate` 중복 제거(`_c2`·`supersededBy`), docx·csv 허용 형식, `data_registry`·`sub_index` 의 TTL 이관.
+
 ## v0.14.4 (2026-10-13) — 패치: optimizer 의 이동 경로 오탐 수정
 
 > 기능 변경 없음. 경로 이동을 `metadata.moved_paths` 로 이미 기록한 결정을 optimizer 가 "사라진 경로 인용"으로 다시 잡던 오탐을 고친다.

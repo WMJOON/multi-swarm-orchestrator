@@ -64,7 +64,11 @@ def literal_prefix(directory: str) -> str:
 def index_modules(index: Path) -> dict[str, str]:
     if not index.is_file():
         return {}
-    d = yaml.safe_load(index.read_text(encoding="utf-8")) or {}
+    if index.suffix == ".ttl":  # 정본 index.abox.ttl (같은 스킬 폴더의 index_ttl)
+        from index_ttl import load_index  # noqa: E402  (scripts/ 가 sys.path 에 있다)
+        d = load_index(index)
+    else:
+        d = yaml.safe_load(index.read_text(encoding="utf-8")) or {}
     return {str(m["id"]): str(m.get("path", "")).strip("/") for m in d.get("modules") or [] if m.get("id")}
 
 
@@ -226,9 +230,18 @@ def history_violations(root: Path, reg: Path, data, WF) -> list[str] | None:
     from rdflib import Graph
     try:
         top = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip()
-        rel = os.path.relpath(reg.resolve(), Path(top).resolve())
-        old_ttl = subprocess.run(["git", "-C", top, "show", f"HEAD:{rel}"], capture_output=True, text=True, check=True).stdout
     except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    old_ttl = None
+    # 이름 변경 전후 모두 기준선을 찾는다: 현재 파일 → 옛 이름 순(같은 디렉터리 기준 상대 경로)
+    for cand in (reg, reg.with_name("artifacts.abox.ttl"), reg.with_name("index.abox.ttl")):
+        try:
+            rel = os.path.relpath(cand.resolve(), Path(top).resolve())
+            old_ttl = subprocess.run(["git", "-C", top, "show", f"HEAD:{rel}"], capture_output=True, text=True, check=True).stdout
+            break
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+    if old_ttl is None:
         return None
     old = Graph(); old.parse(data=old_ttl, format="turtle")
     out = []
@@ -246,9 +259,9 @@ def history_violations(root: Path, reg: Path, data, WF) -> list[str] | None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=".")
-    ap.add_argument("--registry", default="agent-context/index/artifacts.abox.ttl")
+    ap.add_argument("--registry", default="agent-context/index/index.abox.ttl")  # 전환기: 없으면 artifacts.abox.ttl 폴백(deprecation)
     ap.add_argument("--workflow-dir", default="agent-context/workflow")
-    ap.add_argument("--index", default="agent-context/index/index.yaml")
+    ap.add_argument("--index", default="agent-context/index/index.abox.ttl", help="정본 TTL(없으면 index.yaml 로 대체)")
     ap.add_argument("--scan", action="store_true")
     ap.add_argument("--json", help="--scan 결과를 JSON 으로 저장할 경로")
     ap.add_argument("--strict", action="store_true")
@@ -263,6 +276,11 @@ def main(argv=None) -> int:
     WF = Namespace("https://mso.dev/ontology/workflow#")
     root = Path(a.root).resolve()
     reg = root / a.registry
+    if not reg.is_file() and a.registry == "agent-context/index/index.abox.ttl":
+        legacy = root / "agent-context/index/artifacts.abox.ttl"
+        if legacy.is_file():
+            print("DEPRECATED: artifacts.abox.ttl 은 index.abox.ttl 로 바뀌었다(전환기 폴백으로 읽음).")
+            reg = legacy
     if not reg.is_file():
         print(f"artifact registry 가 없습니다: {reg}"); return 2
 
@@ -274,6 +292,14 @@ def main(argv=None) -> int:
     shapes = Graph(); shapes.parse(REFS / "shapes" / "workflow-artifact-layer-shapes.ttl", format="turtle")
     tbox = Graph(); tbox.parse(REFS / "tbox" / "workflow-artifact-layer-tbox.ttl", format="turtle")
     data += tbox   # 유형·변수형식 개체를 데이터 쪽에서도 읽을 수 있어야 SPARQL 이 동작한다
+    # 디렉터리 층(wf:Directory·wf:storedIn)이 없는 옛 레지스트리에서는 그 층의 shape 를 적용하지 않는다(전환기 호환).
+    if (None, RDF.type, WF.Directory) not in data:
+        DIR_SHAPES = {"RegisteredArtifactStoredInShape", "StoredInMatchesConventionShape", "InModuleMatchesStoredInShape",
+                      "DirectoryShape", "DirectoryUniquePathShape", "DirectoryParentPrefixShape", "DirectoryModuleShape"}
+        for shp in list(shapes.subjects(RDF.type, None)):
+            if str(shp).split("#")[-1] in DIR_SHAPES:
+                for t in list(shapes.triples((shp, None, None))):
+                    shapes.remove(t)
 
     conforms, results, _ = validate(data, shacl_graph=shapes, ont_graph=tbox, inference="none", advanced=True, allow_warnings=True)
     items = []
@@ -285,7 +311,10 @@ def main(argv=None) -> int:
     print(f"registry: {reg}\nworkflow ABox {len(wf_files)}개, 개념 {len(concepts)}개, 규약 버전 {len(convs)}개\n")
 
     cross = []
-    mods = index_modules(root / a.index)
+    ipath = root / a.index
+    if not ipath.is_file() and a.index.endswith("index.abox.ttl"):  # 전환기: TTL 이 없으면 yaml
+        ipath = root / "agent-context/index/index.yaml"
+    mods = index_modules(ipath)
     for c in convs:
         mod = c["module"]
         if mods and mod is not None and mod not in mods:
