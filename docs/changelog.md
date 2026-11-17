@@ -1,5 +1,21 @@
 # 변경 이력
 
+## v0.15.1 (2026-11-17) — PROV-O 대응 annotation, repository 점검 보정
+
+> 정렬 방식은 D-23 을 그대로 지킨다. PROV-O 대응을 주석에서 한 걸음 나아가 기계가 읽는 annotation 으로 남기되, 공리가 아니므로 추론·SHACL 대상 확장이 없다.
+
+### Added
+
+- **`mso-workflow-design` v0.14.1**: TBox 에 annotation property `wf:provEquivalentTo`, `wf:provInverseOf` 를 추가하고 다음 대응을 기록했다. `prov:` 는 import 하지 않고 prefix 도 선언하지 않는다(IRI lint gate 영향 없음).
+  - `wf:Execution` ≈ `prov:Activity`, `wf:Artifact` ≈ `prov:Entity`
+  - `wf:consumed_by` ↔ `prov:used`, `wf:produces_to` ↔ `prov:wasGeneratedBy`, `wf:evidence_of` ↔ `prov:wasDerivedFrom` (역 대응; `evidence_of` 방향은 W3C 명세로 재확인 필요)
+- **`mso-work-memory` v0.11.1**: `hooks/posttooluse-json.py` — auditlog·scaffold-check PostToolUse 훅을 실행하고 Codex 호환 JSON(`{}`)을 stdout 으로 돌려주는 래퍼. 훅 출력은 stderr 로 보낸다.
+
+### Fixed
+
+- **`mso-repository-setup` v0.13.1**: `init.py check` 가 `index.yaml` 부재를 필수 누락으로 보고하던 것을 고쳤다. v0.15.0 이후 정본은 `index.abox.ttl` 이며, 둘 다 없을 때만 누락으로 본다(레거시 `index.yaml` 도 허용).
+- 테스트: README 버전 검사가 마이너 버전만 비교한다(UD-0001: README 는 마이너까지만 노출).
+
 ## v0.15.0 (2026-11-05) — 정본 index 를 TTL 로 일원화 (디렉터리 층)
 
 > 디렉터리와 아티팩트를 별도 객체로 나눈다. 정본은 `agent-context/index/index.abox.ttl` 하나이고 `index.yaml` 은 폐기한다. 옛 `artifacts.abox.ttl` 은 전환기 폴백(경고와 함께 읽음)으로만 남긴다.
