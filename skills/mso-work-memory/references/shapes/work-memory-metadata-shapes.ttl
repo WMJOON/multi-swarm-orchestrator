@@ -1,0 +1,325 @@
+# ⚠ GENERATED — 직접 편집 금지.
+# 소스: references/metadata-spec.yaml  (생성: scripts/wm_gen_vocab.py)
+
+@prefix wm: <https://mso.dev/ontology/work-memory#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+wm:SoftwareAgentOwnerShape a sh:NodeShape ; sh:targetClass wm:SoftwareAgent ;
+    sh:property [ sh:path wm:onBehalfOf ; sh:class wm:User ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:severity sh:Warning ; sh:message "SoftwareAgent 는 소속(계정 주인, onBehalfOf)을 가져야 한다" ] .
+
+wm:OptionShape a sh:NodeShape ; sh:targetClass wm:Option ;
+    sh:property [ sh:path wm:optionNumber ; sh:datatype xsd:integer ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:optionName ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:optionDescription ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:tradeOff ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:optionNumber ; sh:minCount 1 ] .
+
+wm:IssueNoteMetadataShape a sh:NodeShape ; sh:targetClass wm:IssueNote ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:reportedBy ; sh:class wm:Agent ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:severity ; sh:class wm:Severity ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:status ; sh:class wm:IssueStatus ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (issue-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.reporter 필수 (issue-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#reportedBy> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.severity 필수 (issue-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#severity> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.status 필수 (issue-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#status> ?v }
+            }""" ] .
+
+wm:AgentDecisionMetadataShape a sh:NodeShape ; sh:targetClass wm:AgentDecision ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:rationale ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:alternative ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path wm:confidence ; sh:class wm:Confidence ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (agent-decision, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.rationale 필수 (agent-decision, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#rationale> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.confidence 필수 (agent-decision, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#confidence> ?v }
+            }""" ] .
+
+wm:UserDecisionMetadataShape a sh:NodeShape ; sh:targetClass wm:UserDecision ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:rationale ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:structural ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:boundary ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:criterion ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:alternative ; sh:datatype xsd:string ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (user-decision, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.rationale 필수 (user-decision, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#rationale> ?v }
+            }""" ] .
+
+wm:AlternativesRecordMetadataShape a sh:NodeShape ; sh:targetClass wm:AlternativesRecord ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:providedBy ; sh:class wm:Agent ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:option ; sh:class wm:Option ] ;
+    sh:property [ sh:path wm:recommendedOption ; sh:class wm:Option ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (alternatives-record, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.provided_by 필수 (alternatives-record, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#providedBy> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.options 필수 (alternatives-record, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#option> ?v }
+            }""" ] .
+
+wm:TroubleShootingMetadataShape a sh:NodeShape ; sh:targetClass wm:TroubleShooting ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:resolution ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:rootCause ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:prevention ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (trouble-shooting, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.resolution 필수 (trouble-shooting, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#resolution> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.root_cause 필수 (trouble-shooting, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#rootCause> ?v }
+            }""" ] .
+
+wm:ReleaseNoteMetadataShape a sh:NodeShape ; sh:targetClass wm:ReleaseNote ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:version ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:releasedAt ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:releaseKind ; sh:class wm:ReleaseKind ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (release-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.version 필수 (release-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#version> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.kind 필수 (release-note, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#releaseKind> ?v }
+            }""" ] .
+
+wm:EpisodeMetadataShape a sh:NodeShape ; sh:targetClass wm:Episode ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:eventDate ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:participant ; sh:class wm:Agent ] ;
+    sh:property [ sh:path wm:timeline ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (episode, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] .
+
+wm:PatternMetadataShape a sh:NodeShape ; sh:targetClass wm:Pattern ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:frequency ; sh:datatype xsd:integer ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:patternContext ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:source ; sh:class wm:Entry ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (pattern, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.context 필수 (pattern, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#patternContext> ?v }
+            }""" ] .
+
+wm:PrincipleMetadataShape a sh:NodeShape ; sh:targetClass wm:Principle ;
+    sh:property [ sh:path wm:scope ; sh:class wm:Scope ] ;
+    sh:property [ sh:path skos:scopeNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:component ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:inModule ; sh:class wm:Module ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:needsReview ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:statement ; sh:datatype xsd:string ; sh:maxCount 1 ] ;
+    sh:property [ sh:path wm:principleStatus ; sh:class wm:PrincipleStatus ; sh:maxCount 1 ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.scope 필수 (principle, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#scope> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.statement 필수 (principle, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#statement> ?v }
+            }""" ] ;
+    sh:sparql [ a sh:SPARQLConstraint ;
+        sh:message "metadata.status 필수 (principle, 2026-11-17T00:00:00 이후 기록)" ;
+        sh:select """
+            SELECT $this WHERE {
+              $this <https://mso.dev/ontology/work-memory#createdAt> ?c .
+              FILTER(SUBSTR(STR(?c), 1, 19) >= "2026-11-17T00:00:00")
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#needsReview> true }
+              FILTER NOT EXISTS { $this <https://mso.dev/ontology/work-memory#principleStatus> ?v }
+            }""" ] .

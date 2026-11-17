@@ -3,14 +3,14 @@
 # 대상 그래프: wm_to_ttl.py project 산출물 (work-memory.abox.ttl)
 PREFIX wm: <https://mso.dev/ontology/work-memory#>
 
-SELECT ?id ?version ?releasedAt ?title
+SELECT ?id ?version ?releasedAt ?description
 WHERE {
   ?rn a wm:ReleaseNote ;
       wm:entryId ?id ;
-      wm:title ?title .
-  OPTIONAL { ?rn wm:metadataVersion ?version }
-  OPTIONAL { ?rn wm:metadataReleasedAt ?releasedAt }
-  FILTER NOT EXISTS { ?rn wm:metadataKind "rollback" }
+      wm:description ?description .
+  OPTIONAL { ?rn wm:version ?version }
+  OPTIONAL { ?rn wm:releasedAt ?releasedAt }
+  FILTER NOT EXISTS { ?rn wm:releaseKind <https://mso.dev/id/vocab/releaseKind/rollback> }
   FILTER NOT EXISTS { ?rollback wm:rollsBack ?rn }
 }
 ORDER BY DESC(?releasedAt)

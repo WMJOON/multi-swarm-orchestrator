@@ -1,0 +1,19 @@
+# 버전 V 시점에 유효한 기록 (v0.16.0)
+# 버전은 정렬 키(wm:validFromKey / wm:invalidatedInKey = major*1000000+minor*1000+patch)로 비교한다.
+# 문자열 사전순 비교는 "0.9.0" > "0.15.0" 으로 틀리므로 쓰지 않는다.
+# 예) V = 0.14.4  →  --param atKey=14004   (wm_query.py run memory-valid-at-version --param atKey=14004)
+PREFIX wm:  <https://mso.dev/ontology/work-memory#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?id ?type ?description
+WHERE {
+  ?entry wm:entryId ?id ;
+         wm:typeName ?type ;
+         wm:description ?description .
+  OPTIONAL { ?entry wm:validFromKey ?from }
+  OPTIONAL { ?entry wm:invalidatedInKey ?until }
+  BIND({{atKey:14004}} AS ?atKey)
+  FILTER(!BOUND(?from)  || ?from  <= ?atKey)
+  FILTER(!BOUND(?until) || ?until >  ?atKey)
+}
+ORDER BY ?id

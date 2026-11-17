@@ -15,8 +15,8 @@ init.py — MSO Repository Setup CLI
     └── work-memory/
         ├── schema.yaml
         ├── auditlog/  worklog/                       # 일별/시각별 append JSONL
-        ├── track-record/                             # <type>.jsonl  예: user-decision.jsonl
-        └── insight-record/                           # <type>.jsonl  예: episode.jsonl, pattern.jsonl
+        ├── track-record/                             # <type>.nt (N-Triples 정본, v0.16.0)  예: user-decision.nt
+        └── insight-record/                           # <type>.nt  예: episode.nt, pattern.nt
 
   <target>/.gitignore  (agent-context/work-memory/.zvec/, .mso/state/ 등록)
   <target>/.claude/settings.json  (--hook 시 Claude Code hook 등록)
@@ -38,7 +38,8 @@ from pathlib import Path
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
-# schema v1.2.0: track/insight 는 타입별 aggregate <type>.jsonl 로 저장된다.
+# schema v1.4.0 (v0.16.0): track/insight/release 는 타입별 aggregate <type>.nt(N-Triples)로 저장된다.
+# (auditlog/worklog 런타임 로그는 JSONL.) 이행 전 <type>.jsonl 도 읽힌다.
 # 타입별 하위디렉토리를 미리 만들지 않고 부모 디렉토리만 둔다 — 파일은 첫 append
 # (wm_node.py new) 시점에 생성된다. 빈 부모 디렉토리는 .gitkeep 으로 추적한다.
 AGENT_CONTEXT_TREE = [
@@ -170,8 +171,8 @@ version: "0.1.0"
 required_fields:
   id: "TYPE-NNNN"
   type: "issue-note | agent-decision | alternatives-record | user-decision | trouble-shooting | episode | pattern | principle | auditlog | worklog"
-  title: "한 줄 요약"
-  text: "본문"
+  description: "본문을 펼칠지 판단하는 문구 (최대 200자)"
+  content: "본문"
   tags: "list[str]"
   created_at: "ISO 8601"
 types:
@@ -291,7 +292,7 @@ def cmd_migrate(target: Path):
     print(f"\n✓ migrate 완료. `init.py --check {target}` 로 확인.")
 
 
-WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh", "release-context.sh", "workflow-context-hook.py"]
+WORK_MEMORY_HOOK_FILES = ["auditlog.py", "commit-work-memory.sh", "work-memory-check.sh", "stop-check.sh", "release-context.sh", "workflow-context-hook.py", "standing-context-hook.py"]
 SCAFFOLD_HOOK_FILES = ["scaffold-check.sh"]
 # uug-context-hook.py: UUG grounding 연동 넛지 (optional). uug-grounding 이 이 머신에
 # 없으면 cmd_hook 이 복사·등록 자체를 생략한다(설치 시점 게이팅) — 훅 내부에도 동일한
@@ -389,6 +390,15 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         shutil.copy(wm_context_src, scripts_dst / "wm_context.py")
         (scripts_dst / "wm_context.py").chmod(0o755)
         copied.append("wm_context.py")
+    # v0.16.0: 큐레이션 기록은 N-Triples(.nt)다. wm_context.py·wm_release.py 가 .nt 를 읽으려면 같은 디렉터리에
+    # wm_store.py(stdlib)와 metadata-spec.json(타입별 metadata 명세, YAML 을 못 읽는 훅용)이 있어야 한다.
+    for fn, src_dir in (("wm_store.py", "scripts"), ("metadata-spec.json", "references")):
+        src = hooks_dir.parent / src_dir / fn
+        if src.exists():
+            shutil.copy(src, scripts_dst / fn)
+            if fn.endswith(".py"):
+                (scripts_dst / fn).chmod(0o755)
+            copied.append(fn)
     # commit-work-memory.sh / work-memory-check.sh 가 연관 저장소(linked-repos.yaml)를 해석하는 wm_repos.py
     # 도 동봉한다 — 훅은 자기 옆의 wm_repos.py 를 먼저 찾는다.
     wm_repos_src = hooks_dir.parent / "scripts" / "wm_repos.py"
@@ -495,6 +505,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
     scaffold_cmd = f"{prefix}MSO_SCAFFOLD_TOOL={pd}/{provider_dir_name}/scripts/sf_node.py bash {pd}/{provider_dir_name}/scripts/scaffold-check.sh"
     uug_context_cmd = f"{prefix}python3 {pd}/{provider_dir_name}/scripts/uug-context-hook.py"
     workflow_ctx_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/workflow-context-hook.py"
+    standing_ctx_cmd = f"{prefix}{workmem_env} python3 {pd}/{provider_dir_name}/scripts/standing-context-hook.py"
 
     # Claude 설정은 JSON, Codex 설정은 아래 managed TOML block으로 생성한다.
     if provider == "claude":
@@ -527,6 +538,9 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
         # RN entry 가 없는 프로젝트에서는 훅이 무출력이라 등록해도 잡음이 없다.
         for matcher in ("startup", "compact", "resume"):
             _upsert_hook(hooks_section, "SessionStart", matcher, release_ctx_cmd, "release-context.sh")
+            # standing-context — 노드와 무관하게 항상 적용되는 교훈(scope 가 repository/global 인 accepted principle)을 세션 시작·압축·재개 때 주입.
+            # 해당 기록이 없으면 훅은 무출력이라 등록해도 잡음이 없다.
+            _upsert_hook(hooks_section, "SessionStart", matcher, standing_ctx_cmd, "standing-context-hook.py")
 
     settings_path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
@@ -542,6 +556,7 @@ def cmd_hook(target: Path, worthy_paths: str | None = None, provider: str = "cla
             release_ctx_cmd=release_ctx_cmd,
             workflow_ctx_cmd=workflow_ctx_cmd,
             uug_context_cmd=uug_context_cmd if uug_present else None,
+            standing_ctx_cmd=standing_ctx_cmd,
         )
     print(f"  + {provider_dir_name}/scripts/ 복사: {', '.join(copied)}")
     if provider == "claude":
@@ -779,8 +794,15 @@ def _upsert_codex_config_toml(
     release_ctx_cmd: str,
     workflow_ctx_cmd: str,
     uug_context_cmd: str | None,
+    standing_ctx_cmd: str | None = None,
 ):
     """Add a managed MSO hook block to .codex/config.toml."""
+    standing_block = (f"""
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = {_toml_literal(standing_ctx_cmd)}
+statusMessage = "Loading MSO standing principles"
+""" if standing_ctx_cmd else "")
     config_path.parent.mkdir(parents=True, exist_ok=True)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     text = _remove_managed_block(text, "MSO_WORK_MEMORY_HOOKS")
@@ -837,7 +859,7 @@ statusMessage = "Checking MSO scaffold inventory"
 type = "command"
 command = {_toml_literal(release_ctx_cmd)}
 statusMessage = "Loading MSO release context"
-
+{standing_block}
 [[hooks.SessionStart]]
 matcher = "resume"
 
@@ -855,7 +877,7 @@ statusMessage = "Checking MSO scaffold inventory"
 type = "command"
 command = {_toml_literal(release_ctx_cmd)}
 statusMessage = "Loading MSO release context"
-
+{standing_block}
 [[hooks.SessionStart]]
 matcher = "startup"
 
@@ -863,7 +885,7 @@ matcher = "startup"
 type = "command"
 command = {_toml_literal(release_ctx_cmd)}
 statusMessage = "Loading MSO release context"
-
+{standing_block}
 [[hooks.UserPromptSubmit]]
 
 [[hooks.UserPromptSubmit.hooks]]

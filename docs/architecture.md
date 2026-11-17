@@ -1,4 +1,4 @@
-# 아키텍처 (v0.15.1)
+# 아키텍처 (v0.16.0)
 
 ## 스킬 관계
 
@@ -91,9 +91,10 @@ wf_node.py harness-manifest
     → harness 보유 eval 노드 수집
     → ci-manifest.json 생성
 
-wm_node.py new <type>
-    → id 할당 (타입별 시퀀스 또는 시각 기반)
-    → JSONL entry 작성
+wm_node.py new <type> --scope <층> --description "..." [--meta k=v ...]
+    → id 할당 (밀리초 hex, 런타임 로그는 시각 기반)
+    → 타입별 metadata 명세로 검증 (새 기록은 필수 누락 시 거부)
+    → 큐레이션 기록은 <type>.nt(N-Triples) 에 append, 런타임 로그는 JSONL
     → zvec 인덱스 대상 (reindex 시 임베딩)
 ```
 

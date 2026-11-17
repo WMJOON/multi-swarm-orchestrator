@@ -1,0 +1,159 @@
+# work-memory 타입별 metadata 명세 (schema v1.4.0 / MSO v0.16.0) — 기계가 읽는 SSOT.
+#
+# 이 파일이 다음을 결정한다:
+#   - wm_node.py validate 의 타입별 metadata 검사 (필수·값 집합·값 형식)
+#   - wm_to_ttl.py 가 metadata 를 TTL 로 내보내는 방식 (프로퍼티 이름·종류·값 개체)
+#   - references/tbox/work-memory-metadata-tbox.ttl, references/shapes/work-memory-metadata-shapes.ttl
+#     (직접 편집 금지 — scripts/wm_gen_vocab.py 가 이 파일에서 생성한다. 동기화는 테스트가 고정한다)
+#
+# 표기 규칙: Class = UpperCamelCase, property·통제 어휘 individual = lowerCamelCase.
+# property 가 "접두어:이름"(예: skos:scopeNote)이면 외부 어휘의 프로퍼티를 그대로 쓴다(wm: 에 새로 선언하지 않는다).
+#   scope(강제, 통제 어휘)와 scope_note(자유 서술, skos:scopeNote)는 별개다. scope 는 모든 타입의 필수 metadata 다.
+#   component(구성요소 이름 — 스킬·패키지, 문자열)와 module(스캐폴드 index 의 module id, 개체)은 별개다.
+# JSONL 의 metadata 키(snake_case)는 그대로 두고, TTL 프로퍼티 이름만 lowerCamelCase 로 바꾼다.
+#
+# kind:
+#   object   — 값이 개체/통제 어휘다. TTL 에서 ObjectProperty (값은 IRI)
+#   datatype — 자유 서술·숫자·날짜·버전·불리언. TTL 에서 DatatypeProperty (ObjectProperty 는 리터럴을 값으로 가질 수 없다)
+# object 의 값 개체:
+#   vocab: <이름>  — 아래 vocabularies 의 통제 어휘 individual
+#   range: Agent   — agents.yaml 레지스트리(없으면 내장 기본)의 주체 individual
+#   range: Module  — 스캐폴드 index 의 module id (index.abox.ttl 의 wf:moduleId 에 대응)
+#   range: Entry   — 다른 work-memory entry
+#
+# 강제 방식:
+#   enforce_from 이후에 만든 기록(created_at >= enforce_from)은 필수 누락·값 집합 위반·형식 위반이 오류다.
+#   그 이전 기록은 같은 문제가 경고다(옛 기록을 깨뜨리지 않는다). metadata.needs_review=true 인 기록도 경고로 낮춘다.
+#   명세에 없는 키는 항상 경고다.
+
+version: "1.0.0"
+enforce_from: "2026-11-17T00:00:00Z"
+
+vocabularies:
+  severity:
+    class: Severity
+    values: [{value: minor, id: minor}, {value: major, id: major}, {value: critical, id: critical}]
+  issueStatus:
+    class: IssueStatus
+    values: [{value: open, id: open}, {value: fixing, id: fixing},
+             {value: partially-resolved, id: partiallyResolved}, {value: resolved, id: resolved}]
+  confidence:
+    class: Confidence
+    values: [{value: high, id: high}, {value: medium, id: medium}, {value: low, id: low}]
+  # scope = 이 기록이 적용되는 대상의 층(강제). 기록마다 다르다 — 이 저장소 전체인가, 한 workflow 인가, 한 task 인가...
+  #   repository 저장소 전체 / workflow 한 workflow / task 한 task(node) / artifact 한 산출물 / directory 한 디렉터리·모듈 /
+  #   memory work-memory 자체(스키마·규약) / global 저장소 밖(사용자·여러 저장소 공통)
+  # 하나의 기록이 여러 층에 걸칠 수 있어 scope 는 리스트다(최소 1개). 예: [repository, workflow].
+  # 자유 서술 보충은 scope_note(skos:scopeNote)에 쓴다.
+  scope:
+    class: Scope
+    # aliases: 옛 principle/release-note 의 scope(project|module|global) 어휘. 같은 individual 로 모은다.
+    values: [{value: repository, id: repository, aliases: [project]}, {value: workflow, id: workflow},
+             {value: task, id: task}, {value: artifact, id: artifact},
+             {value: directory, id: directory, aliases: [module]}, {value: memory, id: memory},
+             {value: global, id: global}]
+  principleStatus:
+    class: PrincipleStatus
+    values: [{value: draft, id: draft}, {value: accepted, id: accepted}, {value: deprecated, id: deprecated}]
+  releaseKind:
+    class: ReleaseKind
+    values: [{value: release, id: release}, {value: rollback, id: rollback}]
+
+# 주체(Agent) 모델 — 소속(계정 주인)과 백그라운드 에이전트를 구분한다.
+#   User            사람(계정 주인)
+#   SoftwareAgent   사용자를 대신해 일하는 에이전트. onBehalfOf 로 계정 주인(User)을 가리킨다
+#   BackgroundAgent SoftwareAgent 의 하위. 사용자 턴 밖에서 도는 에이전트(훅, 예약 작업, 자동 커밋 등). trigger 로 구분
+# 주체 레지스트리는 <work-memory>/agents.yaml (선택). 없으면 내장 기본(user, agent)을 쓴다.
+agents:
+  classes: {user: User, softwareAgent: SoftwareAgent, backgroundAgent: BackgroundAgent}
+  builtin:
+    - {id: user, kind: user}
+    - {id: agent, kind: softwareAgent, onBehalfOf: user}
+    # 훅이 자동으로 남기는 기록(auditlog)의 작성 주체. 사용자 턴 밖에서 훅이 쓰므로 BackgroundAgent 이고 계정 주인(user)에 소속된다.
+    - {id: auditlog-hook, kind: backgroundAgent, onBehalfOf: user, trigger: hook}
+
+# 구조화된 값(노드). object 속성이 `structured: true` 이면 JSONL 값이 객체의 리스트이고, TTL 에서 각 객체가 노드가 된다.
+#   IRI = <entry IRI>/<소문자 클래스>/<key 값>  (예: https://mso.dev/id/memory/AR-0001/option/1)
+#   `ref: true` 인 속성은 같은 구조화 속성의 key 값(정수)으로 그 노드를 가리킨다.
+structures:
+  Option:
+    class: Option
+    key: n
+    properties:
+      n:           {property: optionNumber, datatype: integer, required: true}
+      name:        {property: optionName, datatype: string, required: true}
+      description: {property: optionDescription, datatype: string}
+      trade_off:   {property: tradeOff, datatype: string}
+
+# 모든 타입에 공통인 metadata
+common:
+  scope:       {property: scope, kind: object, vocab: scope, required: true, multiple: true}   # 대상이 여러 개일 수 있다 — 최소 1개
+  scope_note:  {property: "skos:scopeNote", kind: datatype, datatype: string}
+  component:   {property: component, kind: datatype, datatype: string}
+  module:      {property: inModule, kind: object, range: Module}
+  needs_review: {property: needsReview, kind: datatype, datatype: boolean}
+
+types:
+  issue-note:
+    class: IssueNote
+    metadata:
+      reporter: {property: reportedBy, kind: object, range: Agent, required: true}
+      severity: {property: severity, kind: object, vocab: severity, required: true}
+      status:   {property: status, kind: object, vocab: issueStatus, required: true}
+
+  agent-decision:
+    class: AgentDecision
+    metadata:
+      rationale:    {property: rationale, kind: datatype, datatype: string, required: true}
+      alternatives: {property: alternative, kind: datatype, datatype: string, multiple: true}
+      confidence:   {property: confidence, kind: object, vocab: confidence, required: true}
+
+  user-decision:
+    class: UserDecision
+    metadata:
+      rationale:    {property: rationale, kind: datatype, datatype: string, required: true}
+      structural:   {property: structural, kind: datatype, datatype: boolean}
+      boundary:     {property: boundary, kind: datatype, datatype: string}
+      criterion:    {property: criterion, kind: datatype, datatype: string}
+      alternatives: {property: alternative, kind: datatype, datatype: string, multiple: true}
+
+  alternatives-record:
+    class: AlternativesRecord
+    metadata:
+      provided_by: {property: providedBy, kind: object, range: Agent, required: true}
+      options:     {property: option, kind: object, range: Option, structured: true, multiple: true, required: true}
+      recommended: {property: recommendedOption, kind: object, range: Option, ref: true}
+
+  trouble-shooting:
+    class: TroubleShooting
+    metadata:
+      resolution: {property: resolution, kind: datatype, datatype: string, required: true}
+      root_cause: {property: rootCause, kind: datatype, datatype: string, required: true}
+      prevention: {property: prevention, kind: datatype, datatype: string}
+
+  release-note:
+    class: ReleaseNote
+    metadata:
+      version:     {property: version, kind: datatype, datatype: string, required: true}
+      released_at: {property: releasedAt, kind: datatype, datatype: dateTime}
+      kind:        {property: releaseKind, kind: object, vocab: releaseKind, required: true}
+
+  episode:
+    class: Episode
+    metadata:
+      event_date:   {property: eventDate, kind: datatype, datatype: dateTime}
+      participants: {property: participant, kind: object, range: Agent, multiple: true}
+      timeline:     {property: timeline, kind: datatype, datatype: string}
+
+  pattern:
+    class: Pattern
+    metadata:
+      frequency: {property: frequency, kind: datatype, datatype: integer}
+      context:   {property: patternContext, kind: datatype, datatype: string, required: true}
+      sources:   {property: source, kind: object, range: Entry, multiple: true}
+
+  principle:
+    class: Principle
+    metadata:
+      statement: {property: statement, kind: datatype, datatype: string, required: true}
+      status:    {property: principleStatus, kind: object, vocab: principleStatus, required: true}

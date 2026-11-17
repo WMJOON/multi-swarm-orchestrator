@@ -1,0 +1,15 @@
+# workflow node 에 매핑된 기록 중 유효한 것 (v0.16.0 related 매핑)
+# wm:relatedNodeId 로 join 한다(node IRI 는 workflow 마다 경로가 달라 문자열 id 가 안정적이다).
+# 사용: wm_query.py run memory-for-node --param node=<node-id>
+PREFIX wm: <https://mso.dev/ontology/work-memory#>
+
+SELECT ?id ?type ?description
+WHERE {
+  ?entry wm:relatedNodeId "{{node:discovery-s-001}}" ;
+         wm:entryId ?id ;
+         wm:typeName ?type ;
+         wm:description ?description ;
+         wm:validity ?validity .
+  FILTER(?validity IN ("active", "suspended"))
+}
+ORDER BY ?id

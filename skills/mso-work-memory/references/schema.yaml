@@ -1,25 +1,27 @@
 # Work-Memory JSONL 공통 스키마
 # 모든 entry 는 한 줄(jsonl)로 직렬화. zvec 호환 + 그래프 표현 동시 지원.
 
-version: "1.3.0"
-updated: 2026-07-17
+version: "1.4.0"
+updated: 2026-11-17
 
 # ─── ID 규칙 ─────────────────────────────────────────────
 id_patterns:
-  IN: "issue-note       (track-record) — IN-NNNN"
-  AD: "agent-decision   (track-record) — AD-NNNN"
-  UD: "user-decision    (track-record) — UD-NNNN"
-  AR: "alternatives-record (track-record) — AR-NNNN"
-  TS: "trouble-shooting (track-record) — TS-NNNN"
-  RN: "release-note     (release-record) — RN-NNNN"
-  EP: "episode          (insight-record) — EP-NNNN"
-  PT: "pattern          (insight-record) — PT-NNNN"
-  PR: "principle        (insight-record) — PR-NNNN"
+  IN: "issue-note       (track-record) — IN-<epoch 밀리초 12자리 hex>"
+  AD: "agent-decision   (track-record) — AD-<epoch 밀리초 12자리 hex>"
+  UD: "user-decision    (track-record) — UD-<epoch 밀리초 12자리 hex>"
+  AR: "alternatives-record (track-record) — AR-<epoch 밀리초 12자리 hex>"
+  TS: "trouble-shooting (track-record) — TS-<epoch 밀리초 12자리 hex>"
+  RN: "release-note     (release-record) — RN-<epoch 밀리초 12자리 hex>"
+  EP: "episode          (insight-record) — EP-<epoch 밀리초 12자리 hex>"
+  PT: "pattern          (insight-record) — PT-<epoch 밀리초 12자리 hex>"
+  PR: "principle        (insight-record) — PR-<epoch 밀리초 12자리 hex>"
   AU: "auditlog         (자동) — AU-YYYYMMDD-HHMMSS-<hash>"
   WL: "worklog          (workflow TTL node 실행 기록) — WL-YYYY-MM-DD"
 
 id_rules:
-  - "타입별 시퀀스, zero-pad 4자리 (예: IN-0001, IN-0042)"
+  - "v1.4.0~ 새 id = <PREFIX>-<생성 시각 epoch 밀리초를 12자리 소문자 hex> (예: UD-019a3c5e4f21). 무작위 없음 — id 가 발생 시각을 담는다(wm_node.id_time 으로 복원). 같은 밀리초 충돌은 +1ms 로 회피."
+  - "옛 십진 시퀀스 id (예: IN-0001, UD-0012)는 그대로 유효하다(hex 문자열의 부분집합). 섞여도 읽힌다. 마이그레이션하지 않는다."
+  - "id 는 한 번 정해지면 바뀌지 않는다(immutable). relations 의 target 과 문서 인용이 id 에 의존한다."
   - "타입 prefix 는 변경 불가 (immutable)"
   - "entry 식별자(primary key)는 record 내부의 `id` 필드다 — 파일 경로가 아니다."
   - "auditlog 는 시각별 자동 생성"
@@ -36,7 +38,7 @@ id_rules:
 #  reader(validate/show/graph/stats/ttl)는 rglob+줄단위 파싱이라 old/new 를 모두 읽지만,
 #  같은 트리 안 공존은 DUP-ID 를 유발하므로 wm_migrate.py 로 일괄 전환 후 old 를 archive 한다.)
 storage_format:
-  track_insight: "타입별 aggregate append JSONL — <dir>/<type>.jsonl (release-record 도 동일)"
+  track_insight: "v1.4.0~ 타입별 aggregate N-Triples — <dir>/<type>.nt (release-record 도 동일). 한 줄에 triple 하나(= Turtle 의 부분집합), 쓰기·편집은 wm_node.py 로만. 이행 전 <type>.jsonl 도 읽힌다(wm_migrate_store.py 로 이행)"
   audit_worklog: "auditlog=시각별 자동 파일, worklog=workflow node 실행 기록 파일 — <dir>/<id>.jsonl (기존 유지)"
   locator: "primary key = record.id. source_path 는 entry 가 담긴 aggregate 파일(containing log)."
 
@@ -65,8 +67,10 @@ types:
 required_fields:
   id: "예: IN-0042"
   type: "issue-note | agent-decision | user-decision | alternatives-record | trouble-shooting | release-note | episode | pattern | principle | auditlog | worklog"
-  title: "한 줄 요약 (60자 이내 권장)"
-  text: "본문 (markdown 가능, 임베딩 대상)"
+  # v1.4.0 (MSO v0.16.0): title→description, text→content. 읽을 때는 옛 title/text 를 폴백으로 인정한다.
+  # 에이전트 스킬처럼 id 가 이름이고 description 은 "본문을 펼칠지 판단하는 문구"다 (점진적 주입).
+  description: "본문(content)을 펼칠지 판단하는 문구. 최대 200자 (wm_node validate 와 SHACL sh:maxLength 가 강제). 무엇을 결정/기록했고 언제 필요한지를 쓴다."
+  content: "본문 (markdown 가능, 임베딩 대상은 description+content). 점진적 주입에서 필요할 때만 펼친다."
   tags: "list[str] — 필터·검색용. 모듈 id 포함 권장 (예: '02.AI-Chatbot-Policy')"
   created_at: "ISO 8601 (예: 2026-05-22T15:30:00Z)"
 
@@ -76,6 +80,7 @@ optional_fields:
   relations: "list[{type, target}] — 그래프 edge"
   metadata: "dict — 자유형 부가 정보 (module, severity, status 등)"
   author: "user | agent | <agent-id>"
+  node: "list[str] — 연관 workflow node id (related 매핑). 훅은 커서 node 가 여기 있는 entry 만 주입한다. wm_node new --node <id>"
 
 # ─── Relation 어휘 (그래프) ─────────────────────────────
 relation_types:
@@ -174,8 +179,9 @@ type_specific:
 
 # ─── zvec 인덱싱 매핑 ───────────────────────────────────
 zvec_mapping:
-  text_field: "text"
-  title_field: "title"
+  # v1.4.0: 임베딩 원문은 description+content. zvec 인덱스 필드명은 호환을 위해 text/title 을 유지한다.
+  text_field: "content"        # (인덱스 필드명 "text" 에 content 를 넣는다)
+  title_field: "description"   # (인덱스 필드명 "title" 에 description 을 넣는다)
   tags_field: "tags"
   source_path_field: "source_path"
   created_at_field: "created_at"
@@ -187,8 +193,8 @@ examples:
   issue_note:
     id: IN-0001
     type: issue-note
-    title: "라우팅 정책 hand-off 에 timeout 누락"
-    text: "v0.9.0 → v1.0.0 정제 과정에서 secondary_evaluation 의 timeout 항목이 사라짐. 백엔드 개발자 영역의 검토 누락이 원인."
+    description: "라우팅 정책 hand-off 의 timeout 누락 — 정제 과정의 검토 누락 기록"
+    content: "v0.9.0 → v1.0.0 정제 과정에서 secondary_evaluation 의 timeout 항목이 사라짐. 백엔드 개발자 영역의 검토 누락이 원인."
     tags: ["hand-off", "timeout", "policy", "02.AI-Chatbot-Policy"]
     created_at: "2026-05-22T15:00:00Z"
     metadata:
@@ -201,8 +207,8 @@ examples:
   release_note:
     id: RN-0001
     type: release-note
-    title: "v0.7.0 릴리스 — 라우팅 정책 timeout 복원"
-    text: "TS-0001 의 timeout 복원이 포함된 릴리스. UD-0003 의 기준은 이 버전에서도 유효함을 확인."
+    description: "v0.7.0 릴리스 — 라우팅 정책 timeout 복원"
+    content: "TS-0001 의 timeout 복원이 포함된 릴리스. UD-0003 의 기준은 이 버전에서도 유효함을 확인."
     tags: ["release", "02.AI-Chatbot-Policy"]
     created_at: "2026-07-17T10:00:00Z"
     metadata:

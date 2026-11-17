@@ -841,12 +841,25 @@ def normalized_value(value: Any) -> str | None:
     return text or None
 
 
+def _iter_nt_records(path: Path) -> Iterable[dict[str, Any]]:
+    """큐레이션 기록(.nt, v0.16.0)을 dict 로. mso-work-memory 의 wm_store.py(stdlib)를 형제 스킬에서 찾는다. 없으면 건너뜀."""
+    for cand in (Path(__file__).resolve().parents[2] / "mso-work-memory" / "scripts", Path(__file__).resolve().parent):
+        if (cand / "wm_store.py").is_file():
+            sys.path.insert(0, str(cand))
+            try:
+                import wm_store  # type: ignore
+                yield from wm_store.load_nt_entries(path)[0]
+            except Exception:  # noqa: BLE001
+                return
+            return
+
+
 def discover_runtime_sources(root: Path) -> dict[str, list[Path]]:
     work_memory = root / "agent-context" / "work-memory"
     return {
         "memory": sorted(
             p
-            for p in work_memory.rglob("*.jsonl")
+            for p in [*work_memory.rglob("*.jsonl"), *work_memory.rglob("*.nt")]
             if p.is_file() and "auditlog" not in p.parts and "worklog" not in p.parts
         )
         if work_memory.exists()
@@ -896,7 +909,7 @@ def build_runtime_analysis(root: Path) -> str:
 
     for scope, paths in sources.items():
         for path in paths:
-            for record in iter_jsonl(path):
+            for record in (_iter_nt_records(path) if path.suffix == ".nt" else iter_jsonl(path)):
                 if record.get("_parse_error"):
                     parse_errors.append(record)
                 records_by_scope[scope].append(record)

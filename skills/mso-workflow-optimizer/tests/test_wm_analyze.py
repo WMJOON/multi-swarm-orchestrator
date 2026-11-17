@@ -48,13 +48,13 @@ def test_load_skips_broken_lines_and_reports_them(tmp_path):
 
 def test_quality_flags_integrity_and_missing_fields(tmp_path):
     rows = [
-        entry("IN-0001", "issue-note", meta={"status": "open", "severity": "major", "module": "m"}, rel=[{"type": "resolved-by", "target": "TS-0001"}]),
-        entry("IN-0002", "issue-note", meta={"status": "resolved", "severity": "low"}),
+        entry("IN-0001", "issue-note", meta={"status": "open", "severity": "low", "module": "m"}, rel=[{"type": "resolved-by", "target": "TS-0001"}]),
+        entry("IN-0002", "issue-note", meta={"status": "resolved", "severity": "minor"}),
         entry("IN-0003", "issue-note", meta={}),
         entry("TS-0001", "trouble-shooting", meta={}, rel=[{"type": "resolved-by", "target": "IN-9999"}]),
         entry("AD-0001", "agent-decision", meta={"rationale": "x"}),
         entry("AD-0001", "agent-decision", meta={"rationale": "x"}),
-        entry("IN-0004", "issue-note", tags=["korean_tax", "Korean-Tax"], meta={"status": "open", "severity": "low"}),
+        entry("IN-0004", "issue-note", tags=["korean_tax", "Korean-Tax"], meta={"status": "open", "severity": "minor"}),
     ]
     found = ids(wa.analyze_quality(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW))
     assert {"quality:duplicate-ids", "quality:dangling-relations", "quality:issue-missing-fields", "quality:vocab-drift",
@@ -88,8 +88,8 @@ def test_workflow_flags_recurring_root_cause_and_module_hotspot(tmp_path):
     cause = "SHACL VALUES 금지 제약을 몰라 검증이 실패했다 pySHACL conforms False 원인 확인 누락"
     rows = [entry("TS-0001", "trouble-shooting", meta={"root_cause": cause, "module": "shacl"}),
             entry("TS-0002", "trouble-shooting", meta={"root_cause": cause + " 재발", "module": "shacl"})]
-    rows += [entry(f"IN-000{i}", "issue-note", title=f"서로 다른 문제 {i} 항목{i}", meta={"status": "open", "severity": "high", "module": "korean_tax"}) for i in range(1, 4)]
-    rows += [entry(f"IN-001{i}", "issue-note", title=f"또 다른 이슈 {i} 건{i}", meta={"status": "open", "severity": "low", "module": "korean-tax"}) for i in range(1, 3)]
+    rows += [entry(f"IN-000{i}", "issue-note", title=f"서로 다른 문제 {i} 항목{i}", meta={"status": "open", "severity": "critical", "module": "korean_tax"}) for i in range(1, 4)]
+    rows += [entry(f"IN-001{i}", "issue-note", title=f"또 다른 이슈 {i} 건{i}", meta={"status": "open", "severity": "minor", "module": "korean-tax"}) for i in range(1, 3)]
     found = ids(wa.analyze_workflow(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW))
     assert "workflow:cause:TS-0001" in found
     assert "workflow:hotspot:korean-tax" in found  # korean_tax 와 korean-tax 를 하나로 센다
@@ -230,3 +230,17 @@ def test_stale_honors_moved_paths(tmp_path):
     props = wa.analyze_stale(wa.load_entries(write(tmp_path, rows))["entries"], now=NOW, project_root=tmp_path)
     missing = next(p for p in props if p["id"] == "stale:missing-paths")
     assert sorted(missing["data"]["paths"]) == ["AD-0003", "AD-0004", "AD-0005"]
+
+
+def test_optimizer_loads_curated_nt_records_via_wm_store(tmp_path):
+    """v0.16.0: 큐레이션 기록은 .nt 다. 옵티마이저가 .nt 의 기록과 id 를 읽는다."""
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "mso-work-memory" / "scripts"))
+    import wm_store
+    wm = tmp_path / "agent-context" / "work-memory"
+    wm_store.append_entry(wm / "track-record" / "issue-note.nt", {
+        "id": "IN-000000000001", "type": "issue-note", "description": "d", "content": "c", "tags": [], "created_at": "2026-06-01T00:00:00Z",
+        "relations": [], "metadata": {"status": "open", "severity": "minor", "scope": ["repository"]}})
+    loaded = wa.load_entries(wm)
+    assert [e["id"] for e in loaded["entries"]] == ["IN-000000000001"] and loaded["broken_lines"] == []
+    assert "IN-000000000001" in loaded["known_ids"]

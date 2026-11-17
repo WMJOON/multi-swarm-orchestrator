@@ -51,3 +51,16 @@ def test_unknown_pattern_exit_2(tmp_path):
     root = wm(tmp_path)
     r = subprocess.run([sys.executable, str(GEN), "--pattern", "PT-9999", "--root", str(root)], text=True, capture_output=True)
     assert r.returncode == 2
+
+
+def test_generates_draft_from_curated_nt_pattern(tmp_path):
+    """v0.16.0: 패턴 기록이 .nt 여도(wm_store 로 읽어) 같은 draft 가 나온다."""
+    sys.path.insert(0, str(SKILL.parent / "mso-work-memory" / "scripts"))
+    import wm_store
+    wm_store.append_entry(tmp_path / "agent-context" / "work-memory" / "insight-record" / "pattern.nt", {
+        "id": "PT-0001", "type": "pattern", "description": "T", "content": TEXT, "tags": [], "created_at": "2026-06-01T00:00:00Z",
+        "relations": [{"type": "generalized-in", "target": "EP-0001"}, {"type": "generalized-in", "target": "EP-0002"}],
+        "metadata": {"scope": ["workflow"], "context": "c"}})
+    r = run(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (tmp_path / "agent-context/workflow/drafts/workflow-pt-0001.abox.ttl").exists()

@@ -12,7 +12,7 @@ description: >
   훅 등록(settings.json) 자체는 mso-repository-setup --hook 이 맡고, 이 스킬은 이미 등록된 훅의 사본 갱신과
   연관 저장소 설정만 다룬다.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # MSO Work Memory Link
@@ -40,7 +40,7 @@ python3 $S sync-hooks [--scripts-dir D] [--apply] # 3. 훅 사본 vs 스킬 최�
 python3 $S verify   [--root R]                    # 4. 점검: 경로, git HEAD, bash -n, 해석기
 ```
 
-기록은 `wm_node.py new <type> --title ... --repo-name <name>` 으로 한다(`--repo <경로>` 도 가능).
+기록은 `wm_node.py new <type> --description ... --repo-name <name>` 으로 한다(`--repo <경로>` 도 가능).
 
 ## 판단 가이드
 

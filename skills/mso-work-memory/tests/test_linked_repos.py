@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import subprocess
 import sys
@@ -13,6 +14,15 @@ HOOKS = SKILL / "hooks"
 SCRIPTS = SKILL / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import wm_repos  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import wm_store  # noqa: E402
+
+
+def _nt_entries(workmem, type_dir, type_name):
+    """new 가 만든 큐레이션 기록(.nt)을 읽는다."""
+    return wm_store.load_nt_entries(workmem / type_dir / f"{type_name}.nt")[0]
+
 
 
 def run(*args, cwd, env=None, check=True):
@@ -78,16 +88,19 @@ def wm_node(*args, cwd, env=None):
 
 def test_wm_node_repo_flag_writes_to_target_repo(tmp_path):
     root, sub_wm, ext_wm = make_project(tmp_path, autocommit=False)
-    wm_node("new", "issue-note", "--title", "t1", "--repo", str(ext_wm.parent.parent), cwd=root)
-    lines = (ext_wm / "track-record" / "issue-note.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2 and json.loads(lines[-1])["id"] == "IN-0002"
+    wm_node("new", "issue-note", "--title", "t1", "--meta", "severity=minor", "--scope", "repository", "--repo", str(ext_wm.parent.parent), cwd=root)
+    # v0.16.0: 새 기록은 N-Triples(.nt)로, 이행 전 JSONL 기록(IN-0001)은 그대로 공존한다(밀리초 hex id)
+    nt_entries = wm_store.load_nt_entries(ext_wm / "track-record" / "issue-note.nt")[0]
+    assert len(nt_entries) == 1 and re.fullmatch(r"IN-[0-9a-f]{12}", nt_entries[0]["id"]), nt_entries
+    legacy = (ext_wm / "track-record" / "issue-note.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(legacy) == 1 and json.loads(legacy[0])["id"] == "IN-0001"
     assert not (root / "agent-context" / "work-memory" / "track-record").exists()   # 루트에는 쓰지 않는다
 
 
 def test_wm_node_repo_name_flag_any_position(tmp_path):
     root, sub_wm, ext_wm = make_project(tmp_path, autocommit=False)
-    wm_node("--repo-name", "ext", "new", "issue-note", "--title", "t2", cwd=root, env={"CLAUDE_PROJECT_DIR": str(root)})
-    assert len((ext_wm / "track-record" / "issue-note.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    wm_node("--repo-name", "ext", "new", "issue-note", "--title", "t2", "--meta", "severity=minor", "--scope", "repository", cwd=root, env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert len(wm_store.load_nt_entries(ext_wm / "track-record" / "issue-note.nt")[0]) == 1   # 새 기록은 .nt
 
 
 def test_wm_node_unknown_repo_name_fails(tmp_path):

@@ -12,9 +12,17 @@ context pack 을 컨텍스트에 주입한다 (UD-0015).
 커서가 없거나(=workflow 레일 밖 작업) wm_context.py 를 못 찾거나 결과가 비면
 **무출력·exit 0**. 절대 프롬프트를 막지 않는다.
 
+v0.16.0 — 점진적 주입:
+  - 주입 내용은 `id [type] description` 요약 목록이다. 본문은 `wm_context.py show <id>` 로 펼친다.
+  - 커서 node 에 매핑된(entry.node) 기록만 주입한다. 매핑이 없으면 무출력(점수 폴백은 opt-in).
+  - 총량 예산을 넘기지 않고, 같은 세션에서 이미 낸 id 는 다시 내지 않는다(stdin 의 session_id 가 있을 때).
+  - superseded/invalidated 기록은 제외한다.
+
 환경변수:
   MSO_WORKFLOW_CONTEXT_DISABLED=1   훅 비활성화
-  MSO_WORKFLOW_CONTEXT_TOP_K        주입할 entry 수 (기본 3 — 매 턴 주입이라 보수적)
+  MSO_WORKFLOW_CONTEXT_TOP_K        주입할 entry 수 상한 (기본 3 — 관계 확장 이웃 포함)
+  MSO_WORKFLOW_CONTEXT_MAX_CHARS    요약 목록 총량 예산(글자, 기본 1200)
+  MSO_WORKFLOW_CONTEXT_FALLBACK     score 로 두면 매핑이 없을 때 점수로 채운다 (기본 none=침묵)
   WORKMEM_DIR                       work-memory 루트 (미설정 시 프로젝트 기본 경로)
   PROJECT_DIR / CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR  현재 레포 절대경로
 """
@@ -27,6 +35,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_TOP_K = "3"
+DEFAULT_MAX_CHARS = "1200"
 CURSOR_RELS = (
     Path(".mso") / "state" / "workflow-cursor.json",
     Path(".claude") / "state" / "workflow-cursor.json",
@@ -40,6 +49,22 @@ def _find_wm_context() -> Path | None:
         if cand.exists():
             return cand
     return None
+
+
+def _session_id() -> str | None:
+    """UserPromptSubmit stdin(JSON)의 session_id. 없거나 읽을 수 없으면 None — 중복 방지 없이 동작한다."""
+    try:
+        if sys.stdin is None or sys.stdin.isatty():
+            return None
+        data = json.loads(sys.stdin.read() or "{}")
+    except (OSError, ValueError):
+        return None
+    sid = data.get("session_id") if isinstance(data, dict) else None
+    return str(sid) if sid else None
+
+
+def _safe(value: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "_" for c in value)[:80]
 
 
 def main() -> None:
@@ -73,7 +98,13 @@ def main() -> None:
         return
 
     cmd = [sys.executable, str(script), "node", "--node", str(node),
-           "--top-k", os.environ.get("MSO_WORKFLOW_CONTEXT_TOP_K", DEFAULT_TOP_K)]
+           "--top-k", os.environ.get("MSO_WORKFLOW_CONTEXT_TOP_K", DEFAULT_TOP_K),
+           "--max-chars", os.environ.get("MSO_WORKFLOW_CONTEXT_MAX_CHARS", DEFAULT_MAX_CHARS),
+           "--fallback", "score" if os.environ.get("MSO_WORKFLOW_CONTEXT_FALLBACK") == "score" else "none"]
+    sid = _session_id()
+    if sid:
+        state_dir = cursor_file.parent  # .mso/state (커서와 같은 곳)
+        cmd += ["--seen-file", str(state_dir / f"injected-{_safe(sid)}.json")]
     ttl = cursor.get("ttl")
     if ttl and Path(ttl).exists():
         cmd += ["--ttl", str(ttl)]

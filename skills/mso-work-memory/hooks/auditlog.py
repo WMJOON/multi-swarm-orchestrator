@@ -57,10 +57,13 @@ def main():
         "text": summary,
         "tags": ["auditlog", tool_name.lower()],
         "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "author": "agent",
+        # 이 기록을 쓴 주체는 훅(백그라운드 에이전트, 계정 주인 소속)이고, 도구를 호출한 에이전트는 metadata.actor 다.
+        # 두 주체를 구분해야 projection 에서 "누가 썼나"(BackgroundAgent→onBehalfOf→User)와 "누가 했나"를 따로 질의할 수 있다.
+        "author": "auditlog-hook",
         "metadata": {
             "tool": tool_name,
             "session_id": data.get("session_id", ""),
+            "actor": os.environ.get("MSO_AGENT_ID", "agent"),
         },
     }
 

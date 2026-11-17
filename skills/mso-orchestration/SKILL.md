@@ -204,9 +204,10 @@ MSO 스킬 팩의 **단일 진입점**. 사용자 의도를 트리거 매칭해 
 ```
 사용자: "방금 그 timeout 누락, 기록 남기자"
   → mso-orchestration: mso-work-memory 안내
-  → `wm_node.py new issue-note ...`
-  → 해결 후: `wm_node.py new trouble-shooting ...`
-  → 회고 시점: `wm_node.py new episode --related TS-NNNN:analyzed-in`
+  → `wm_node.py new issue-note --scope <대상 층> --description "..." --meta severity=minor`   (v0.16: scope·severity 필수)
+  → 해결 후: `wm_node.py new trouble-shooting --scope <대상 층> --description "..." --meta resolution=... --meta root_cause=...`
+  → 회고 시점: `wm_node.py new episode --scope <대상 층> --description "..." --related TS-NNNN:analyzed-in`
+  (필수 metadata 는 타입마다 다르다 — mso-work-memory SKILL.md 의 "타입별 metadata". 빠지면 `new` 가 기록하지 않는다.)
 ```
 
 ### Pattern Analytics 경계 (v0.5.0)

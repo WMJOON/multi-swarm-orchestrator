@@ -175,10 +175,17 @@ def cmd_init(args):
 
 
 def _iter_jsonl_entries(root: Path):
-    for jf in sorted(root.rglob("*.jsonl")):
+    """root 아래의 기록을 (파일, 줄 번호|None, entry) 로. 큐레이션 `.nt`(정본)와 `.jsonl`(런타임 로그·이행 전 기록) 모두."""
+    import re as _re
+    for jf in sorted([*root.rglob("*.jsonl"), *root.rglob("*.nt")], key=lambda p: (bool(_re.search(r"\s\d+$", p.stem)), str(p))):
         rel_parts = jf.relative_to(root).parts[:-1]
         if any(p.startswith(".") for p in rel_parts):
             continue  # .zvec, .migration-archive 등 제외
+        if jf.suffix == ".nt":
+            import wm_store  # 같은 디렉터리(stdlib)
+            for e in wm_store.load_nt_entries(jf)[0]:
+                yield jf, None, e
+            continue
         for line_num, line in enumerate(jf.read_text(encoding="utf-8").splitlines(), 1):
             line = line.strip()
             if not line:
@@ -225,8 +232,9 @@ def cmd_add(args):
 
     for jf, line_num, e in _iter_jsonl_entries(root):
         eid = e.get("id") or f"{jf.stem}:{line_num}"
-        title = e.get("title", "") or ""
-        text = e.get("text", "") or ""
+        # schema v1.4.0: description/content 우선, 옛 title/text 폴백. zvec 필드명 "title" 은 인덱스 스키마라 유지한다.
+        title = e.get("description") or e.get("title") or ""
+        text = e.get("content") or e.get("text") or ""
         tags = ",".join(e.get("tags", []) or [])
         embed_source = f"{title} {text}"[:2000]
         fields = {

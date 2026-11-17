@@ -17,16 +17,27 @@ wm:EntryShape a sh:NodeShape ;
         sh:maxCount 1
     ] ;
     sh:property [
-        sh:path wm:title ;
+        sh:path wm:description ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:maxLength 200 ;
+        sh:message "description 은 1건, 최대 200자"
+    ] ;
+    sh:property [
+        sh:path wm:content ;
         sh:datatype xsd:string ;
         sh:minCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
-        sh:path wm:text ;
-        sh:datatype xsd:string ;
-        sh:minCount 1 ;
+        sh:path wm:validity ;
+        sh:in ( "active" "superseded" "invalidated" "deprecated" "suspended" ) ;
         sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path wm:supersededBy ;
+        sh:class wm:Entry
     ] ;
     sh:property [
         sh:path wm:createdAt ;

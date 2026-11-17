@@ -1,0 +1,14 @@
+# 폐기되지 않은 기록만 (v0.16.0)
+# wm:validity 는 투영 시 relations 에서 파생된다(JSONL 에 저장하지 않는다 — UD-0012).
+# superseded/invalidated 를 거르고, suspended(롤백으로 무효화가 보류된 재유효 후보)는 남긴다.
+PREFIX wm: <https://mso.dev/ontology/work-memory#>
+
+SELECT ?id ?type ?description ?validity
+WHERE {
+  ?entry wm:entryId ?id ;
+         wm:typeName ?type ;
+         wm:description ?description ;
+         wm:validity ?validity .
+  FILTER(?validity IN ("active", "suspended"))
+}
+ORDER BY ?id

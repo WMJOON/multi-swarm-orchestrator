@@ -1,0 +1,418 @@
+{
+ "version": "1.0.0",
+ "enforce_from": "2026-11-17T00:00:00Z",
+ "vocabularies": {
+  "severity": {
+   "class": "Severity",
+   "values": [
+    {
+     "value": "minor",
+     "id": "minor"
+    },
+    {
+     "value": "major",
+     "id": "major"
+    },
+    {
+     "value": "critical",
+     "id": "critical"
+    }
+   ]
+  },
+  "issueStatus": {
+   "class": "IssueStatus",
+   "values": [
+    {
+     "value": "open",
+     "id": "open"
+    },
+    {
+     "value": "fixing",
+     "id": "fixing"
+    },
+    {
+     "value": "partially-resolved",
+     "id": "partiallyResolved"
+    },
+    {
+     "value": "resolved",
+     "id": "resolved"
+    }
+   ]
+  },
+  "confidence": {
+   "class": "Confidence",
+   "values": [
+    {
+     "value": "high",
+     "id": "high"
+    },
+    {
+     "value": "medium",
+     "id": "medium"
+    },
+    {
+     "value": "low",
+     "id": "low"
+    }
+   ]
+  },
+  "scope": {
+   "class": "Scope",
+   "values": [
+    {
+     "value": "repository",
+     "id": "repository",
+     "aliases": [
+      "project"
+     ]
+    },
+    {
+     "value": "workflow",
+     "id": "workflow"
+    },
+    {
+     "value": "task",
+     "id": "task"
+    },
+    {
+     "value": "artifact",
+     "id": "artifact"
+    },
+    {
+     "value": "directory",
+     "id": "directory",
+     "aliases": [
+      "module"
+     ]
+    },
+    {
+     "value": "memory",
+     "id": "memory"
+    },
+    {
+     "value": "global",
+     "id": "global"
+    }
+   ]
+  },
+  "principleStatus": {
+   "class": "PrincipleStatus",
+   "values": [
+    {
+     "value": "draft",
+     "id": "draft"
+    },
+    {
+     "value": "accepted",
+     "id": "accepted"
+    },
+    {
+     "value": "deprecated",
+     "id": "deprecated"
+    }
+   ]
+  },
+  "releaseKind": {
+   "class": "ReleaseKind",
+   "values": [
+    {
+     "value": "release",
+     "id": "release"
+    },
+    {
+     "value": "rollback",
+     "id": "rollback"
+    }
+   ]
+  }
+ },
+ "agents": {
+  "classes": {
+   "user": "User",
+   "softwareAgent": "SoftwareAgent",
+   "backgroundAgent": "BackgroundAgent"
+  },
+  "builtin": [
+   {
+    "id": "user",
+    "kind": "user"
+   },
+   {
+    "id": "agent",
+    "kind": "softwareAgent",
+    "onBehalfOf": "user"
+   },
+   {
+    "id": "auditlog-hook",
+    "kind": "backgroundAgent",
+    "onBehalfOf": "user",
+    "trigger": "hook"
+   }
+  ]
+ },
+ "structures": {
+  "Option": {
+   "class": "Option",
+   "key": "n",
+   "properties": {
+    "n": {
+     "property": "optionNumber",
+     "datatype": "integer",
+     "required": true
+    },
+    "name": {
+     "property": "optionName",
+     "datatype": "string",
+     "required": true
+    },
+    "description": {
+     "property": "optionDescription",
+     "datatype": "string"
+    },
+    "trade_off": {
+     "property": "tradeOff",
+     "datatype": "string"
+    }
+   }
+  }
+ },
+ "common": {
+  "scope": {
+   "property": "scope",
+   "kind": "object",
+   "vocab": "scope",
+   "required": true,
+   "multiple": true
+  },
+  "scope_note": {
+   "property": "skos:scopeNote",
+   "kind": "datatype",
+   "datatype": "string"
+  },
+  "component": {
+   "property": "component",
+   "kind": "datatype",
+   "datatype": "string"
+  },
+  "module": {
+   "property": "inModule",
+   "kind": "object",
+   "range": "Module"
+  },
+  "needs_review": {
+   "property": "needsReview",
+   "kind": "datatype",
+   "datatype": "boolean"
+  }
+ },
+ "types": {
+  "issue-note": {
+   "class": "IssueNote",
+   "metadata": {
+    "reporter": {
+     "property": "reportedBy",
+     "kind": "object",
+     "range": "Agent",
+     "required": true
+    },
+    "severity": {
+     "property": "severity",
+     "kind": "object",
+     "vocab": "severity",
+     "required": true
+    },
+    "status": {
+     "property": "status",
+     "kind": "object",
+     "vocab": "issueStatus",
+     "required": true
+    }
+   }
+  },
+  "agent-decision": {
+   "class": "AgentDecision",
+   "metadata": {
+    "rationale": {
+     "property": "rationale",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "alternatives": {
+     "property": "alternative",
+     "kind": "datatype",
+     "datatype": "string",
+     "multiple": true
+    },
+    "confidence": {
+     "property": "confidence",
+     "kind": "object",
+     "vocab": "confidence",
+     "required": true
+    }
+   }
+  },
+  "user-decision": {
+   "class": "UserDecision",
+   "metadata": {
+    "rationale": {
+     "property": "rationale",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "structural": {
+     "property": "structural",
+     "kind": "datatype",
+     "datatype": "boolean"
+    },
+    "boundary": {
+     "property": "boundary",
+     "kind": "datatype",
+     "datatype": "string"
+    },
+    "criterion": {
+     "property": "criterion",
+     "kind": "datatype",
+     "datatype": "string"
+    },
+    "alternatives": {
+     "property": "alternative",
+     "kind": "datatype",
+     "datatype": "string",
+     "multiple": true
+    }
+   }
+  },
+  "alternatives-record": {
+   "class": "AlternativesRecord",
+   "metadata": {
+    "provided_by": {
+     "property": "providedBy",
+     "kind": "object",
+     "range": "Agent",
+     "required": true
+    },
+    "options": {
+     "property": "option",
+     "kind": "object",
+     "range": "Option",
+     "structured": true,
+     "multiple": true,
+     "required": true
+    },
+    "recommended": {
+     "property": "recommendedOption",
+     "kind": "object",
+     "range": "Option",
+     "ref": true
+    }
+   }
+  },
+  "trouble-shooting": {
+   "class": "TroubleShooting",
+   "metadata": {
+    "resolution": {
+     "property": "resolution",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "root_cause": {
+     "property": "rootCause",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "prevention": {
+     "property": "prevention",
+     "kind": "datatype",
+     "datatype": "string"
+    }
+   }
+  },
+  "release-note": {
+   "class": "ReleaseNote",
+   "metadata": {
+    "version": {
+     "property": "version",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "released_at": {
+     "property": "releasedAt",
+     "kind": "datatype",
+     "datatype": "dateTime"
+    },
+    "kind": {
+     "property": "releaseKind",
+     "kind": "object",
+     "vocab": "releaseKind",
+     "required": true
+    }
+   }
+  },
+  "episode": {
+   "class": "Episode",
+   "metadata": {
+    "event_date": {
+     "property": "eventDate",
+     "kind": "datatype",
+     "datatype": "dateTime"
+    },
+    "participants": {
+     "property": "participant",
+     "kind": "object",
+     "range": "Agent",
+     "multiple": true
+    },
+    "timeline": {
+     "property": "timeline",
+     "kind": "datatype",
+     "datatype": "string"
+    }
+   }
+  },
+  "pattern": {
+   "class": "Pattern",
+   "metadata": {
+    "frequency": {
+     "property": "frequency",
+     "kind": "datatype",
+     "datatype": "integer"
+    },
+    "context": {
+     "property": "patternContext",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "sources": {
+     "property": "source",
+     "kind": "object",
+     "range": "Entry",
+     "multiple": true
+    }
+   }
+  },
+  "principle": {
+   "class": "Principle",
+   "metadata": {
+    "statement": {
+     "property": "statement",
+     "kind": "datatype",
+     "datatype": "string",
+     "required": true
+    },
+    "status": {
+     "property": "principleStatus",
+     "kind": "object",
+     "vocab": "principleStatus",
+     "required": true
+    }
+   }
+  }
+ }
+}

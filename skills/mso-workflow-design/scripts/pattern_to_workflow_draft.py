@@ -29,7 +29,28 @@ STEP = re.compile(r"(?:(?<=\s)|^)(\d{1,2})\.\s+(.+?)(?=(?:\s\d{1,2}\.\s)|\Z)", r
 EP_REL = {"generalized-in", "shows-pattern"}
 
 
+def _wm_store():
+    """mso-work-memory 의 wm_store.py(stdlib)로 큐레이션 기록(.nt)을 읽는다. 없으면 None(→ 이행 전 .jsonl 만)."""
+    here = Path(__file__).resolve()
+    for cand in (here.parents[2] / "mso-work-memory" / "scripts", here.parent):
+        if (cand / "wm_store.py").is_file():
+            sys.path.insert(0, str(cand))
+            try:
+                import wm_store  # type: ignore
+                return wm_store
+            except Exception:  # noqa: BLE001
+                return None
+    return None
+
+
 def load_pattern(workmem: Path, pid: str) -> dict | None:
+    nt = workmem / "insight-record" / "pattern.nt"
+    if nt.is_file():
+        store = _wm_store()
+        if store is not None:
+            for d in store.load_nt_entries(nt)[0]:
+                if d.get("id") == pid:
+                    return d
     f = workmem / "insight-record" / "pattern.jsonl"
     if not f.is_file():
         return None
@@ -99,10 +120,10 @@ def main(argv=None) -> int:
     eps = [r["target"] for r in pt.get("relations", []) if r.get("type") in EP_REL]
     if len(eps) < a.min_episodes:
         print(f"근거 에피소드 {len(eps)}개 < {a.min_episodes}개: 초안을 만들지 않습니다"); return 3
-    steps = parse_steps(pt.get("text", ""))
+    steps = parse_steps(pt.get("content") or pt.get("text", ""))
     if len(steps) < 2:
         print("번호 매긴 단계(2개 이상)를 찾지 못했습니다. 절차형 패턴이 아니면 workflow 후보가 아닙니다"); return 2
-    ttl = build_ttl(a.pattern, pt.get("title", a.pattern), eps, steps)
+    ttl = build_ttl(a.pattern, pt.get("description") or pt.get("title", a.pattern), eps, steps)
     out = root / a.workflow_dir / "drafts" / f"workflow-{a.pattern.lower()}.abox.ttl"
     if a.dry_run:
         print(ttl); print(f"# dry-run: {out} 에 쓰지 않았습니다"); return 0

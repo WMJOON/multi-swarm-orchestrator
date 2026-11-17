@@ -21,7 +21,7 @@ description: >
       camelCase hooks.json(PostToolUse/Stop/PreInvocation) 을 기존 snake_case
       훅 계약으로 변환한다 (등록은 mso-repository-setup 담당).
 metadata:
-  version: "0.11.1"
+  version: "0.12.0"
 ---
 
 # MSO Work Memory
@@ -137,8 +137,9 @@ IN ──raised──> AD/UD ──followed-by──> ... ──resolved-by─�
 {
   "id": "IN-0042",
   "type": "issue-note",
-  "title": "한 줄 요약 (≤60자)",
-  "text": "본문 (markdown 가능, 임베딩 대상)",
+  "description": "본문을 펼칠지 판단하는 문구 (≤200자)",
+  "content": "본문 (markdown 가능, 임베딩 대상은 description+content)",
+  "node": ["discovery-s-001"],
   "tags": ["...", "..."],
   "created_at": "2026-05-22T15:30:00Z",
   "source_path": "agent-context/work-memory/track-record/issue-note.jsonl",
@@ -178,17 +179,102 @@ IN ──raised──> AD/UD ──followed-by──> ... ──resolved-by─�
 
 > **타입 어휘는 schema-driven (v0.3.4+).** `wm_node.py` 는 타입 prefix/dir 과 relation 어휘를 `WORKMEM_DIR/schema.yaml` 의 `types:`/`relation_types:` 에서 읽는다(없으면 기본 7타입 fallback — 하위호환). 같은 엔진을 다른 스코프(예: user-memory UC/UP/UF)로 재사용하려면 그 스코프의 `schema.yaml` 에 `types:` 만 다르게 둔다.
 
+## 저장 형식: N-Triples 정본 (v0.16.0)
+
+큐레이션 기록(track-record·insight-record·release-record)의 정본은 `<dir>/<type>.nt` 다 — **한 줄에 triple 하나**, Turtle 의 부분집합이므로 곧 TTL 이다.
+`auditlog`/`worklog`(런타임 로그)는 JSONL 로 남는다. 이행 전 `<type>.jsonl` 도 계속 읽힌다.
+
+- **쓰기·편집은 스크립트로만 한다**: `wm_node.py new`(append), `relate`·`map-node`·`edit`(제자리 교체, 위치 유지·원자적). `show <id> --nt` 로 triple 을 본다. 손으로 고치지 않는다.
+- **변환 규칙은 `scripts/wm_store.py`(stdlib) 한 곳**이다. 기록 ↔ triple 을 손실 없이 왕복한다: 명세로 표현할 수 없는 항목(통제 어휘 밖 값, 명세 밖 metadata 키, 알 수 없는 relation 타입, 알 수 없는 최상위 키)은 `wm:unmapped` JSON 리터럴 하나에 원문 그대로 보존한다. 투영(`wm_to_ttl.py`)은 이 triple 을 읽고 주체·모듈·파생 validity 만 더한다.
+- **복사되는 훅**(`wm_context.py`, `wm_release.py`)이 `.nt` 를 읽으려면 같은 디렉터리에 `wm_store.py` 와 `metadata-spec.json` 이 있어야 한다(`init.py --hook` 이 복사). 없으면 훅은 `.nt` 를 건너뛰고 침묵한다(크래시 없음).
+- **병합·iCloud 충돌 복제본**: 같은 기록에 단일값 필드(description 등)가 둘 이상이면 조용히 합치지 않고 `validate` 가 `[DUP-FIELD]` 로 보고한다.
+- **`edit` 의 범위**: `description`/`content`(이력)는 `needs_review` 기록(보정 경로)에서만 고칠 수 있고 확정된 기록은 `--allow-rewrite` 가 필요하다. scope·scope_note·component·module·tags·metadata 는 자유롭게 고친다.
+- **이행**: `wm_migrate_store.py` — 필드 이행(title/text → description/content)·metadata 이행(module → component 등)·JSONL → `.nt` 를 한 번에. 기본 dry-run, 쓰기 전 왕복 검증, 원본은 `.migration-archive/` 로, 멱등. **글로벌 스킬이 v0.15.x 인 동안에는 이행하지 않는다**(그 버전은 `.nt` 를 못 읽는다).
+
+## 상시 주입: standing context (v0.16.0)
+
+노드별 주입(`workflow-context-hook.py`)은 **노드에 매핑된** 기록만 넣으므로 워크플로우 커서가 없는 작업이나 노드와 무관한 원칙은 닿지 않는다. 그 공백을 `standing-context-hook.py`(SessionStart: startup·compact·resume)가 메운다.
+
+- 대상: **scope 가 `repository`/`global` 인 `accepted` principle**(폐기·대체된 것과 draft 는 제외). 요약 목록(`id [type] description`)과 펼치기 명령만 넣는다. 해당 기록이 없으면 무출력.
+- `wm_context.py standing [--types principle] [--scopes repository,global] [--top-k 5] [--max-chars 900]`. 훅 환경변수: `MSO_STANDING_CONTEXT_DISABLED`, `MSO_STANDING_TOP_K`, `MSO_STANDING_MAX_CHARS`, `MSO_STANDING_TYPES`, `MSO_STANDING_SCOPES`.
+- `init.py --hook` 이 Claude(`.claude/settings.json`)와 Codex(`.codex/config.toml`)에 등록한다(Antigravity 는 SessionStart 미지원이라 제외).
+
+## 자동 기록의 주체 (v0.16.0)
+
+`auditlog` 훅이 남기는 기록의 **작성 주체(`author`)는 `auditlog-hook`**(내장 BackgroundAgent, `trigger: hook`, 계정 주인 `user` 에 소속 `onBehalfOf`)이고, 도구를 호출한 에이전트는 `metadata.actor`(환경변수 `MSO_AGENT_ID`, 기본 `agent`)다. 투영(`wm_to_ttl.py project --include-runtime`)에서 "누가 썼나"(`BackgroundAgent → onBehalfOf → User`)와 "누가 했나"를 따로 질의할 수 있다. 다른 훅·예약 작업을 주체로 쓰려면 `<work-memory>/agents.yaml` 에 등록한다.
+
+## SPARQL 질의: `wm_query.py` (v0.16.0)
+
+정본이 N-Triples 라서 **변환 없이 그대로 RDF 저장소에 적재**해 질의한다(별도 TTL 투영 불필요). 백엔드는 **pyoxigraph**(선택 의존성, 빠름)를 우선 쓰고 없으면 **rdflib** 으로 폴백한다 — 결과는 같다(테스트로 고정).
+
+```bash
+python wm_query.py list                                          # 번들 질의 목록
+python wm_query.py run memory-active                             # 폐기되지 않은 기록만
+python wm_query.py run memory-for-node --param node=discovery-s-001
+python wm_query.py run memory-valid-at-version --param atKey=14004   # 버전 0.14.4 시점에 유효한 기록
+python wm_query.py run --sparql "SELECT ..." --format json       # 임의 SPARQL
+```
+
+- 적재 직후 `references/queries/derive.rq`(SPARQL UPDATE)가 파생 속성(`wm:validity`, `wm:supersededBy`, 버전 정렬 키)을 도출한다 — 저장하지 않는다(UD-0012). 같은 규칙이 `wm_release.derive_validity`·`wm_to_ttl.add_derived` 에도 있어 **세 곳의 결과가 같음을 parity 테스트가 고정**한다(규칙을 바꾸면 함께 바꾼다).
+- 주체(User/SoftwareAgent/BackgroundAgent, `onBehalfOf`)·모듈·관련 workflow node individual 도 추가된다(`agents.yaml` 반영, PyYAML 이 있을 때).
+- 질의 파일의 `{{이름:기본값}}` 자리표시자는 `--param` 으로 바꾼다. 이행 전 `.jsonl` 도 `wm_store` 로 변환해 함께 질의한다.
+- 측정(합성 3,000건): pyoxigraph 적재+파생+개체 ≈ 118 ms·질의 6.5 ms, rdflib ≈ 1,093 ms·92 ms.
+- SHACL 검증은 pyshacl(rdflib 위)이라 이 도구의 범위가 아니다 — `wm_to_ttl.py validate`.
+
+## 점진적 주입 (v0.16.0, schema v1.4.0)
+
+에이전트 스킬처럼 **id 가 이름, `description` 이 "본문을 펼칠지 판단하는 문구", `content` 가 본문**이다.
+
+| 필드 | 설명 |
+|---|---|
+| `description` | 필수, 최대 200자(`wm_node validate` 와 SHACL `sh:maxLength` 가 강제). 무엇을 결정/기록했고 언제 필요한지 쓴다. 옛 `title` 의 후속 |
+| `content` | 필수. 본문. 옛 `text` 의 후속 |
+| `node` | 선택, `list[str]`. 연관 workflow node id (related 매핑). `wm_node.py new --node <id>` |
+
+- **읽기 호환**: 읽는 쪽은 `description or title`, `content or text` 로 옛 기록도 읽는다. 쓰기는 새 필드만 쓴다. `--title`/`--text` 는 deprecated 별칭이다.
+- **주입(훅)**: `workflow-context-hook.py` 는 커서 node 에 **매핑된** 기록의 `id [type] description` 요약 목록만 넣는다. 매핑이 없으면 침묵한다
+  (`MSO_WORKFLOW_CONTEXT_FALLBACK=score` 로 점수 폴백 opt-in). 본문은 `wm_context.py show <id>` 로 펼친다.
+  총량 예산 `MSO_WORKFLOW_CONTEXT_MAX_CHARS`(기본 1200), 건수 상한 `MSO_WORKFLOW_CONTEXT_TOP_K`(기본 3, 관계 확장 이웃 포함),
+  같은 세션 중복 방지(stdin 의 `session_id`)가 걸린다.
+- **폐기 여부(파생 validity)**: JSONL 에 저장하지 않는다(UD-0012). `supersedes`·`invalidated-by`·`rolls-back` 에서 도출한다
+  (`active`/`superseded`/`invalidated`/`suspended`). 주입은 `superseded`/`invalidated` 를 제외하고, TTL 투영은 `wm:validity`,
+  `wm:supersededBy`, 버전 정렬 키(`wm:versionKey`, `wm:validFromKey`, `wm:invalidatedInKey`)를 내보낸다.
+  SPARQL 예시는 `references/queries/memory-active.rq`, `memory-valid-at-version.rq`, `memory-for-node.rq`.
+- **매핑 붙이기**: 새 기록은 `wm_node.py new --node <id>`, 기존 기록은 `wm_node.py map-node <id> --node <node-id>`. 매핑이 없으면 훅은 침묵한다.
+- **이행**: `scripts/wm_migrate_store.py`(권장 — 필드·metadata·저장 형식을 한 번에) 또는 `wm_migrate_fields.py`(JSONL 에서 필드만). (아래 CLI). 기본 dry-run, 멱등, 원본은 `.migration-archive/` 에 백업, iCloud 복제본(`* 2.jsonl`) 제외.
+
+## 타입별 metadata (v0.16.0)
+
+타입마다 metadata 키·값 집합·필수 여부는 `references/metadata-spec.yaml`(SSOT)이 정한다. `wm_node.py validate/new`, `wm_to_ttl.py`, 생성된 TBox/SHACL(`wm_gen_vocab.py`)이 모두 이 명세를 따른다.
+
+- **`scope`(강제)**: 모든 타입의 필수 metadata. 이 기록이 적용되는 **대상의 층**이다 — `repository` | `workflow` | `task` | `artifact` | `directory` | `memory` | `global`. **대상이 여러 개일 수 있어 리스트이며 최소 1개**다(`new --scope repository --scope workflow`). 기록마다 다르므로 기본값이 없다. 자유 서술 보충은 `scope_note`(`skos:scopeNote`)에 쓴다. 옛 어휘 `project`→`repository`, `module`→`directory` 는 별칭으로 받는다.
+- **`component` ≠ `module`**: `component` 는 구성요소 이름(스킬·패키지, 문자열, `new --component`). `module` 은 스캐폴드 index 의 module id(개체 `wm:inModule`, `new --in-module`)이며 index 와 연결될 때만 쓴다. 옛 `--module` 은 `--component` 의 deprecated 별칭이다.
+- **새 기록(2026-11-17 이후)**: 필수 metadata 누락·값 위반이 오류다. 옛 기록과 `metadata.needs_review=true` 기록은 경고다. `new` 는 필수가 빠지면 기록하지 않는다(`--allow-incomplete`).
+  - issue-note: `reporter`(기본=author), `severity`(minor|major|critical), `status`(open|fixing|partially-resolved|resolved, 기본 open)
+  - agent-decision: `rationale`, `confidence`(high|medium|low) / user-decision: `rationale` / alternatives-record: `provided_by`, `options` / trouble-shooting: `resolution`, `root_cause` / release-note: `version`, `kind` / pattern: `context` / principle: `statement`, `scope`, `status`
+- **TTL**: ObjectProperty = 통제 어휘·주체·모듈·entry, DatatypeProperty = 서술·숫자·날짜·버전. 프로퍼티는 lowerCamelCase(`rootCause`), 클래스는 UpperCamelCase. 인스턴스 IRI 는 `https://mso.dev/id/…`(slash), 어휘는 `…/ontology/work-memory#`.
+- **주체**: `User` / `SoftwareAgent`(`onBehalfOf` = 계정 주인) / `BackgroundAgent`(`trigger`). 선택 파일 `<work-memory>/agents.yaml` 에 `agents: [{id, kind, onBehalfOf, trigger}]` 로 등록한다.
+- **ID**: 새 id 는 `<PREFIX>-<epoch 밀리초 12자리 hex>`(예: `UD-019a3c5e4f21`, `wm_node.id_time` 으로 시각 복원). 옛 십진 id 도 유효하다.
+
 ## CLI: `wm_node.py`
 
 ```bash
 # 새 entry 작성 (대화형 stub 출력)
-python wm_node.py new <type> --title "..." [--tags a,b,c] [--related TS-0017:resolved-by]
+python wm_node.py new <type> --scope <repository|workflow|task|artifact|directory|memory|global> --description "..." [--component C] [--tags a,b,c] [--related TS-0017:resolved-by]
 
 # 타입별 metadata 지정 — 스칼라는 --meta key=value (반복), 리스트/중첩은 --metadata JSON
-python wm_node.py new release-note --title "v0.10.0" --tags release \
+python wm_node.py new release-note --scope repository --description "v0.10.0" --tags release \
     --meta version=0.10.0 --meta kind=release --meta scope=00_multi-swarm-orchestrator
-python wm_node.py new alternatives-record --title "..." --tags decision \
-    --metadata '{"provided_by":"agent","recommended":1,"options":[{"n":1,"name":"A","trade_off":"..."}]}'
+python wm_node.py new alternatives-record --scope task --description "..." --tags decision \
+    --metadata '{"provided_by":"agent","recommended":1,"options":[{"n":1,"name":"A","trade_off":"..."},{"n":2,"name":"B"}]}' \
+    # options 는 TTL 에서 Option 노드가 되고, recommended 는 그 중 하나(n)를 가리킨다
+
+# 점진적 주입: 요약 목록 → 필요한 것만 펼치기
+python wm_context.py node --node discovery-s-001 --fallback none --max-chars 1200
+python wm_context.py show UD-0012
+
+# 옛 title/text 기록을 description/content 로 이행 (기본 dry-run, --apply 로 실제 전환)
+python wm_migrate_fields.py [--apply] [--root <work-memory 경로> ...]
 
 # 검증 (단일 파일 또는 디렉토리 전체)
 python wm_node.py validate <path>

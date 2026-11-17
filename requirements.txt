@@ -3,3 +3,4 @@ rdflib>=7.0
 jsonschema>=4.24.0
 duckdb>=1.1
 pyshacl>=0.31  # mso-workflow-design 검증(validate_abox, validate_artifact_layer)
+# pyoxigraph>=0.4  # (선택) wm_query.py 가속 — 없으면 rdflib 으로 폴백 (3,000건: 적재+파생+질의 약 0.12s vs 1.1s)

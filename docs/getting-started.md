@@ -1,4 +1,4 @@
-# 시작하기 (v0.15.1)
+# 시작하기 (v0.16.0)
 
 > **Python 환경**: 스킬 스크립트는 `requirements.txt`(PyYAML, rdflib, jsonschema, duckdb, pyshacl)만 있으면 돈다. `mso-workflow-optimizer`의 모델 요약 단계(멈췄다가 이어가기)를
 > 쓰려면 `requirements-langgraph.txt`(langgraph, 체크포인터)가 추가로 필요하다(결정적 분석은 없어도 선형으로 동작). venv는 저장소에 내장하지 않는다 — `bash install.sh --venv`가 저장소 밖
@@ -215,16 +215,16 @@ WM=~/.claude/skills/mso-work-memory/scripts/wm_node.py
 
 # entry 생성
 python3 $WM new issue-note \
-  --title "timeout 누락 발견" --tags "policy,timeout" --module "01.core"
+  --scope repository --description "timeout 누락 발견" --meta severity=minor --tags "policy,timeout" --component "01.core"
 
 python3 $WM new agent-decision \
-  --title "retry 로직 추가 결정" --tags "retry,resilience"
+  --scope task --description "retry 로직 추가 결정" --meta rationale=... --meta confidence=high --tags "retry,resilience"
 
 python3 $WM new alternatives-record \
-  --title "재시도 정책 3안 비교" --tags "retry,decision"
+  --scope task --description "재시도 정책 3안 비교" --tags "retry,decision"
 
 python3 $WM new user-decision \
-  --title "v2 마감 연기 승인" --tags "schedule"
+  --scope workflow --description "v2 마감 연기 승인" --meta rationale=... --tags "schedule"
 
 # 통계
 python3 $WM stats
@@ -351,7 +351,7 @@ python3 $LINK verify                          # 경로, git HEAD, 훅 문법
 
 # 연관 저장소 work-memory 에 기록
 WM=~/.claude/skills/mso-work-memory/scripts/wm_node.py
-python3 $WM new agent-decision --title "..." --repo-name child-repo
+python3 $WM new agent-decision --scope repository --description "..." --meta rationale=... --meta confidence=high --repo-name child-repo
 python3 $WM stats --repo ~/path/to/repo       # 경로로 직접 지정해도 된다
 ```
 

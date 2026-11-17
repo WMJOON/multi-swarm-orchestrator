@@ -124,6 +124,7 @@ fix_commits="${fix_commits:-0}"
 # IN/TS 디렉토리에 working-tree 대기분이 있으면 이미 기록 중 → 생략
 # aggregate <type>.jsonl (v1.2.0) + 구버전 per-entry 디렉토리 둘 다 pathspec 으로 (호환)
 ts_dirty=$(git status --porcelain -- \
+  "$WM/track-record/trouble-shooting.nt" "$WM/track-record/issue-note.nt" \
   "$WM/track-record/trouble-shooting.jsonl" "$WM/track-record/issue-note.jsonl" \
   "$WM/track-record/trouble-shooting" "$WM/track-record/issue-note" 2>/dev/null | grep -c . || true)
 ts_dirty="${ts_dirty:-0}"
@@ -147,8 +148,9 @@ fi
 # ── (2) insight-record 넛지 ────────────────────────────────────────────
 # 종결된 TS 이후 EP 회고가 없으면 권유 (회고는 작성 단계가 길어 git 시각 대신 mtime).
 # aggregate <type>.jsonl (v1.2.0) 우선, 구버전 per-entry 파일도 함께 (mtime 비교)
-newest_ts=$(ls -t "$WM"/track-record/trouble-shooting.jsonl "$WM"/track-record/trouble-shooting/TS-*.jsonl 2>/dev/null | head -1)
-newest_ep=$(ls -t "$WM"/insight-record/episode.jsonl "$WM"/insight-record/episodes/EP-*.jsonl 2>/dev/null | head -1)
+# v0.16.0: 큐레이션 정본은 <type>.nt (이행 전 <type>.jsonl 도 함께 본다)
+newest_ts=$(ls -t "$WM"/track-record/trouble-shooting.nt "$WM"/track-record/trouble-shooting.jsonl "$WM"/track-record/trouble-shooting/TS-*.jsonl 2>/dev/null | head -1)
+newest_ep=$(ls -t "$WM"/insight-record/episode.nt "$WM"/insight-record/episode.jsonl "$WM"/insight-record/episodes/EP-*.jsonl 2>/dev/null | head -1)
 
 if [ -n "$newest_ts" ] && { [ -z "$newest_ep" ] || [ "$newest_ts" -nt "$newest_ep" ]; }; then
   add_msg "[work-memory] 종결된 trouble-shooting(TS) 이후 회고(EP)가 없습니다. 사건이 일단락됐다면 episode 로 회고하세요 — EP 가 누적되면 pattern(PT) → principle(PR) 로 추상화할 수 있습니다."

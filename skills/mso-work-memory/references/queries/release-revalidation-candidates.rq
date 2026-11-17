@@ -3,12 +3,12 @@
 # 엣지는 삭제하지 않는다 (append-only) — 이 쿼리가 보류 상태를 도출한다.
 PREFIX wm: <https://mso.dev/ontology/work-memory#>
 
-SELECT ?id ?type ?title ?releaseId ?rollbackId
+SELECT ?id ?type ?description ?releaseId ?rollbackId
 WHERE {
   ?entry wm:invalidatedBy ?rn ;
          wm:entryId ?id ;
          wm:typeName ?type ;
-         wm:title ?title .
+         wm:description ?description .
   ?rn wm:entryId ?releaseId .
   ?rollback wm:rollsBack ?rn ;
             wm:entryId ?rollbackId .

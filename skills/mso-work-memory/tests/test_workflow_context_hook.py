@@ -11,13 +11,14 @@ HOOK = SKILL / "hooks" / "workflow-context-hook.py"
 
 
 def _run(script: Path, *args: str, project: Path, workmem: Path | None = None,
-         **env_extra) -> subprocess.CompletedProcess:
+         stdin: str | None = None, **env_extra) -> subprocess.CompletedProcess:
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(project)}
     if workmem:
         env["WORKMEM_DIR"] = str(workmem)
     env.update(env_extra)
     return subprocess.run([sys.executable, str(script), *args],
-                          capture_output=True, text=True, env=env)
+                          capture_output=True, text=True, env=env,
+                          input=stdin if stdin is not None else "")
 
 
 def _seed_workmem(project: Path) -> Path:
@@ -27,8 +28,9 @@ def _seed_workmem(project: Path) -> Path:
     path.write_text(json.dumps({
         "id": "PR-0001",
         "type": "principle",
-        "title": "Input collection must be explicit",
-        "text": "Collect inputs before validation.",
+        "description": "Input collection must be explicit",
+        "content": "Collect inputs before validation.",
+        "node": ["discovery-s-001"],
         "tags": ["discovery-s-001", "step"],
         "created_at": "2026-06-01T00:00:00Z",
         "relations": [],
@@ -200,8 +202,8 @@ def test_hook_respects_top_k_env(tmp_path):
     with extra.open("a", encoding="utf-8") as f:
         for n in (2, 3, 4, 5):
             f.write(json.dumps({
-                "id": f"PR-000{n}", "type": "principle", "title": f"P{n}", "text": "",
-                "tags": ["discovery-s-001"], "created_at": "2026-06-01T00:00:00Z",
+                "id": f"PR-000{n}", "type": "principle", "description": f"P{n}", "content": "",
+                "node": ["discovery-s-001"], "tags": ["discovery-s-001"], "created_at": "2026-06-01T00:00:00Z",
                 "relations": [], "metadata": {},
             }, ensure_ascii=False) + "\n")
     _run(WM_CONTEXT, "cursor", "set", "discovery-s-001", project=project)
@@ -209,3 +211,71 @@ def test_hook_respects_top_k_env(tmp_path):
     result = _run(HOOK, project=project, workmem=workmem, MSO_WORKFLOW_CONTEXT_TOP_K="2")
     assert result.returncode == 0
     assert result.stdout.count("  ── PR-") == 2
+
+
+# ── v0.16.0: 요약 우선 · 매핑 전용 · 예산 · 세션 중복 방지 ──
+
+def _append_entry(workmem: Path, entry: dict) -> None:
+    path = workmem / "insight-record" / "principle.jsonl"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "principle", "tags": [], "created_at": "2026-06-01T00:00:00Z",
+                            "relations": [], "metadata": {}, **entry}, ensure_ascii=False) + "\n")
+
+
+def test_hook_injects_summary_not_content(tmp_path):
+    project = tmp_path / "proj"; project.mkdir()
+    workmem = _seed_workmem(project)
+    _run(WM_CONTEXT, "cursor", "set", "discovery-s-001", project=project)
+    result = _run(HOOK, project=project, workmem=workmem)
+    assert "Input collection must be explicit" in result.stdout      # description
+    assert "Collect inputs before validation." not in result.stdout  # content 는 펼칠 때만
+
+
+def test_hook_silent_for_unmapped_node_without_fallback(tmp_path):
+    project = tmp_path / "proj"; project.mkdir()
+    workmem = _seed_workmem(project)
+    _run(WM_CONTEXT, "cursor", "set", "some-other-node", project=project)
+    assert _run(HOOK, project=project, workmem=workmem).stdout == ""
+    # 점수 폴백은 opt-in
+    result = _run(HOOK, project=project, workmem=workmem, MSO_WORKFLOW_CONTEXT_FALLBACK="score")
+    assert result.returncode == 0  # (점수가 있으면 출력, 없으면 침묵 — 실패하지 않는다)
+
+
+def test_hook_session_dedup_with_stdin_session_id(tmp_path):
+    project = tmp_path / "proj"; project.mkdir()
+    workmem = _seed_workmem(project)
+    _run(WM_CONTEXT, "cursor", "set", "discovery-s-001", project=project)
+    payload = json.dumps({"session_id": "sess-1", "hook_event_name": "UserPromptSubmit"})
+
+    first = _run(HOOK, project=project, workmem=workmem, stdin=payload)
+    assert "PR-0001" in first.stdout
+    second = _run(HOOK, project=project, workmem=workmem, stdin=payload)
+    assert second.stdout == ""                       # 같은 세션 — 다시 내지 않는다
+    other = _run(HOOK, project=project, workmem=workmem,
+                 stdin=json.dumps({"session_id": "sess-2"}))
+    assert "PR-0001" in other.stdout                 # 다른 세션은 다시 낸다
+    # 세션 id 가 없으면 중복 방지 없이 매번 낸다
+    assert "PR-0001" in _run(HOOK, project=project, workmem=workmem).stdout
+    assert "PR-0001" in _run(HOOK, project=project, workmem=workmem).stdout
+
+
+def test_hook_budget_env_limits_output(tmp_path):
+    project = tmp_path / "proj"; project.mkdir()
+    workmem = _seed_workmem(project)
+    for n in range(2, 6):
+        _append_entry(workmem, {"id": f"PR-000{n}", "description": "d" * 90, "node": ["discovery-s-001"]})
+    _run(WM_CONTEXT, "cursor", "set", "discovery-s-001", project=project)
+    result = _run(HOOK, project=project, workmem=workmem,
+                  MSO_WORKFLOW_CONTEXT_TOP_K="5", MSO_WORKFLOW_CONTEXT_MAX_CHARS="260")
+    assert "more" in result.stdout and result.stdout.count("── PR-") < 5
+
+
+def test_hook_excludes_superseded_entry(tmp_path):
+    project = tmp_path / "proj"; project.mkdir()
+    workmem = _seed_workmem(project)
+    _append_entry(workmem, {"id": "PR-0002", "description": "newer principle",
+                            "node": ["discovery-s-001"],
+                            "relations": [{"type": "supersedes", "target": "PR-0001"}]})
+    _run(WM_CONTEXT, "cursor", "set", "discovery-s-001", project=project)
+    result = _run(HOOK, project=project, workmem=workmem)
+    assert "PR-0002" in result.stdout and "PR-0001" not in result.stdout

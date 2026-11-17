@@ -50,13 +50,75 @@ wm:typeName a owl:DatatypeProperty ;
     rdfs:domain wm:Entry ;
     rdfs:range xsd:string .
 
-wm:title a owl:DatatypeProperty ;
+# schema v1.4.0 (MSO v0.16.0): description/content 가 title/text 를 대체한다.
+# description 은 본문(content)을 펼칠지 판단하는 문구이며 최대 200자(SHACL sh:maxLength).
+wm:description a owl:DatatypeProperty ;
     rdfs:domain wm:Entry ;
-    rdfs:range xsd:string .
+    rdfs:range xsd:string ;
+    rdfs:comment "본문을 펼칠지 판단하는 문구. 최대 200자. 옛 title 의 후속."@ko .
+
+wm:content a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "본문. 점진적 주입에서 필요할 때만 펼친다. 옛 text 의 후속."@ko .
+
+wm:title a owl:DatatypeProperty ;
+    owl:deprecated true ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "deprecated (v0.16.0): wm:description 사용. 투영은 더 이상 내보내지 않는다."@ko .
 
 wm:text a owl:DatatypeProperty ;
+    owl:deprecated true ;
     rdfs:domain wm:Entry ;
-    rdfs:range xsd:string .
+    rdfs:range xsd:string ;
+    rdfs:comment "deprecated (v0.16.0): wm:content 사용. 투영은 더 이상 내보내지 않는다."@ko .
+
+# related 매핑: entry → workflow node. 객체는 https://mso.dev/ontology/workflow#node/<id> IRI.
+wm:relatedNode a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:comment "이 기록이 연관된 workflow node (JSONL 의 최상위 node 필드). 매핑된 node 에서만 주입한다."@ko .
+
+wm:relatedNodeId a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "연관 workflow node 의 id 문자열. node IRI 는 workflow 마다 경로가 달라 join 은 이 값으로 한다."@ko .
+
+# ── 파생 속성 (투영 시 계산, JSONL 에 저장하지 않는다 — UD-0012) ──
+wm:validity a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "파생: active | superseded | invalidated | deprecated | suspended. relations 에서 도출한다(wm_release.derive_validity)."@ko .
+
+wm:supersededBy a owl:ObjectProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range wm:Entry ;
+    rdfs:comment "파생: 이 entry 를 supersedes 로 가리키는 entry. wm:supersedes 의 역."@ko .
+
+wm:versionKey a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "파생: RN 의 metadata.version(semver) 을 major*1000000+minor*1000+patch 정수로 바꾼 정렬 키. 문자열 사전순 비교의 오류(0.9.0 > 0.15.0)를 피한다."@ko .
+
+wm:validFromVersion a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "파생: released-in/verified-in 대상 RN 중 가장 이른 버전."@ko .
+
+wm:validFromKey a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "파생: validFromVersion 의 versionKey."@ko .
+
+wm:invalidatedInVersion a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "파생: 롤백되지 않은 invalidated-by 대상 RN 중 가장 이른 버전."@ko .
+
+wm:invalidatedInKey a owl:DatatypeProperty ;
+    rdfs:domain wm:Entry ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "파생: invalidatedInVersion 의 versionKey."@ko .
 
 wm:tag a owl:DatatypeProperty ;
     rdfs:domain wm:Entry ;
@@ -70,15 +132,13 @@ wm:sourcePath a owl:DatatypeProperty ;
     rdfs:domain wm:Entry ;
     rdfs:range xsd:string .
 
-wm:author a owl:DatatypeProperty ;
+# v0.16.0: author 는 문자열이 아니라 주체(Agent) 개체다. 소속(계정 주인)과 백그라운드 구분은 metadata TBox(생성) 참조.
+wm:author a owl:ObjectProperty ;
     rdfs:domain wm:Entry ;
-    rdfs:range xsd:string .
+    rdfs:range wm:Agent .
 
+# JSONL metadata 전체의 JSON 리터럴(원본 보존). 명세에 있는 키는 별도 프로퍼티로도 내보낸다(work-memory-metadata-tbox.ttl).
 wm:metadata a owl:DatatypeProperty ;
-    rdfs:domain wm:Entry ;
-    rdfs:range xsd:string .
-
-wm:metadataKey a owl:DatatypeProperty ;
     rdfs:domain wm:Entry ;
     rdfs:range xsd:string .
 

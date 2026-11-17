@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,25 +28,53 @@ def workmem_root() -> Path:
     return Path(os.environ.get("WORKMEM_DIR", "./agent-context/work-memory")).resolve()
 
 
+# v0.16.0: 큐레이션 기록은 N-Triples(.nt)다. wm_store.py(stdlib)가 스크립트 옆에 있을 때만 .nt 를 읽는다.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import wm_store
+except Exception:  # noqa: BLE001
+    wm_store = None
+
+
+def _read_records(f: Path):
+    if f.suffix == ".nt":
+        if wm_store is None:
+            return
+        try:
+            yield from wm_store.load_nt_entries(f)[0]
+        except Exception:  # noqa: BLE001
+            return
+        return
+    for line in f.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            yield json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+
 def load_entries(root: Path) -> dict[str, dict[str, Any]]:
-    """curated 영역의 모든 entry 를 {id: entry} 로 로드 (선착 우선)."""
+    """curated 영역의 모든 entry(.nt + 이행 전 .jsonl)를 {id: entry} 로 로드 (선착 우선)."""
     entries: dict[str, dict[str, Any]] = {}
     for d in RECORD_DIRS:
         base = root / d
         if not base.exists():
             continue
-        for f in sorted(base.rglob("*.jsonl")):
-            for line in f.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+        for f in sorted([*base.rglob("*.jsonl"), *base.rglob("*.nt")],
+                        key=lambda p: (bool(re.search(r"\s\d+$", p.stem)), str(p))):   # 원본 먼저(iCloud 충돌 복제본은 뒤)
+            if any(part.startswith(".") for part in f.relative_to(root).parts[:-1]):
+                continue
+            for e in _read_records(f):
                 if isinstance(e, dict) and e.get("id") and e["id"] not in entries:
                     entries[e["id"]] = e
     return entries
+
+
+def _desc(e: dict[str, Any]) -> str:
+    """description 우선, 옛 title 은 폴백 (schema v1.4.0)."""
+    return str(e.get("description") or e.get("title") or "")
 
 
 def _relations(e: dict[str, Any]) -> list[dict[str, Any]]:
@@ -100,12 +129,62 @@ def validity_edges(entries: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
             edges.append({
                 "source": e["id"],
                 "source_type": e.get("type"),
-                "title": e.get("title", ""),
+                "title": _desc(e),
                 "relation": rt,
                 "target": target,
                 "status": "suspended" if target in rolled else "active",
             })
     return edges
+
+
+INACTIVE_VALIDITY = ("superseded", "invalidated", "deprecated")
+
+
+def derive_validity(entries) -> dict[str, dict[str, Any]]:
+    """entry 별 파생 validity — relations 에서만 도출한다(저장하지 않는다, UD-0012).
+
+    wm_context.derive_validity 와 같은 규칙이다(wm_context 는 copy-form 이라 복제 — 동일성은 테스트로 고정).
+    wm_to_ttl 이 이 함수를 재사용해 TTL 에 wm:validity 를 투영한다.
+      invalidated — invalidated-by 대상 RN 이 롤백되지 않음
+      superseded  — 다른 entry 가 supersedes 로 가리킴
+      deprecated  — principle 의 status 가 deprecated (사용자가 폐기를 선언한 원칙)
+      suspended   — invalidated-by 대상 RN 이 모두 롤백됨(재유효 후보)
+      active      — 그 외
+      우선순위: invalidated > superseded > deprecated > suspended > active
+    """
+    items = list(entries.values()) if isinstance(entries, dict) else list(entries)
+    rolled: set[str] = set()
+    superseded_by: dict[str, list[str]] = {}
+    for entry in items:
+        for rel in _relations(entry):
+            if entry.get("type") == "release-note" and rel.get("type") == "rolls-back" and rel.get("target"):
+                rolled.add(str(rel["target"]))
+            if rel.get("type") == "supersedes" and rel.get("target"):
+                superseded_by.setdefault(str(rel["target"]), []).append(entry["id"])
+    result: dict[str, dict[str, Any]] = {}
+    for entry in items:
+        targets = [
+            str(rel.get("target"))
+            for rel in _relations(entry)
+            if rel.get("type") == "invalidated-by" and rel.get("target")
+        ]
+        live = [t for t in targets if t not in rolled]
+        if live:
+            status = "invalidated"
+        elif entry["id"] in superseded_by:
+            status = "superseded"
+        elif entry.get("type") == "principle" and (entry.get("metadata") or {}).get("status") == "deprecated":
+            status = "deprecated"
+        elif targets:
+            status = "suspended"
+        else:
+            status = "active"
+        result[entry["id"]] = {
+            "validity": status,
+            "superseded_by": superseded_by.get(entry["id"], []),
+            "invalidated_by": targets,
+        }
+    return result
 
 
 def cmd_current(entries: dict[str, dict[str, Any]], as_json: bool) -> int:
@@ -151,7 +230,7 @@ def cmd_context(entries: dict[str, dict[str, Any]]) -> int:
         lines.append("  current: 미정의 (모든 release RN 이 롤백됨 — 상태 확인 필요)")
     else:
         md = cur.get("metadata") or {}
-        label = md.get("version") or cur.get("title") or "?"
+        label = md.get("version") or _desc(cur) or "?"
         lines.append(f"  current: {label} ({cur['id']}, {_release_ts(cur)})")
     edges = validity_edges(entries)
     inv_active = [x for x in edges if x["relation"] == "invalidated-by" and x["status"] == "active"]

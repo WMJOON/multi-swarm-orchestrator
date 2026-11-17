@@ -1,4 +1,4 @@
-# Multi-Swarm Orchestrator (MSO) v0.15
+# Multi-Swarm Orchestrator (MSO) v0.16
 
 MSO는 **Repository Execution System**이다.
 
@@ -13,30 +13,29 @@ Claude Code, Codex 같은 provider runtime을 대체하지 않는다. 그 위에
 
 > README에는 **현재 마이너 버전의 운영 의미**만 남긴다. 패치와 이전 버전의 상세 변경은 changelog로 이동한다.
 
-### v0.15 (2026-11-05) — 정본 index 를 TTL 하나로, 디렉터리를 별도 객체로
+### v0.16 (2026-11-18) — work-memory 를 점진적으로 주입하고 TTL 정본으로 옮긴다
 
-**1. `index.yaml` 을 없애고 `agent-context/index/index.abox.ttl` 하나를 정본으로 둔다.**
-index.yaml 과 TTL 레지스트리가 따로 있어 같은 정보를 두 곳에서 관리하던 구조를 정리했다. 새 프로젝트는 `mso-repository-setup` 이 TTL 만 만든다(TTL Only).
-옛 `index.yaml` 을 쓰는 프로젝트는 경고와 함께 계속 읽히므로 바로 깨지지 않는다.
+**1. 기록이 `description`(펼칠지 판단하는 문구, 최대 200자)과 `content`(본문)로 나뉘고, 훅은 요약 목록만 넣는다.**
+에이전트 스킬처럼 `id` 가 이름이고 `description` 만 항상 보인다. 워크플로우 커서의 노드에 **매핑된**(`node`) 기록의 `id [type] description` 만 주입하고(없으면 침묵), 본문은 `wm_context.py show <id>` 로 펼친다. 총량 예산·세션 내 중복 방지가 걸린다. 노드와 무관한 교훈(scope 가 `repository`/`global` 인 accepted principle)은 SessionStart 훅(`standing-context-hook.py`)이 세션 시작·압축·재개 때 한 번 주입한다. 옛 `title`/`text` 는 읽기 폴백으로 계속 인정한다.
 
-**2. 디렉터리와 아티팩트는 별도 객체다.**
-`wf:Directory`(경로 한 개, 상위 디렉터리, 소속 모듈)를 도입했고, 아티팩트는 `wf:storedIn` 으로 정확히 하나의 디렉터리를 가리킨다. 규약(`wf:ArtifactConvention`)은 파일명·형식만 가진다.
+**2. 큐레이션 기록의 정본이 N-Triples(`<type>.nt`)가 된다.**
+한 줄에 triple 하나(= TTL)라 정본과 투영이 어긋나지 않고, 훅은 stdlib 로 읽는다. 쓰기·편집은 `wm_node.py`(`new`, `relate`, `map-node`, `edit`)로만 한다 — 확정된 기록의 `description`/`content`(이력)는 `edit --allow-rewrite` 없이는 고칠 수 없다. `auditlog`/`worklog` 런타임 로그는 JSONL 을 유지한다. 기록 ↔ triple 변환 규칙은 `wm_store.py` 한 곳이며 손실 없이 왕복한다(명세로 표현할 수 없는 값은 원문 보존).
 
-| SHACL 규칙 | 내용 |
-|---|---|
-| 디렉터리 경로 | 끝 `/`, 유일, 상위 경로 접두어 일치, 모듈 id 필요 |
-| 저장 디렉터리 | 아티팩트당 정확히 하나, 규약 `directoryTemplate` 과 경로 일치, `inModule` 과 디렉터리 모듈 일치 |
+**3. SPARQL 로 바로 질의한다 — `wm_query.py`.**
+`.nt` 를 변환 없이 RDF 저장소에 적재한다(pyoxigraph 우선, 없으면 rdflib 폴백, 결과 동일). `memory-active`(폐기되지 않은 기록), `memory-for-node`, `memory-valid-at-version`(버전 V 시점에 유효한 기록) 같은 번들 질의가 있다. 폐기 여부(`active`/`superseded`/`invalidated`/`deprecated`/`suspended`)는 저장하지 않고 relations 에서 도출한다.
 
-`mso-scaffold-design`, `mso-graph-observability`, 검증기가 모두 `index.abox.ttl` 을 우선 읽는다.
+**4. 타입별 metadata 가 명세(`references/metadata-spec.yaml`)로 정해지고 새 기록부터 강제된다.**
+모든 기록에 **`scope`(필수, 최소 1개)** — 이 기록이 적용되는 대상의 층(`repository`·`workflow`·`task`·`artifact`·`directory`·`memory`·`global`)을 고른다. 개체·통제 어휘는 ObjectProperty, 서술·숫자·날짜는 DatatypeProperty 이고 표기는 Class=UpperCamelCase·property=lowerCamelCase 다. `component`(구성요소 이름)와 `module`(스캐폴드 index 의 module id)이 분리되고, 주체는 `User`/`SoftwareAgent`/`BackgroundAgent`(소속 `onBehalfOf`)로 구분된다(`auditlog` 훅은 `auditlog-hook` 백그라운드 에이전트로 기록). alternatives-record 의 `options` 는 Option 노드가 된다. 인스턴스 id 는 밀리초 hex 다(`UD-019a3c5e4f21` — 발생 시각을 담고 동기화 전 번호 충돌이 없다).
 
-**업그레이드**: 다른 프로젝트는 `scripts/index_yaml_to_ttl.py --root <프로젝트>` 로 변환(멱등)한 뒤 `index.yaml` 을 지운다. 남은 과제(중첩 경로 규약, `directoryTemplate` 중복 제거 등)는 changelog 에 있다.
+**업그레이드 (순서가 중요하다)**: ① 글로벌 스킬을 v0.16 으로 올린 직후, **새 기록을 쓰기 전에** 모든 프로젝트에서 `init.py --hook` 으로 훅 사본을 갱신한다(구버전 사본은 `.nt` 를 읽지 못한다). ② iCloud 충돌 복제본(`* 2.*`)을 정리한다. ③ `wm_migrate_store.py`(기본 dry-run, 쓰기 전 왕복 검증, 원본은 `.migration-archive/`)로 기록을 이행한다. 기존 지침의 `wm_node.py new` 호출에는 `--scope` 와 타입별 필수 metadata 를 추가한다. 상세는 [changelog](docs/changelog.md).
 
-패치 릴리스(v0.15.x)의 변경은 README에 싣지 않고 [docs/changelog.md](docs/changelog.md)에만 기록한다.
+패치 릴리스(v0.16.x)의 변경은 README에 싣지 않고 [docs/changelog.md](docs/changelog.md)에만 기록한다.
 
 ### 이전 마이너 버전
 
 | 버전 | 날짜 | 한 줄 요약 |
 |---|---|---|
+| v0.15 | 2026-11-05 | 정본 index 를 TTL 하나로, 디렉터리를 별도 객체로 |
 | v0.14 | 2026-10-07 | TTL 컴파일 제거, optimizer 를 분석 도구로, 관측은 brief 중심 |
 | v0.13 | 2026-10-05 | 여러 저장소를 횡단하는 work-memory 기록·커밋, TTL artifact 층, PROV-O 정렬 주석 |
 
@@ -123,7 +122,7 @@ Execution Rail + Artifact Stream Graph = **Repository Graph** 이며, 여기에 
 | Type | Examples | Primary Consumer | Purpose |
 |---|---|---|---|
 | `knowledge_store` | `ontology.ttl`, `workflow.ttl`, SHACL, JSON Schema | Agent | 구조화된 지식과 관계를 저장하고 추론한다. |
-| `event_store` | `work-memory.jsonl`, auditlog, worklog | Agent | 실행 기록과 이벤트를 누적한다. |
+| `event_store` | `work-memory/*.nt`(큐레이션 기록), auditlog·worklog(JSONL) | Agent | 실행 기록과 이벤트를 누적한다. |
 | `local_database` | `cache.sqlite`, DuckDB cache | Agent | 빠른 조회와 질의를 제공한다. |
 | `document` | `README.md`, `report.md`, `prompt.md` | Human + Agent | 사람과 에이전트가 함께 읽고 수정하는 협업 인터페이스다. |
 | `media` | `html`, `pdf`, `pptx`, `png`, `svg` | Human | 외부 전달을 위한 human-native deliverable이다. |
@@ -143,7 +142,7 @@ v0.13.0부터 artifact는 TTL registry에서 **개념(안정 IRI)과 규약 버�
 | 소비 관계 불명확 | artifact stream observability | `agent-context/observability/brief/` (요약·보고서) + `observability/` (리포트), 시각화는 선택 |
 | 결정/품질 판단 혼재 | decision/eval gate 분리 | workflow TTL, SHACL |
 | 신뢰 근거 없음 | provenance + trust 계산 (저장 아님) | `trust_v07.py`, `observability/trust-report.md` |
-| 기억 없음 | work-memory JSONL + graph projection | `agent-context/work-memory/` |
+| 기억 없음 | work-memory N-Triples(`.nt`) 정본 + SPARQL 질의 | `agent-context/work-memory/`, `wm_query.py` |
 
 ## Skills
 
@@ -155,7 +154,7 @@ MSO는 다음 스킬을 중심으로 동작한다. 스킬별 버전은 각 `SKIL
 | `mso-repository-setup` | 새 repository에 `agent-context/` 구조와 hook을 부트스트랩한다. |
 | `mso-scaffold-design` | repository index와 artifact registry를 관리한다. |
 | `mso-workflow-design` | TTL workflow/artifact/eval node-edge shape와 migration tooling을 관리한다. |
-| `mso-work-memory` | 작업 기억 JSONL, graph projection, validation을 관리한다. 연관 저장소(`--repo`) 기록·커밋을 지원한다. |
+| `mso-work-memory` | 작업 기억(큐레이션 기록은 N-Triples 정본), 타입별 metadata 명세·검증, SPARQL 질의(`wm_query.py`), 점진적·상시 주입 훅을 관리한다. 연관 저장소(`--repo`) 기록·커밋을 지원한다. |
 | `mso-work-memory-link` | 연관 저장소 work-memory 등록·점검(status/add/autocommit/sync-hooks/verify). |
 | `mso-graph-observability` | workflow TTL에서 **brief**(에이전트용 한 장 요약)와 **사람 보고서**를 만들고, artifact stream·runtime 리포트와 선택적 시각화를 제공한다. |
 | `mso-workflow-observation` | (후속 릴리스에서 제거 예정) workflow 시각화 alias. `mso-graph-observability`의 workflow scope를 호출해 `execution-rail.md`, `artifact-stream-graph.md`, `repository-graph.md`를 생성한다. |
@@ -189,10 +188,11 @@ agent-context/
 │       └── runtime-analysis.md
 └── work-memory/
     ├── schema.yaml
-    ├── auditlog/
-    ├── worklog/
-    ├── track-record/
-    ├── insight-record/
+    ├── auditlog/  worklog/         # 런타임 로그 (JSONL)
+    ├── track-record/               # <type>.nt  (N-Triples 정본: issue-note, agent-decision, user-decision, ...)
+    ├── insight-record/             # <type>.nt  (episode, pattern, principle)
+    ├── release-record/             # release-note.nt
+    ├── agents.yaml                 # 주체 등록부 (선택: User/SoftwareAgent/BackgroundAgent, 소속 onBehalfOf)
     └── linked-repos.yaml           # 연관 저장소 등록부 (v0.13.0, 선택)
 ```
 
@@ -276,11 +276,20 @@ python3 skills/mso-workflow-design/scripts/migrate_workflows_to_ttl.py agent-con
 ### Record Work Memory
 
 ```bash
+# scope(필수)는 이 기록이 적용되는 대상의 층이다. 타입별 필수 metadata 는 --meta 로 넘긴다.
 python3 skills/mso-work-memory/scripts/wm_node.py new user-decision \
-  --title "Artifact consumers determine repository boundaries" \
+  --scope repository --description "Artifact consumers determine repository boundaries" \
+  --meta rationale="소비자가 없는 artifact 는 디렉터리를 늘리지 않는다" \
   --tags artifact-stream,consumer-fit
 
 python3 skills/mso-work-memory/scripts/wm_node.py validate agent-context/work-memory
+
+# 기존 기록을 제자리에서 고친다(확정된 기록의 description/content 는 --allow-rewrite 필요)
+python3 skills/mso-work-memory/scripts/wm_node.py edit UD-... --scope workflow --scope task --scope-note "보충 설명"
+
+# SPARQL 질의 (pyoxigraph 우선, 없으면 rdflib)
+python3 skills/mso-work-memory/scripts/wm_query.py run memory-active
+python3 skills/mso-work-memory/scripts/wm_query.py run memory-for-node --param node=discovery-s-001
 ```
 
 ### Link Related Repositories (v0.13.0)
@@ -296,7 +305,7 @@ python3 $LINK sync-hooks                  # 훅 사본 vs 스킬 최신판 비�
 python3 $LINK verify
 
 # 연관 저장소에 기록
-python3 skills/mso-work-memory/scripts/wm_node.py new agent-decision --title "..." --repo-name child-repo
+python3 skills/mso-work-memory/scripts/wm_node.py new agent-decision --scope repository --description "..." --meta rationale=... --meta confidence=high --repo-name child-repo
 ```
 
 서브모듈 중 work-memory가 있는 곳은 자동 발견되며 자동 커밋은 꺼져 있다. 켜려면 `autocommit on`으로 등록부에 항목을 만든다.
@@ -319,7 +328,7 @@ python3 skills/mso-scaffold-design/scripts/check_artifact_index.py --root . [--s
 
 **Provider Free.** MSO는 Claude Code, Codex, Antigravity 등 provider runtime 위에서 동작하지만 특정 provider에 종속되지 않는다.
 
-**SSOT First.** index, workflow TTL, work-memory JSONL처럼 수정 가능한 원본과 Mermaid/report 같은 파생 산출물을 분리한다.
+**SSOT First.** index, workflow TTL, work-memory N-Triples처럼 수정 가능한 원본과 Mermaid/report 같은 파생 산출물을 분리한다.
 
 **Observable Before Automated.** 자동화보다 먼저 관측 가능해야 한다. workflow topology, artifact stream, runtime memory가 보이지 않으면 자동화는 drift를 키운다.
 

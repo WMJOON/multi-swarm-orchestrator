@@ -1,0 +1,105 @@
+# ⚠ GENERATED — 직접 편집 금지.
+# 소스: references/metadata-spec.yaml  (생성: scripts/wm_gen_vocab.py)
+
+@prefix wm: <https://mso.dev/ontology/work-memory#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+# ── 주체(Agent): 소속(계정 주인)과 백그라운드 에이전트를 구분한다 ──
+wm:Agent a owl:Class ; rdfs:label "Agent"@ko ;
+    rdfs:comment "기록을 쓰거나 보고한 주체."@ko .
+wm:User a owl:Class ; rdfs:subClassOf wm:Agent ; rdfs:label "User"@ko ;
+    rdfs:comment "사람(계정 주인)."@ko .
+wm:SoftwareAgent a owl:Class ; rdfs:subClassOf wm:Agent ; rdfs:label "SoftwareAgent"@ko ;
+    rdfs:comment "사용자를 대신해 일하는 에이전트. onBehalfOf 로 계정 주인(User)을 가리킨다."@ko .
+wm:BackgroundAgent a owl:Class ; rdfs:subClassOf wm:SoftwareAgent ; rdfs:label "BackgroundAgent"@ko ;
+    rdfs:comment "사용자 턴 밖에서 도는 에이전트(훅, 예약 작업, 자동 커밋 등). trigger 로 구분한다."@ko .
+wm:agentId a owl:DatatypeProperty ; rdfs:domain wm:Agent ; rdfs:range xsd:string .
+wm:onBehalfOf a owl:ObjectProperty ; rdfs:domain wm:SoftwareAgent ; rdfs:range wm:User ;
+    rdfs:comment "이 에이전트가 소속된 계정 주인."@ko .
+wm:trigger a owl:DatatypeProperty ; rdfs:domain wm:BackgroundAgent ; rdfs:range xsd:string ;
+    rdfs:comment "백그라운드 에이전트를 띄운 요인 (예: hook, schedule)."@ko .
+
+wm:Module a owl:Class ; rdfs:label "Module"@ko ;
+    rdfs:comment "스캐폴드 index 의 module id(modules[].id, index.abox.ttl 의 wf:moduleId 에 대응). IRI 는 https://mso.dev/id/module/<id>."@ko .
+wm:moduleId a owl:DatatypeProperty ; rdfs:domain wm:Module ; rdfs:range xsd:string .
+
+# ── 통제 어휘 (Class = UpperCamelCase, individual = lowerCamelCase) ──
+wm:Severity a owl:Class ; rdfs:label "Severity"@ko .
+<https://mso.dev/id/vocab/severity/minor> a wm:Severity ; rdfs:label "minor"@ko .
+<https://mso.dev/id/vocab/severity/major> a wm:Severity ; rdfs:label "major"@ko .
+<https://mso.dev/id/vocab/severity/critical> a wm:Severity ; rdfs:label "critical"@ko .
+
+wm:IssueStatus a owl:Class ; rdfs:label "IssueStatus"@ko .
+<https://mso.dev/id/vocab/issueStatus/open> a wm:IssueStatus ; rdfs:label "open"@ko .
+<https://mso.dev/id/vocab/issueStatus/fixing> a wm:IssueStatus ; rdfs:label "fixing"@ko .
+<https://mso.dev/id/vocab/issueStatus/partiallyResolved> a wm:IssueStatus ; rdfs:label "partially-resolved"@ko .
+<https://mso.dev/id/vocab/issueStatus/resolved> a wm:IssueStatus ; rdfs:label "resolved"@ko .
+
+wm:Confidence a owl:Class ; rdfs:label "Confidence"@ko .
+<https://mso.dev/id/vocab/confidence/high> a wm:Confidence ; rdfs:label "high"@ko .
+<https://mso.dev/id/vocab/confidence/medium> a wm:Confidence ; rdfs:label "medium"@ko .
+<https://mso.dev/id/vocab/confidence/low> a wm:Confidence ; rdfs:label "low"@ko .
+
+wm:Scope a owl:Class ; rdfs:label "Scope"@ko .
+<https://mso.dev/id/vocab/scope/repository> a wm:Scope ; rdfs:label "repository"@ko .
+<https://mso.dev/id/vocab/scope/workflow> a wm:Scope ; rdfs:label "workflow"@ko .
+<https://mso.dev/id/vocab/scope/task> a wm:Scope ; rdfs:label "task"@ko .
+<https://mso.dev/id/vocab/scope/artifact> a wm:Scope ; rdfs:label "artifact"@ko .
+<https://mso.dev/id/vocab/scope/directory> a wm:Scope ; rdfs:label "directory"@ko .
+<https://mso.dev/id/vocab/scope/memory> a wm:Scope ; rdfs:label "memory"@ko .
+<https://mso.dev/id/vocab/scope/global> a wm:Scope ; rdfs:label "global"@ko .
+
+wm:PrincipleStatus a owl:Class ; rdfs:label "PrincipleStatus"@ko .
+<https://mso.dev/id/vocab/principleStatus/draft> a wm:PrincipleStatus ; rdfs:label "draft"@ko .
+<https://mso.dev/id/vocab/principleStatus/accepted> a wm:PrincipleStatus ; rdfs:label "accepted"@ko .
+<https://mso.dev/id/vocab/principleStatus/deprecated> a wm:PrincipleStatus ; rdfs:label "deprecated"@ko .
+
+wm:ReleaseKind a owl:Class ; rdfs:label "ReleaseKind"@ko .
+<https://mso.dev/id/vocab/releaseKind/release> a wm:ReleaseKind ; rdfs:label "release"@ko .
+<https://mso.dev/id/vocab/releaseKind/rollback> a wm:ReleaseKind ; rdfs:label "rollback"@ko .
+
+# ── 구조화 값(노드) ──
+wm:Option a owl:Class ; rdfs:label "Option"@ko ;
+    rdfs:comment "구조화된 metadata 값. IRI 는 <entry IRI>/option/<n>."@ko .
+wm:optionNumber a owl:DatatypeProperty ; rdfs:domain wm:Option ; rdfs:range xsd:integer .
+wm:optionName a owl:DatatypeProperty ; rdfs:domain wm:Option ; rdfs:range xsd:string .
+wm:optionDescription a owl:DatatypeProperty ; rdfs:domain wm:Option ; rdfs:range xsd:string .
+wm:tradeOff a owl:DatatypeProperty ; rdfs:domain wm:Option ; rdfs:range xsd:string .
+
+# 외부 어휘 프로퍼티: 적용 범위 서술(scope 류)은 skos:scopeNote 를 쓴다(주석 프로퍼티).
+skos:scopeNote a owl:AnnotationProperty .
+
+# ── metadata 프로퍼티 (lowerCamelCase). object = 개체/통제 어휘, datatype = 자유 서술·숫자·날짜·버전 ──
+wm:alternative a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:boundary a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:component a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:confidence a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Confidence .
+wm:criterion a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:eventDate a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:dateTime .
+wm:frequency a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:integer .
+wm:inModule a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Module .
+wm:needsReview a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:boolean .
+wm:option a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Option .
+wm:participant a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Agent .
+wm:patternContext a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:prevention a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:principleStatus a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:PrincipleStatus .
+wm:providedBy a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Agent .
+wm:rationale a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:recommendedOption a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Option .
+wm:releaseKind a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:ReleaseKind .
+wm:releasedAt a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:dateTime .
+wm:reportedBy a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Agent .
+wm:resolution a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:rootCause a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:scope a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Scope .
+wm:severity a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Severity .
+wm:source a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:Entry .
+wm:statement a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:status a owl:ObjectProperty ; rdfs:domain wm:Entry ; rdfs:range wm:IssueStatus .
+wm:structural a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:boolean .
+wm:timeline a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .
+wm:version a owl:DatatypeProperty ; rdfs:domain wm:Entry ; rdfs:range xsd:string .

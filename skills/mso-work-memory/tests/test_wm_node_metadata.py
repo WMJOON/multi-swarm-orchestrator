@@ -5,6 +5,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import wm_store  # noqa: E402
+
+
+def _nt_entries(workmem, type_dir, type_name):
+    """new 가 만든 큐레이션 기록(.nt)을 읽는다."""
+    return wm_store.load_nt_entries(workmem / type_dir / f"{type_name}.nt")[0]
+
+
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "wm_node.py"
 
 
@@ -18,12 +27,13 @@ def _run(workmem: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _new(workmem: Path, entry_type: str, *args: str) -> subprocess.CompletedProcess:
-    return _run(workmem, "new", entry_type, "--title", "t", *args)
+    # 이 파일은 --meta/--metadata 배관을 시험한다. 타입별 필수 metadata 는 별도 테스트가 다루므로 불완전 기록을 허용한다.
+    return _run(workmem, "new", entry_type, "--description", "t", "--scope", "repository", "--allow-incomplete", *args)
 
 
 def _last_entry(workmem: Path, rel_path: str) -> dict:
-    lines = [l for l in (workmem / rel_path).read_text(encoding="utf-8").splitlines() if l.strip()]
-    return json.loads(lines[-1])
+    # v0.16.0: 큐레이션 기록은 N-Triples(.nt)로 저장된다 — rel_path 의 옛 .jsonl 이름을 .nt 로 읽는다.
+    return wm_store.load_nt_entries((workmem / rel_path).with_suffix(".nt"))[0][-1]
 
 
 def test_metadata_json_populates_entry(tmp_path):
@@ -32,15 +42,16 @@ def test_metadata_json_populates_entry(tmp_path):
                   "--metadata", json.dumps({
                       "version": "0.10.0",
                       "kind": "release",
-                      "scope": "00_multi-swarm-orchestrator",
+                      "scope_note": "00_multi-swarm-orchestrator",
                   }))
     assert result.returncode == 0, result.stderr
 
     entry = _last_entry(workmem, "release-record/release-note.jsonl")
     assert entry["metadata"] == {
+        "scope": ["repository"],                     # --scope (필수, 리스트) 가 기본 호출에서 채워진다
         "version": "0.10.0",
         "kind": "release",
-        "scope": "00_multi-swarm-orchestrator",
+        "scope_note": "00_multi-swarm-orchestrator",
     }
 
 
@@ -108,7 +119,7 @@ def test_invalid_metadata_json_fails_loud(tmp_path):
     result = _new(workmem, "issue-note", "--metadata", "{not json}")
     assert result.returncode != 0
     assert "유효한 JSON" in result.stdout + result.stderr
-    assert not (workmem / "track-record" / "issue-note.jsonl").exists()
+    assert not (workmem / "track-record" / "issue-note.nt").exists()
 
 
 def test_non_object_metadata_json_fails_loud(tmp_path):
@@ -124,18 +135,22 @@ def test_malformed_meta_pair_fails_loud(tmp_path):
     result = _new(workmem, "issue-note", "--meta", "kind-release")
     assert result.returncode != 0
     assert "--meta 형식" in result.stdout + result.stderr
-    assert not (workmem / "track-record" / "issue-note.jsonl").exists()
+    assert not (workmem / "track-record" / "issue-note.nt").exists()
 
 
 def test_backward_compat_no_flags_and_module_only(tmp_path):
     workmem = tmp_path / "work-memory"
     assert _new(workmem, "issue-note").returncode == 0
-    assert _last_entry(workmem, "track-record/issue-note.jsonl")["metadata"] == {}
+    # v0.16.0: issue-note 는 reporter(=author)·status(open)를 기본으로 채우고, severity 가 없으면 needs_review 로 표시한다.
+    assert _last_entry(workmem, "track-record/issue-note.jsonl")["metadata"] == {
+        "scope": ["repository"], "reporter": "agent", "status": "open", "needs_review": True}
 
     assert _new(workmem, "issue-note", "--module", "m1").returncode == 0
     entry = _last_entry(workmem, "track-record/issue-note.jsonl")
-    assert entry["metadata"] == {"module": "m1"}
-    assert "m1" in entry["tags"]  # --module 의 기존 태그 동작 유지
+    # v0.16.0: --module 은 deprecated 별칭 — 구성요소(component)로 기록하고 태그 동작은 유지한다
+    assert entry["metadata"] == {"component": "m1", "scope": ["repository"], "reporter": "agent",
+                                 "status": "open", "needs_review": True}
+    assert "m1" in entry["tags"]
 
 
 def test_created_entry_passes_validate(tmp_path):

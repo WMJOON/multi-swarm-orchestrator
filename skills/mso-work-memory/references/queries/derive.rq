@@ -1,0 +1,85 @@
+# 파생 속성 도출 (SPARQL UPDATE) — wm_query.py 가 `.nt` 정본을 적재한 직후 한 번 실행한다.
+# 상태는 저장하지 않고 relations 에서 도출한다(UD-0012). wm_release.derive_validity / wm_to_ttl.add_derived 와 같은 규칙이며,
+# 같은 결과를 내는지는 tests/test_wm_query.py 의 parity 테스트가 고정한다. 규칙을 바꾸면 세 곳을 함께 바꾼다.
+#
+#   validity   invalidated — invalidated-by 대상 RN 이 롤백되지 않음
+#              superseded  — 다른 기록이 supersedes 로 가리킴
+#              deprecated  — principle 의 status 가 deprecated (우선순위: invalidated > superseded > deprecated > suspended > active)
+#              suspended   — invalidated-by 대상이 모두 롤백됨(재유효 후보)
+#              active      — 그 외
+#   versionKey RN 의 version(semver) → major*1000000+minor*1000+patch (문자열 사전순 비교의 오류를 피한다)
+PREFIX wm:  <https://mso.dev/ontology/work-memory#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+INSERT { ?rn wm:versionKey ?k }
+WHERE {
+  ?rn a wm:ReleaseNote ; wm:version ?v .
+  FILTER(REGEX(STR(?v), "^v?[0-9]+\\.[0-9]+\\.[0-9]+"))
+  BIND(xsd:integer(REPLACE(STR(?v), "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+).*$", "$1")) AS ?a)
+  BIND(xsd:integer(REPLACE(STR(?v), "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+).*$", "$2")) AS ?b)
+  BIND(xsd:integer(REPLACE(STR(?v), "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+).*$", "$3")) AS ?c)
+  BIND(?a * 1000000 + ?b * 1000 + ?c AS ?k)
+} ;
+
+INSERT { ?e wm:supersededBy ?n }
+WHERE  { ?n wm:supersedes ?e } ;
+
+INSERT { ?e wm:validity "invalidated" }
+WHERE {
+  ?e a wm:Entry ; wm:invalidatedBy ?r .
+  FILTER NOT EXISTS { ?x a wm:ReleaseNote ; wm:rollsBack ?r }
+} ;
+
+INSERT { ?e wm:validity "superseded" }
+WHERE {
+  ?e a wm:Entry ; wm:supersededBy ?n .
+  FILTER NOT EXISTS { ?e wm:validity ?already }
+} ;
+
+INSERT { ?e wm:validity "deprecated" }
+WHERE {
+  ?e a wm:Principle ; wm:principleStatus <https://mso.dev/id/vocab/principleStatus/deprecated> .
+  FILTER NOT EXISTS { ?e wm:validity ?already }
+} ;
+
+INSERT { ?e wm:validity "suspended" }
+WHERE {
+  ?e a wm:Entry ; wm:invalidatedBy ?r .
+  FILTER NOT EXISTS { ?e wm:validity ?already }
+} ;
+
+INSERT { ?e wm:validity "active" }
+WHERE {
+  ?e a wm:Entry .
+  FILTER NOT EXISTS { ?e wm:validity ?already }
+} ;
+
+# 유효 시작 버전: released-in / verified-in 대상 RN 중 가장 이른 것
+INSERT { ?e wm:validFromKey ?m }
+WHERE {
+  SELECT ?e (MIN(?k) AS ?m) WHERE {
+    ?e (wm:releasedIn|wm:verifiedIn) ?rn . ?rn wm:versionKey ?k .
+  } GROUP BY ?e
+} ;
+
+INSERT { ?e wm:validFromVersion ?v }
+WHERE {
+  ?e wm:validFromKey ?m ; (wm:releasedIn|wm:verifiedIn) ?rn .
+  ?rn wm:versionKey ?m ; wm:version ?v .
+} ;
+
+# 무효화 버전: 롤백되지 않은 invalidated-by 대상 RN 중 가장 이른 것
+INSERT { ?e wm:invalidatedInKey ?m }
+WHERE {
+  SELECT ?e (MIN(?k) AS ?m) WHERE {
+    ?e wm:invalidatedBy ?rn . ?rn wm:versionKey ?k .
+    FILTER NOT EXISTS { ?x a wm:ReleaseNote ; wm:rollsBack ?rn }
+  } GROUP BY ?e
+} ;
+
+INSERT { ?e wm:invalidatedInVersion ?v }
+WHERE {
+  ?e wm:invalidatedInKey ?m ; wm:invalidatedBy ?rn .
+  ?rn wm:versionKey ?m ; wm:version ?v .
+  FILTER NOT EXISTS { ?x a wm:ReleaseNote ; wm:rollsBack ?rn }
+}

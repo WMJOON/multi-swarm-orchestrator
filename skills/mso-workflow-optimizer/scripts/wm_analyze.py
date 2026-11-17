@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 import math
 import re
 from collections import Counter, defaultdict
@@ -34,18 +35,47 @@ RECORD_DIRS = ("track-record", "insight-record", "release-record")
 ID_RE = re.compile(r"\b(IN|AD|UD|AR|TS|RN|EP|PT|PR)-\d{4,}\b")
 PATH_RE = re.compile(r"(?<![\w./-])((?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?![\w/]|\.[A-Za-z0-9])")
 GENERIC_TAGS = {"auditlog", "bash", "agent", "ontology", "law", "gap", "modeling"}
-SEVERITY_VOCAB = {"low", "medium", "high"}
+SEVERITY_VOCAB = {"minor", "major", "critical"}  # schema(metadata-spec.yaml)와 같은 정본 어휘
 STATUS_VOCAB = {"open", "fixing", "partially-resolved", "resolved"}
 
 
 # ── 적재 ────────────────────────────────────────────────────────────────
+
+
+def _wm_store():
+    """mso-work-memory 의 wm_store.py(stdlib)를 찾아 import 한다 — 큐레이션 기록(.nt)을 읽기 위해.
+    스킬 레이아웃(형제 스킬)과 스크립트 옆(복사 배포) 둘 다 찾는다. 없으면 None."""
+    here = Path(__file__).resolve()
+    for cand in (here.parents[2] / "mso-work-memory" / "scripts", here.parent):
+        if (cand / "wm_store.py").is_file():
+            sys.path.insert(0, str(cand))
+            try:
+                import wm_store  # type: ignore
+                return wm_store
+            except Exception:  # noqa: BLE001
+                return None
+    return None
 
 def load_entries(workmem: Path) -> dict[str, Any]:
     """track/insight/release-record 의 entry 를 모두 읽는다. 깨진 줄은 건너뛰고 기록해 둔다."""
     entries: list[dict[str, Any]] = []
     broken: list[str] = []
     for directory in RECORD_DIRS:
-        for path in sorted((workmem / directory).glob("*.jsonl")) if (workmem / directory).is_dir() else []:
+        base = workmem / directory
+        # v0.16.0: 큐레이션 정본은 <type>.nt. wm_store 가 없으면 .nt 를 못 읽으므로 깨진 파일로 알린다.
+        for path in (sorted(base.glob("*.nt")) if base.is_dir() else []):
+            store = _wm_store()
+            if store is None:
+                broken.append(f"{path.name}: wm_store.py 를 찾을 수 없어 읽지 못함")
+                continue
+            loaded, problems = store.load_nt_entries(path)
+            broken.extend(f"{path.name}:{n}" for n, _ in problems)
+            for row in loaded:
+                row.setdefault("metadata", {})
+                row["metadata"] = row["metadata"] or {}
+                row["relations"] = [r for r in (row.get("relations") or []) if isinstance(r, dict)]
+                entries.append(row)
+        for path in sorted(base.glob("*.jsonl")) if base.is_dir() else []:
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip():
                     continue
@@ -66,6 +96,10 @@ def load_entries(workmem: Path) -> dict[str, Any]:
 def _all_ids(workmem: Path) -> set[str]:
     """work-memory 의 모든 jsonl(worklog·auditlog 포함)에서 entry id 를 모은다. 관계 대상의 존재 판정용."""
     ids: set[str] = set()
+    store = _wm_store()
+    for path in workmem.rglob("*.nt"):
+        if store is not None:
+            ids.update(str(e["id"]) for e in store.load_nt_entries(path)[0] if e.get("id"))
     for path in workmem.rglob("*.jsonl"):
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
@@ -104,7 +138,7 @@ def _out_edges(entry: dict[str, Any], *types: str) -> list[str]:
 
 def _text_of(entry: dict[str, Any]) -> str:
     meta = entry["metadata"]
-    parts = [entry.get("title", ""), entry.get("text", "")]
+    parts = [entry.get("description") or entry.get("title", ""), entry.get("content") or entry.get("text", "")]
     for key in ("root_cause", "fix_summary", "rationale", "what_happened", "root_shape"):
         value = meta.get(key)
         if isinstance(value, str):
@@ -256,7 +290,7 @@ def analyze_workflow(entries: list[dict[str, Any]], *, now: dt.datetime, thresho
         if len(group) < 2:
             continue
         members = [e for e in by["trouble-shooting"] if e["id"] in group]
-        modules = Counter(_norm_tag(str(e["metadata"].get("module") or "-")) for e in members)
+        modules = Counter(_norm_tag(str((e["metadata"].get("component") or e["metadata"].get("module")) or "-")) for e in members)
         already = sum(1 for tid in group if tid in pt_text)
         out.append(_proposal(
             "workflow", f"cause:{sorted(group)[0]}", "high" if len(group) >= 4 else "medium",
@@ -270,9 +304,9 @@ def analyze_workflow(entries: list[dict[str, Any]], *, now: dt.datetime, thresho
     # (b) 모듈 핫스팟: 열린·고위험 issue 가 몰린 모듈
     modules: dict[str, dict[str, list[str]]] = defaultdict(lambda: {"open": [], "high": [], "all": []})
     for e in by.get("issue-note", []):
-        if not e["metadata"].get("module"):
+        if not (e["metadata"].get("component") or e["metadata"].get("module")):
             continue  # 모듈 미지정은 핫스팟이 아니라 기록 품질 문제(quality:module-missing)
-        module = _norm_tag(str(e["metadata"]["module"]))  # korean_tax / korean-tax 표기 차이를 합친다
+        module = _norm_tag(str(e["metadata"].get("component") or e["metadata"]["module"]))  # korean_tax / korean-tax 표기 차이를 합친다
         modules[module]["all"].append(e["id"])
         if e["metadata"].get("status") in {"open", "fixing", "partially-resolved"}:
             modules[module]["open"].append(e["id"])
@@ -369,7 +403,7 @@ def analyze_stale(entries: list[dict[str, Any]], *, now: dt.datetime, project_ro
         linked = {(e["id"], t) for e in by.get("user-decision", []) for t in _out_edges(e, "supersedes", "refines", "depends-on", "references")}
         linked |= {(b, a) for a, b in linked}
         created = {e["id"]: e.get("created_at", "") for e in by.get("user-decision", [])}
-        modules = {e["id"]: e["metadata"].get("module") for e in by.get("user-decision", [])}
+        modules = {e["id"]: (e["metadata"].get("component") or e["metadata"].get("module")) for e in by.get("user-decision", [])}
         pairs = []
         ids = sorted(uds)
         for i, a in enumerate(ids):
@@ -443,18 +477,18 @@ def analyze_quality(entries: list[dict[str, Any]], *, now: dt.datetime, stale_da
     missing = [e["id"] for e in issues if not e["metadata"].get("status") or not e["metadata"].get("severity")]
     if missing:
         out.append(_proposal("quality", "issue-missing-fields", "medium", f"status 또는 severity 가 없는 issue-note {len(missing)}건", "필수 필드가 없으면 열린 이슈 집계와 우선순위가 틀어진다.",
-                             "status(open/fixing/partially-resolved/resolved)와 severity(low/medium/high)를 채운다.", missing))
+                             "status(open/fixing/partially-resolved/resolved)와 severity(minor/major/critical)를 채운다.", missing))
     bad_vocab = [e["id"] for e in issues if (e["metadata"].get("severity") and str(e["metadata"]["severity"]) not in SEVERITY_VOCAB)
                  or (e["metadata"].get("status") and str(e["metadata"]["status"]) not in STATUS_VOCAB)]
     if bad_vocab:
         values = Counter(str(e["metadata"].get("severity")) for e in issues if str(e["metadata"].get("severity")) not in SEVERITY_VOCAB | {"None"})
         out.append(_proposal("quality", "vocab-drift", "low", f"권장 어휘 밖의 severity/status 를 쓰는 issue {len(bad_vocab)}건", "같은 의미가 다른 단어로 갈라지면 집계가 분리된다.",
-                             "severity 는 low/medium/high 로 통일한다(예: minor→low, major→high).", bad_vocab, severity_values=dict(values)))
+                             "severity 는 minor/major/critical 로 통일한다(예: low→minor, medium→major, high→critical).", bad_vocab, severity_values=dict(values)))
 
-    no_module = [e["id"] for e in issues if not e["metadata"].get("module")]
+    no_module = [e["id"] for e in issues if not (e["metadata"].get("component") or e["metadata"].get("module"))]
     if len(no_module) >= 5:
         out.append(_proposal("quality", "module-missing", "low", f"module 이 없는 issue-note {len(no_module)}건 ({len(no_module) * 100 // max(len(issues), 1)}%)", "모듈이 없으면 모듈별 핫스팟과 workflow 개선 분석에서 빠진다.",
-                             "metadata.module 을 채운다(저장소의 모듈·workflow 단위 이름과 맞춘다).", no_module))
+                             "metadata.component(옛 module)를 채운다(저장소의 모듈·workflow 단위 이름과 맞춘다).", no_module))
     resolved_targets = {t for e in by.get("trouble-shooting", []) for t in _out_edges(e, "resolved-by")} | {e["id"] for e in issues if _out_edges(e, "resolved-by")}
     inconsistent = [e["id"] for e in issues if e["metadata"].get("status") == "resolved" and not _out_edges(e, "resolved-by")
                     and not any(e["id"] in _out_edges(t, "resolved-by") for t in by.get("trouble-shooting", []))]
