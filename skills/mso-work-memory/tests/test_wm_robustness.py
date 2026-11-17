@@ -163,3 +163,28 @@ def test_relation_target_is_an_entry_only_for_real_entry_ids(target, is_entry):
     assert iris[0].startswith(wm_store.ID_NS + ("memory/" if is_entry else "external/"))
     got = wm_store.triples_to_entries(wm_store.entry_to_triples(e))[0]
     assert got["relations"] == [{"type": "references", "target": target}]      # 어느 쪽이든 원문이 되돌아온다
+
+
+# ── 회귀: 존재하지 않는 entry 를 가리키는 references 는 외부 참조로 투영된다 (실제 기록: IN-0001 → worklog WL-...) ──
+
+def test_references_to_entries_that_are_not_loaded_project_as_external_references(tmp_path):
+    """`references` 는 대상이 로드된 entry 일 때만 entry 링크이고, 아니면(런타임 로그 등 투영에 없는 기록) 외부 참조다.
+    그렇지 않으면 SHACL(`references` 는 Entry 또는 ExternalReference)을 위반한다."""
+    root = tmp_path / "wm"
+    wm_store.append_entry(root / "track-record" / "issue-note.nt", {
+        "id": "IN-0001", "type": "issue-note", "description": "d", "content": "c", "tags": [], "created_at": OLD, "relations": [
+            {"type": "references", "target": "WL-20260601-133456"},       # 투영에 없는 worklog
+            {"type": "references", "target": "UD-0002"}],                  # 로드된 entry
+        "metadata": {"scope": ["repository"], "reporter": "user", "severity": "minor", "status": "open"}})
+    wm_store.append_entry(root / "track-record" / "user-decision.nt", ud("UD-0002", "존재하는 결정"))
+    out = tmp_path / "wm.ttl"
+    r = subprocess.run([sys.executable, str(SCRIPTS / "wm_to_ttl.py"), "project", str(root), "-o", str(out)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    from rdflib import Graph, URIRef
+    g = Graph().parse(out, format="turtle")
+    refs = {str(o) for _s, _p, o in g.triples((URIRef(wm_store.entry_iri("IN-0001")), URIRef(wm_store.WM + "references"), None))}
+    assert refs == {wm_store.entry_iri("UD-0002"), wm_store.external_iri("WL-20260601-133456")}
+    ext = wm_store.external_iri("WL-20260601-133456")
+    assert (URIRef(ext), URIRef(wm_store.WM + "externalValue"), None) in g          # 원문이 보존된다
+    v = subprocess.run([sys.executable, str(SCRIPTS / "wm_to_ttl.py"), "validate", str(root)], capture_output=True, text=True)
+    assert v.returncode == 0, v.stdout

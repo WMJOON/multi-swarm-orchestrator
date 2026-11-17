@@ -21,7 +21,7 @@ description: >
       camelCase hooks.json(PostToolUse/Stop/PreInvocation) 을 기존 snake_case
       훅 계약으로 변환한다 (등록은 mso-repository-setup 담당).
 metadata:
-  version: "0.12.0"
+  version: "0.12.1"
 ---
 
 # MSO Work Memory

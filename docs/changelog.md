@@ -1,5 +1,14 @@
 # 변경 이력
 
+## v0.16.1 (2026-11-18) — 투영 회귀 수정 (존재하지 않는 대상의 `references`)
+
+> v0.16.0 에서 relation 대상 판정을 알려진 id 형식으로 좁히면서 생긴 회귀다. 실제 기록(이행 후)의 SHACL 검증에서 발견했다.
+
+### Fixed
+
+- **`mso-work-memory` v0.12.1**: `references` 가 투영에 없는 기록(런타임 로그 `WL-…`/`AU-…` 등 로드되지 않은 entry)을 가리키면 entry 링크가 되어 코어 shape(`references` 는 Entry 또는 ExternalReference)를 위반했다(이행 후 `wm_to_ttl.py validate` 가 `Conforms: False`). 이제 대상이 로드된 entry 일 때만 entry 링크이고, 아니면 외부 참조로 투영한다(원문은 `wm:externalValue` 로 보존). 이전 구현과 같은 동작이다.
+- 참고(데이터 문제, 코드 아님): 일부 프로젝트의 release-note 가 `verified-in` 으로 release-note 가 아닌 기록(UD)을 가리키는 방향 오류가 있어 SHACL 이 그 위반을 계속 보고한다(옛 구현도 동일). 방향을 바로잡거나 `UD → verified-in → RN` 으로 옮겨야 한다.
+
 ## v0.16.0 (2026-11-18) — work-memory: 점진적 주입, N-Triples 정본, 타입별 metadata 명세, SPARQL 질의
 
 > 기록을 "펼칠지 판단하는 문구(`description`)"와 "본문(`content`)"으로 나누고, 훅은 요약 목록만 넣는다. 폐기된 기록은 파생 속성으로 걸러 낸다. work-memory schema 는 **v1.4.0** 이다. 설계 근거는 `planning/mso-v0.16.0-SPEC-memory-progressive-disclosure.md`.

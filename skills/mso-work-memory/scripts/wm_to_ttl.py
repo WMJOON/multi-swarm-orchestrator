@@ -193,6 +193,18 @@ def build_graph(workmem_dir: Path, include_runtime: bool = False) -> tuple[Graph
                 if key in defs:
                     issues.append(f"{entry_id}: metadata.{key}={unmapped_md[key]!r} 은 명세로 표현할 수 없음 (wm:unmapped 에 원문 보존)")
 
+    # `references` 는 대상이 로드된 entry 일 때만 entry 링크다. 투영에 없는 기록(런타임 로그 WL-…/AU-… 등)을 가리키면 외부 참조로 바꾼다 —
+    # 그렇지 않으면 코어 shape(`references` 는 Entry 또는 ExternalReference)를 위반한다. 원문은 externalValue 로 보존된다.
+    known = {entry_uri(e["id"]) for e in entries if isinstance(e.get("id"), str) and e["id"]}
+    for s_, p_, o_ in list(graph.triples((None, WM.references, None))):
+        if isinstance(o_, URIRef) and str(o_).startswith(wm_store.ID_NS + "memory/") and o_ not in known:
+            original = wm_store._tail(str(o_), wm_store.ID_NS + "memory/") or str(o_)
+            external = URIRef(wm_store.external_iri(original))
+            graph.remove((s_, p_, o_))
+            graph.add((s_, p_, external))
+            graph.add((external, RDF.type, WM.ExternalReference))
+            graph.add((external, WM.externalValue, Literal(original)))
+
     # 투영 단계에서만 붙는 individual: 주체, 모듈, 관련 workflow node
     for s, p, o in list(graph):
         if isinstance(o, URIRef) and str(o).startswith(wm_store.ID_NS + "agent/"):
