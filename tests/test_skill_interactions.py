@@ -126,7 +126,8 @@ def test_readme_reflects_current_version_and_structure():
     readme = (ROOT / "README.md").read_text()
     changelog = (ROOT / "docs" / "changelog.md").read_text()
     top = re.search(r"^## v(\d+\.\d+\.\d+)", changelog, re.M).group(1)
-    assert f"MSO) v{top}" in readme, f"README header is not the changelog's latest version v{top}"
+    minor = ".".join(top.split(".")[:2])  # UD-0001: README 는 마이너 버전까지만 노출
+    assert f"MSO) v{minor}" in readme, f"README header is not the changelog's latest minor version v{minor}"
     assert "Repository Execution System" in readme
     assert "Core Philosophy" in readme
     assert "Artifact Supply Chain" in readme

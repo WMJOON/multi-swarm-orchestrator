@@ -228,12 +228,15 @@ def cmd_check(target: Path):
         if not p.exists():
             missing.append(rel)
 
+    index_dir = target / "agent-context" / "index"
     must_files = [
-        ("agent-context/index/index.yaml", target / "agent-context" / "index" / "index.yaml"),
         ("agent-context/work-memory/schema.yaml", target / "agent-context" / "work-memory" / "schema.yaml"),
         (".gitignore", target / ".gitignore"),
     ]
     missing_files = [name for name, p in must_files if not p.exists()]
+    # 정본은 index.abox.ttl (TTL Only). 레거시 index.yaml 도 허용.
+    if not (index_dir / "index.abox.ttl").exists() and not (index_dir / "index.yaml").exists():
+        missing_files.insert(0, "agent-context/index/index.abox.ttl")
 
     if not missing and not missing_files:
         print("  ✓ 표준 구조에 부합합니다.")

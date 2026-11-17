@@ -138,6 +138,20 @@ wf:metricDimension a owl:DatatypeProperty ; rdfs:label "metricDimension"@ko ;
 #   wf:evidence_of owl:inverseOf prov:wasDerivedFrom .
 # 공리로 쓰고 싶으면 별도 opt-in 정렬 파일로 분리해 기본 로딩에서 제외한다(prov: import 없음 원칙 유지).
 
+# 위 정렬을 기계가 읽을 수 있게 annotation 으로도 남긴다 (2026-11-17 사용자 결정, D-23 유지).
+# annotation property 는 추론을 일으키지 않는다: owl:equivalentClass/inverseOf 가 아니므로 SHACL 대상 확장·계획/사건 혼합이 없다.
+# 값은 PROV-O IRI 를 그대로 쓰지만 prov: 를 import 하지 않고 prefix 도 선언하지 않는다(IRI lint gate 영향 없음).
+wf:provEquivalentTo a owl:AnnotationProperty ; rdfs:label "provEquivalentTo"@ko ;
+    rdfs:comment "PROV-O 클래스와의 대응(의미상 동치로 읽음). 공리가 아니라 문서화용 annotation 이다 (D-23)."@ko .
+wf:provInverseOf a owl:AnnotationProperty ; rdfs:label "provInverseOf"@ko ;
+    rdfs:comment "PROV-O 프로퍼티와의 역 대응. 공리가 아니라 문서화용 annotation 이다 (D-23). 방향은 각 프로퍼티의 domain/range 로 확인한다."@ko .
+
+wf:Execution   wf:provEquivalentTo <http://www.w3.org/ns/prov#Activity> .
+wf:Artifact    wf:provEquivalentTo <http://www.w3.org/ns/prov#Entity> .
+wf:consumed_by wf:provInverseOf    <http://www.w3.org/ns/prov#used> .
+wf:produces_to wf:provInverseOf    <http://www.w3.org/ns/prov#wasGeneratedBy> .
+wf:evidence_of wf:provInverseOf    <http://www.w3.org/ns/prov#wasDerivedFrom> .
+
 # ─── Provenance 층 (v0.9.0, ROADMAP §6·§7 / SPEC mso-v0.9.0) ─────────────────
 # 모든 Artifact와 Execution은 Provenance를 가진다. 어휘 정본은 MSO(wf:)이며
 # W3C PROV-O 정렬은 주석으로 문서화한다 (D-23, 운영 원칙 3). 소비 팩(MSM 등)은
